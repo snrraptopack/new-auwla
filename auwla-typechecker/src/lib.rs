@@ -1,6 +1,8 @@
 pub mod checker;
+pub mod expr;
 pub mod module;
 pub mod scope;
+pub mod stmt;
 
 pub use checker::Typechecker;
 pub use module::{ExportMap, collect_exports};
@@ -51,7 +53,7 @@ mod tests {
                 ok_type: Box::new(Type::Basic("string".to_string())),
                 err_type: Box::new(Type::Basic("string".to_string())),
             }),
-            initializer: Expr::None(Box::new(Expr::StringLit("error_msg".to_string()))),
+            initializer: Expr::None(Some(Box::new(Expr::StringLit("error_msg".to_string())))),
         };
 
         assert!(checker.check_stmt(&stmt).is_ok());
