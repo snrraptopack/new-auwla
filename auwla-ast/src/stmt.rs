@@ -57,6 +57,10 @@ pub enum Stmt {
         name: String,
         variants: Vec<(String, Vec<Type>)>,
     },
+    /// import { add, Vec2 } from './math';
+    Import { names: Vec<String>, path: String },
+    /// export fn / export let / export struct / export enum
+    Export { stmt: Box<Stmt> },
 }
 
 #[derive(Debug, Clone, PartialEq)]

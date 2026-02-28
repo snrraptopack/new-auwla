@@ -227,6 +227,57 @@ impl JsEmitter {
                 // Struct/Enum declarations vanish in JS, they are purely for compile-time typechecking
                 // We emit nothing to keep it zero-cost.
             }
+            Stmt::Import { names, path } => {
+                // Rewrite Auwla relative path to .js extension
+                let js_path = if path.ends_with(".aw") {
+                    format!("{}.js", &path[..path.len() - 3])
+                } else {
+                    format!("{}.js", path)
+                };
+                self.write_indent();
+                self.write("import { ");
+                for (i, name) in names.iter().enumerate() {
+                    if i > 0 {
+                        self.write(", ");
+                    }
+                    self.write(name);
+                }
+                self.write(&format!(" }} from '{}';\n", js_path));
+            }
+            Stmt::Export { stmt: inner } => {
+                match inner.as_ref() {
+                    Stmt::Fn { name: _, .. } => {
+                        // Temporarily emit the fn, then prefix with `export `
+                        let saved_len = self.output.len();
+                        self.emit_stmt(inner);
+                        // Find where `function` keyword starts and insert `export `
+                        let emitted = &self.output[saved_len..];
+                        let new_emitted = emitted.replacen("function ", "export function ", 1);
+                        self.output.truncate(saved_len);
+                        self.output.push_str(&new_emitted);
+                    }
+                    Stmt::Let { .. } | Stmt::Var { .. } => {
+                        let saved_len = self.output.len();
+                        self.emit_stmt(inner);
+                        let emitted = &self.output[saved_len..];
+                        // prefix `const ` or `let ` with `export `
+                        let new_emitted = if emitted.trim_start().starts_with("const ") {
+                            emitted.replacen("const ", "export const ", 1)
+                        } else {
+                            emitted.replacen("let ", "export let ", 1)
+                        };
+                        self.output.truncate(saved_len);
+                        self.output.push_str(&new_emitted);
+                    }
+                    Stmt::StructDecl { .. } | Stmt::EnumDecl { .. } => {
+                        // types vanish in JS output — no-op
+                    }
+                    _ => {
+                        // For anything else (e.g., exported block expressions), emit as-is
+                        self.emit_stmt(inner);
+                    }
+                }
+            }
         }
     }
 

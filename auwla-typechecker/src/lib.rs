@@ -1,7 +1,9 @@
 pub mod checker;
+pub mod module;
 pub mod scope;
 
 pub use checker::Typechecker;
+pub use module::{ExportMap, collect_exports};
 pub use scope::Scope;
 
 #[cfg(test)]

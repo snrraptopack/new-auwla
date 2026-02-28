@@ -37,6 +37,12 @@ pub enum Token {
     Struct,
     #[token("enum")]
     Enum,
+    #[token("import")]
+    Import,
+    #[token("export")]
+    Export,
+    #[token("from")]
+    From,
 
     // Identifiers
     #[regex("[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]

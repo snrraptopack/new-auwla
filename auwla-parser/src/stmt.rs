@@ -67,26 +67,33 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             )
             .then(just(Token::Colon).ignore_then(ty.clone()).or_not())
             .then(
+                // Block body: { stmts... [trailing_expr] }
                 stmt.clone()
                     .repeated()
                     .then(expr.clone().or_not())
-                    .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace))
+                    .map(|(mut body, trailing_expr)| {
+                        if let Some(e) = trailing_expr {
+                            body.push(Stmt::Return(Some(e)));
+                        } else if let Some(Stmt::Expr(auwla_ast::Expr::Match { .. })) = body.last()
+                        {
+                            if let Stmt::Expr(e) = body.pop().unwrap() {
+                                body.push(Stmt::Return(Some(e)));
+                            }
+                        }
+                        body
+                    })
+                    // Expression body: => expr;
+                    .or(just(Token::FatArrow)
+                        .ignore_then(expr.clone())
+                        .then_ignore(just(Token::Semicolon))
+                        .map(|e| vec![Stmt::Return(Some(e))])),
             )
-            .map(|(((name, params), return_ty), (mut body, trailing_expr))| {
-                // Desugar trailing expression into Stmt::Return
-                if let Some(e) = trailing_expr {
-                    body.push(Stmt::Return(Some(e)));
-                } else if let Some(Stmt::Expr(auwla_ast::Expr::Match { .. })) = body.last() {
-                    if let Stmt::Expr(e) = body.pop().unwrap() {
-                        body.push(Stmt::Return(Some(e)));
-                    }
-                }
-                Stmt::Fn {
-                    name,
-                    params,
-                    return_ty,
-                    body,
-                }
+            .map(|(((name, params), return_ty), body)| Stmt::Fn {
+                name,
+                params,
+                return_ty,
+                body,
             });
 
         let if_stmt = just(Token::If)
@@ -173,7 +180,25 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             )
             .map(|(name, variants)| Stmt::EnumDecl { name, variants });
 
-        // Expression as statement — with semicolon for most expressions,
+        // import { a, b } from './math';
+        let import_stmt = just(Token::Import)
+            .ignore_then(
+                select! { Token::Ident(name) => name }
+                    .separated_by(just(Token::Comma))
+                    .allow_trailing()
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+            )
+            .then_ignore(just(Token::From))
+            .then(select! { Token::StringLit(path) => path })
+            .then_ignore(just(Token::Semicolon))
+            .map(|(names, path)| Stmt::Import { names, path });
+
+        // export fn / export let / export var / export struct / export enum
+        let export_stmt = just(Token::Export)
+            .ignore_then(stmt.clone())
+            .map(|s| Stmt::Export { stmt: Box::new(s) });
+
+        // Expression as statement \u2014 with semicolon for most expressions,
         // but match expressions don't need a trailing semicolon
         let match_stmt = expr.clone().try_map(|e, span| match &e {
             auwla_ast::Expr::Match { .. } => Ok(Stmt::Expr(e)),
@@ -186,6 +211,8 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             .map(Stmt::Expr);
 
         choice((
+            import_stmt,
+            export_stmt,
             let_stmt,
             destructure_stmt,
             var_stmt,

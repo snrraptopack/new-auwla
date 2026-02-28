@@ -84,7 +84,47 @@ impl Typechecker {
         None
     }
 
+    /// Typecheck a standalone program (no cross-file imports).
     pub fn check_program(&mut self, program: &Program) -> Result<(), String> {
+        for stmt in &program.statements {
+            self.check_stmt(stmt)?;
+        }
+        Ok(())
+    }
+
+    /// Typecheck a program that can import names from `imports`.
+    /// `imports` maps the *path* of a dependency to its `ExportMap`.
+    /// This must be called after all dependencies have been typechecked.
+    pub fn check_program_with_imports(
+        &mut self,
+        program: &Program,
+        imports: &std::collections::HashMap<String, crate::module::ExportMap>,
+    ) -> Result<(), String> {
+        // Pre-populate the global scope with everything each `import` statement needs.
+        for stmt in &program.statements {
+            if let Stmt::Import { names, path } = stmt {
+                let export_map = imports
+                    .get(path.as_str())
+                    .ok_or_else(|| format!("Import error: could not resolve module '{}'", path))?;
+                for name in names {
+                    if let Some(sig) = export_map.functions.get(name) {
+                        self.declare_function(name.clone(), sig.0.clone(), sig.1.clone());
+                    } else if let Some(ty) = export_map.variables.get(name) {
+                        self.declare_variable(name.clone(), ty.clone(), Mutability::Immutable)?;
+                    } else if let Some(fields) = export_map.structs.get(name) {
+                        self.structs.insert(name.clone(), fields.clone());
+                    } else if let Some(variants) = export_map.enums.get(name) {
+                        self.enums.insert(name.clone(), variants.clone());
+                    } else {
+                        return Err(format!(
+                            "Import error: '{}' not found in module '{}'",
+                            name, path
+                        ));
+                    }
+                }
+            }
+        }
+        // Now typecheck all statements normally
         for stmt in &program.statements {
             self.check_stmt(stmt)?;
         }
@@ -391,6 +431,11 @@ impl Typechecker {
                 self.enums.insert(name.clone(), variants.clone());
                 Ok(())
             }
+            // Imports are pre-resolved in check_program_with_imports before check_stmt is called.
+            // If we see one here in a standalone compile, it's a no-op (names were already injected).
+            Stmt::Import { .. } => Ok(()),
+            // Export is transparent — the inner stmt is what matters for type-checking.
+            Stmt::Export { stmt: inner } => self.check_stmt(inner),
         }
     }
 
