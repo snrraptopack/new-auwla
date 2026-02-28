@@ -8,6 +8,8 @@ pub struct Typechecker {
     current_return_type: Option<Option<Type>>,
     structs: HashMap<String, Vec<(String, Type)>>,
     enums: HashMap<String, Vec<(String, Vec<Type>)>>,
+    /// type_name -> [(method_name, is_static, params_with_types, return_ty)]
+    pub extensions: HashMap<String, Vec<(String, bool, Vec<(String, Type)>, Option<Type>)>>,
 }
 
 impl Default for Typechecker {
@@ -23,7 +25,16 @@ impl Typechecker {
             current_return_type: None,
             structs: HashMap::new(),
             enums: HashMap::new(),
+            extensions: HashMap::new(),
         }
+    }
+
+    /// Returns a reference to the extension method registry.
+    /// Used by the code generator to identify extension call sites.
+    pub fn get_extensions(
+        &self,
+    ) -> &HashMap<String, Vec<(String, bool, Vec<(String, Type)>, Option<Type>)>> {
+        &self.extensions
     }
 
     pub fn enter_scope(&mut self) {
@@ -432,10 +443,56 @@ impl Typechecker {
                 Ok(())
             }
             // Imports are pre-resolved in check_program_with_imports before check_stmt is called.
-            // If we see one here in a standalone compile, it's a no-op (names were already injected).
             Stmt::Import { .. } => Ok(()),
             // Export is transparent — the inner stmt is what matters for type-checking.
             Stmt::Export { stmt: inner } => self.check_stmt(inner),
+            Stmt::Extend { type_name, methods } => {
+                let self_type = match type_name.as_str() {
+                    "number" | "string" | "boolean" => Type::Basic(type_name.clone()),
+                    _ => Type::Custom(type_name.clone()),
+                };
+                let mut method_sigs = Vec::new();
+                for method in methods {
+                    // Build fully-typed params: inject self type for instance methods
+                    let full_params: Vec<(String, Type)> = method
+                        .params
+                        .iter()
+                        .map(|(n, ty_opt)| {
+                            let t = if n == "self" {
+                                self_type.clone()
+                            } else {
+                                ty_opt.clone().unwrap_or(Type::Basic("unknown".to_string()))
+                            };
+                            (n.clone(), t)
+                        })
+                        .collect();
+
+                    method_sigs.push((
+                        method.name.clone(),
+                        method.is_static,
+                        full_params.clone(),
+                        method.return_ty.clone(),
+                    ));
+
+                    // Type-check the method body
+                    self.enter_scope();
+                    let saved = self.current_return_type.take();
+                    self.current_return_type = Some(method.return_ty.clone());
+                    for (pname, pty) in &full_params {
+                        self.declare_variable(pname.clone(), pty.clone(), Mutability::Immutable)?;
+                    }
+                    for s in &method.body {
+                        self.check_stmt(s)?;
+                    }
+                    self.current_return_type = saved;
+                    self.exit_scope();
+                }
+                self.extensions
+                    .entry(type_name.clone())
+                    .or_default()
+                    .extend(method_sigs);
+                Ok(())
+            }
         }
     }
 
@@ -1004,6 +1061,53 @@ impl Typechecker {
                         ));
                     }
                 }
+            }
+            Expr::MethodCall { expr, method, args } => {
+                let expr_ty = self.check_expr(expr)?;
+                // Resolve the type name for lookup in the extension registry
+                let type_key = match &expr_ty {
+                    Type::Custom(name) => name.clone(),
+                    Type::Basic(name) => name.clone(),
+                    other => format!("{:?}", other),
+                };
+                let method_sigs = self.extensions.get(&type_key).cloned();
+                if let Some(sigs) = method_sigs {
+                    if let Some((_, is_static, params, return_ty)) =
+                        sigs.iter().find(|(n, _, _, _)| n == method).cloned()
+                    {
+                        if is_static {
+                            return Err(format!(
+                                "Type error: '{}::{}' is a static extension — not callable on a value",
+                                type_key, method
+                            ));
+                        }
+                        // params[0] is self — skip when validating explicit args
+                        let explicit_params =
+                            if params.first().map(|(n, _)| n == "self").unwrap_or(false) {
+                                &params[1..]
+                            } else {
+                                &params[..]
+                            };
+                        if explicit_params.len() != args.len() {
+                            return Err(format!(
+                                "Method '{}' expects {} arg(s), got {}",
+                                method,
+                                explicit_params.len(),
+                                args.len()
+                            ));
+                        }
+                        for ((_, expected), arg_expr) in explicit_params.iter().zip(args) {
+                            let arg_ty = self.check_expr(arg_expr)?;
+                            self.assert_type_eq(expected, &arg_ty)?;
+                        }
+                        return Ok(return_ty.unwrap_or(Type::Basic("void".to_string())));
+                    }
+                }
+                // Not found as extension — might be a closure field call; validate args permissively
+                for arg in args {
+                    self.check_expr(arg)?;
+                }
+                Ok(Type::Basic("unknown".to_string()))
             }
             Expr::Block(stmts, result) => {
                 self.enter_scope();

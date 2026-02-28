@@ -61,9 +61,28 @@ pub enum Stmt {
     Import { names: Vec<String>, path: String },
     /// export fn / export let / export struct / export enum
     Export { stmt: Box<Stmt> },
+    /// extend TypeName { fn method(self, ...) { ... } }
+    Extend {
+        /// The type being extended — can be a built-in ("number", "string") or a custom struct name.
+        type_name: String,
+        methods: Vec<Method>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
     pub statements: Vec<Stmt>,
+}
+
+/// A method defined inside an `extend` block.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Method {
+    pub name: String,
+    /// Parameters — `self` appears as the first param for instance methods.
+    /// The typechecker injects the correct type for `self`.
+    pub params: Vec<(String, Option<Type>)>,
+    pub return_ty: Option<Type>,
+    pub body: Vec<Stmt>,
+    /// true when the first param is NOT `self` (static method)
+    pub is_static: bool,
 }

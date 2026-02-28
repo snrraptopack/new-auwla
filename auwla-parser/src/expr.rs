@@ -308,10 +308,12 @@ fn expr_parser_inner(
             enum PostOp {
                 Index(Expr),
                 Try(Option<Expr>),
+                /// Dot followed by ident — resolved to Method (with args) or Prop (no args)
+                Method(String, Vec<Expr>),
                 Prop(String),
             }
 
-            // Postfix: expr[index], expr?(error_expr), and expr.property
+            // Postfix: expr[index], expr?(error_expr), expr.method(args), expr.property
             let index_postfix = expr
                 .clone()
                 .delimited_by(just(Token::LBracket), just(Token::RBracket))
@@ -325,12 +327,23 @@ fn expr_parser_inner(
                 )
                 .map(|(_, err)| PostOp::Try(err));
 
-            let prop_postfix = just(Token::Dot)
-                .ignore_then(select! { Token::Ident(prop) => prop })
-                .map(PostOp::Prop);
+            // Dot followed by ident then optional call args
+            let dot_postfix = just(Token::Dot)
+                .ignore_then(select! { Token::Ident(name) => name })
+                .then(
+                    expr.clone()
+                        .separated_by(just(Token::Comma))
+                        .allow_trailing()
+                        .delimited_by(just(Token::LParen), just(Token::RParen))
+                        .or_not(),
+                )
+                .map(|(name, args_opt)| match args_opt {
+                    Some(args) => PostOp::Method(name, args),
+                    None => PostOp::Prop(name),
+                });
 
             let postfix = unary
-                .then(index_postfix.or(try_postfix).or(prop_postfix).repeated())
+                .then(index_postfix.or(try_postfix).or(dot_postfix).repeated())
                 .map(|(base, ops): (Expr, Vec<PostOp>)| {
                     ops.into_iter().fold(base, |acc, op| match op {
                         PostOp::Index(idx) => Expr::Index {
@@ -340,6 +353,11 @@ fn expr_parser_inner(
                         PostOp::Try(err) => Expr::Try {
                             expr: Box::new(acc),
                             error_expr: err.map(Box::new),
+                        },
+                        PostOp::Method(method, args) => Expr::MethodCall {
+                            expr: Box::new(acc),
+                            method,
+                            args,
                         },
                         PostOp::Prop(prop) => Expr::PropertyAccess {
                             expr: Box::new(acc),

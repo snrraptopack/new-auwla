@@ -95,6 +95,12 @@ pub enum Expr {
     },
     /// expr.property
     PropertyAccess { expr: Box<Expr>, property: String },
+    /// expr.method(args) — may be an extension call or a closure field call
+    MethodCall {
+        expr: Box<Expr>,
+        method: String,
+        args: Vec<Expr>,
+    },
     /// (x: number) => x * 2
     Closure {
         params: Vec<(String, Option<crate::types::Type>)>,

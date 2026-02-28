@@ -189,6 +189,7 @@ fn compile_directory_as_module(dir: &Path, output_dir: &Path) -> Result<(), ()> 
     // 6. Second pass: typecheck + codegen each file
     let mut success_count = 0;
     let mut fail_count = 0;
+    let mut all_extensions = String::new();
 
     for key in &sorted_keys {
         if let (Some(ast), Some(file_path)) = (file_asts.get(key), file_paths.get(key)) {
@@ -209,7 +210,17 @@ fn compile_directory_as_module(dir: &Path, output_dir: &Path) -> Result<(), ()> 
             match typechecker.check_program_with_imports(ast, &import_ctx) {
                 Ok(_) => {
                     println!("✓  Typechecking passed — no errors found.");
-                    let js_output = emit_js(ast);
+                    let (mut js_output, ext_output) = emit_js(ast, typechecker.get_extensions());
+                    all_extensions.push_str(&ext_output);
+
+                    // If this file uses any extensions, inject the import
+                    if js_output.contains("__ext_") {
+                        js_output = format!(
+                            "import * as __auwla from './__runtime.js';\n{}",
+                            js_output.replace("__ext_", "__auwla.__ext_")
+                        );
+                    }
+
                     let stem = file_path.file_stem().unwrap();
                     let out_path = output_dir.join(stem).with_extension("js");
                     fs::write(&out_path, &js_output).unwrap_or_else(|e| {
@@ -231,6 +242,17 @@ fn compile_directory_as_module(dir: &Path, output_dir: &Path) -> Result<(), ()> 
                 }
             }
         }
+    }
+
+    if !all_extensions.is_empty() {
+        let runtime_path = output_dir.join("__runtime.js");
+        fs::write(&runtime_path, &all_extensions).unwrap_or_else(|e| {
+            eprintln!("[Error] Failed to write '__runtime.js': {}", e);
+        });
+        println!(
+            "✓  Generated '__runtime.js' ({} bytes)",
+            all_extensions.len()
+        );
     }
 
     println!("\n=============================");
@@ -347,7 +369,24 @@ fn compile_file_standalone(path: &Path, output_file: &Path) -> Result<(), ()> {
     match typechecker.check_program(&ast) {
         Ok(_) => {
             println!("✓  Typechecking passed — no errors found.");
-            let js_output = emit_js(&ast);
+            let (mut js_output, ext_output) = emit_js(&ast, typechecker.get_extensions());
+
+            if !ext_output.is_empty() {
+                let out_dir = output_file.parent().unwrap_or(Path::new("."));
+                let runtime_path = out_dir.join("__runtime.js");
+                fs::write(&runtime_path, &ext_output).unwrap_or_else(|e| {
+                    eprintln!("[Error] Failed to write '__runtime.js': {}", e);
+                });
+                println!("✓  Generated '__runtime.js' ({} bytes)", ext_output.len());
+            }
+
+            if js_output.contains("__ext_") {
+                js_output = format!(
+                    "import * as __auwla from './__runtime.js';\n{}",
+                    js_output.replace("__ext_", "__auwla.__ext_")
+                );
+            }
+
             fs::write(output_file, &js_output).unwrap_or_else(|e| {
                 eprintln!("[Error] Failed to write '{}': {}", output_file.display(), e);
             });

@@ -198,6 +198,55 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             .ignore_then(stmt.clone())
             .map(|s| Stmt::Export { stmt: Box::new(s) });
 
+        // extend TypeName { fn method(self, ...) => expr; }
+        let extend_decl = just(Token::Extend)
+            .ignore_then(select! { Token::Ident(name) => name })
+            .then({
+                let method_body = stmt
+                    .clone()
+                    .repeated()
+                    .then(expr.clone().or_not())
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace));
+
+                let method = just(Token::Fn)
+                    .ignore_then(select! { Token::Ident(name) => name })
+                    .then(
+                        select! { Token::Ident(name) => name }
+                            .then(just(Token::Colon).ignore_then(ty.clone()).or_not())
+                            .separated_by(just(Token::Comma))
+                            .delimited_by(just(Token::LParen), just(Token::RParen)),
+                    )
+                    .then(just(Token::Colon).ignore_then(ty.clone()).or_not())
+                    .then(
+                        method_body
+                            .map(|(mut body, trailing)| {
+                                if let Some(e) = trailing {
+                                    body.push(Stmt::Return(Some(e)));
+                                }
+                                body
+                            })
+                            .or(just(Token::FatArrow)
+                                .ignore_then(expr.clone())
+                                .then_ignore(just(Token::Semicolon))
+                                .map(|e| vec![Stmt::Return(Some(e))])),
+                    )
+                    .map(|(((name, params), return_ty), body)| {
+                        let is_static = params.first().map(|(n, _)| n != "self").unwrap_or(true);
+                        auwla_ast::stmt::Method {
+                            name,
+                            params,
+                            return_ty,
+                            body,
+                            is_static,
+                        }
+                    });
+
+                method
+                    .repeated()
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace))
+            })
+            .map(|(type_name, methods)| Stmt::Extend { type_name, methods });
+
         // Expression as statement \u2014 with semicolon for most expressions,
         // but match expressions don't need a trailing semicolon
         let match_stmt = expr.clone().try_map(|e, span| match &e {
@@ -213,6 +262,7 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
         choice((
             import_stmt,
             export_stmt,
+            extend_decl,
             let_stmt,
             destructure_stmt,
             var_stmt,

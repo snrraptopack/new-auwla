@@ -1,27 +1,69 @@
 use auwla_ast::expr::{BinaryOp, Expr, MatchArm, UnaryOp};
 use auwla_ast::stmt::Stmt;
 use auwla_ast::Program;
+use std::collections::{HashMap, HashSet};
 
 /// Emits JavaScript source code from a type-checked Auwla AST.
-pub fn emit_js(program: &Program) -> String {
-    let mut emitter = JsEmitter::new();
+/// Returns a tuple of `(main_js_source, extensions_js_source)`.
+/// `extensions` maps type_name -> [(method_name, is_static, params, return_ty)].
+pub fn emit_js(
+    program: &Program,
+    extensions: &HashMap<
+        String,
+        Vec<(
+            String,
+            bool,
+            Vec<(String, auwla_ast::Type)>,
+            Option<auwla_ast::Type>,
+        )>,
+    >,
+) -> (String, String) {
+    let mut emitter = JsEmitter::new(extensions.clone());
     emitter.emit_program(program);
-    emitter.output
+    (emitter.output, emitter.extensions_output)
 }
 
 struct JsEmitter {
     output: String,
+    extensions_output: String,
     indent: usize,
     /// Counter for generating unique temp variable names (e.g. __match_0, __match_1)
     temp_counter: usize,
+    /// variable name -> type name, for resolving extension call sites
+    var_types: HashMap<String, String>,
+    /// type_name -> set of extension method names (for fast lookup)
+    ext_methods: HashMap<String, HashSet<String>>,
+    /// Flag to trigger `self` -> `__self` rewriting
+    in_extension_method: bool,
 }
 
 impl JsEmitter {
-    fn new() -> Self {
+    fn new(
+        extensions: HashMap<
+            String,
+            Vec<(
+                String,
+                bool,
+                Vec<(String, auwla_ast::Type)>,
+                Option<auwla_ast::Type>,
+            )>,
+        >,
+    ) -> Self {
+        let ext_methods = extensions
+            .iter()
+            .map(|(ty, methods)| {
+                let names: HashSet<String> = methods.iter().map(|(n, _, _, _)| n.clone()).collect();
+                (ty.clone(), names)
+            })
+            .collect();
         Self {
             output: String::new(),
+            extensions_output: String::new(),
             indent: 0,
             temp_counter: 0,
+            var_types: HashMap::new(),
+            ext_methods,
+            in_extension_method: false,
         }
     }
 
@@ -47,6 +89,22 @@ impl JsEmitter {
         self.output.push('\n');
     }
 
+    fn write_ext(&mut self, s: &str) {
+        self.extensions_output.push_str(s);
+    }
+
+    fn write_indent_ext(&mut self) {
+        for _ in 0..self.indent {
+            self.extensions_output.push_str("  ");
+        }
+    }
+
+    fn writeln_ext(&mut self, s: &str) {
+        self.write_indent_ext();
+        self.extensions_output.push_str(s);
+        self.extensions_output.push('\n');
+    }
+
     fn emit_expr_to_string(&mut self, expr: &Expr) -> String {
         let old = std::mem::take(&mut self.output);
         self.emit_expr(expr);
@@ -68,8 +126,19 @@ impl JsEmitter {
     fn emit_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::Let {
-                name, initializer, ..
+                name,
+                ty,
+                initializer,
+                ..
             } => {
+                if let Some(t) = ty {
+                    let type_name = match t {
+                        auwla_ast::Type::Custom(n) => n.clone(),
+                        auwla_ast::Type::Basic(n) => n.clone(),
+                        _ => format!("{:?}", t),
+                    };
+                    self.var_types.insert(name.clone(), type_name);
+                }
                 if let Expr::Match { expr, arms } = initializer {
                     self.emit_match_assign("const", name, expr, arms);
                 } else if let Expr::Try { expr, error_expr } = initializer {
@@ -82,8 +151,19 @@ impl JsEmitter {
                 }
             }
             Stmt::Var {
-                name, initializer, ..
+                name,
+                ty,
+                initializer,
+                ..
             } => {
+                if let Some(t) = ty {
+                    let type_name = match t {
+                        auwla_ast::Type::Custom(n) => n.clone(),
+                        auwla_ast::Type::Basic(n) => n.clone(),
+                        _ => format!("{:?}", t),
+                    };
+                    self.var_types.insert(name.clone(), type_name);
+                }
                 if let Expr::Match { expr, arms } = initializer {
                     self.emit_match_assign("let", name, expr, arms);
                 } else if let Expr::Try { expr, error_expr } = initializer {
@@ -127,6 +207,14 @@ impl JsEmitter {
             Stmt::Fn {
                 name, params, body, ..
             } => {
+                for (param_name, ty) in params {
+                    let type_name = match ty {
+                        auwla_ast::Type::Custom(n) => n.clone(),
+                        auwla_ast::Type::Basic(n) => n.clone(),
+                        _ => format!("{:?}", ty),
+                    };
+                    self.var_types.insert(param_name.clone(), type_name);
+                }
                 self.write_indent();
                 let param_names: Vec<&str> = params.iter().map(|(n, _)| n.as_str()).collect();
                 self.write(&format!(
@@ -278,7 +366,77 @@ impl JsEmitter {
                     }
                 }
             }
+            Stmt::Extend { type_name, methods } => {
+                // Emit each method as a standalone function: __ext_TypeName_methodName
+                for method in methods {
+                    // Register method parameters in var_types
+                    for (param_name, ty_opt) in &method.params {
+                        if param_name == "self" {
+                            self.var_types
+                                .insert("__self".to_string(), type_name.clone());
+                        } else if let Some(ty) = ty_opt {
+                            let t_name = match ty {
+                                auwla_ast::Type::Custom(n) => n.clone(),
+                                auwla_ast::Type::Basic(n) => n.clone(),
+                                _ => format!("{:?}", ty),
+                            };
+                            self.var_types.insert(param_name.clone(), t_name);
+                        }
+                    }
+
+                    if method.is_static {
+                        // Static methods don't have a receiver — emit as plain function
+                        self.write_indent_ext();
+                        self.write_ext(&format!(
+                            "export function __ext_{}_{}(",
+                            type_name, method.name
+                        ));
+                        let params: Vec<_> = method.params.iter().collect();
+                        for (i, (pname, _)) in params.iter().enumerate() {
+                            if i > 0 {
+                                self.write_ext(", ");
+                            }
+                            self.write_ext(pname);
+                        }
+                        self.write_ext(") {\n");
+                    } else {
+                        // Instance methods: first param is `self` → rename to `__self`
+                        self.write_indent_ext();
+                        self.write_ext(&format!(
+                            "export function __ext_{}_{}(__self",
+                            type_name, method.name
+                        ));
+                        for (pname, _) in method.params.iter().filter(|(n, _)| n != "self") {
+                            self.write_ext(", ");
+                            self.write_ext(pname);
+                        }
+                        self.write_ext(") {\n");
+                    }
+                    self.indent += 1;
+                    // Emit body, rewriting `self` identifiers to `__self`
+                    let old_output = std::mem::take(&mut self.output);
+
+                    for s in &method.body {
+                        self.emit_stmt_with_self_rename(s);
+                    }
+
+                    let body_output = std::mem::take(&mut self.output);
+                    self.output = old_output;
+                    self.write_ext(&body_output);
+
+                    self.indent -= 1;
+                    self.writeln_ext("}\n");
+                }
+            }
         }
+    }
+
+    /// Emit a statement, replacing identifier `self` with `__self` for method bodies.
+    fn emit_stmt_with_self_rename(&mut self, stmt: &Stmt) {
+        let old = self.in_extension_method;
+        self.in_extension_method = true;
+        self.emit_stmt(stmt);
+        self.in_extension_method = old;
     }
 
     // ──────────────────────────── Match helpers ──────────────────────
@@ -569,7 +727,13 @@ impl JsEmitter {
             }
             Expr::BoolLit(b) => self.write(if *b { "true" } else { "false" }),
             Expr::CharLit(c) => self.write(&format!("\"{}\"", c)),
-            Expr::Identifier(name) => self.write(name),
+            Expr::Identifier(name) => {
+                if self.in_extension_method && name == "self" {
+                    self.write("__self");
+                } else {
+                    self.write(name);
+                }
+            }
             Expr::Binary { op, left, right } => {
                 self.write("(");
                 self.emit_expr(left);
@@ -761,6 +925,40 @@ impl JsEmitter {
             Expr::PropertyAccess { expr, property } => {
                 self.emit_expr(expr);
                 self.write(&format!(".{}", property));
+            }
+            Expr::MethodCall { expr, method, args } => {
+                // Resolve whether this is an extension call by looking up the receiver type.
+                let receiver_type_key: Option<String> = match expr.as_ref() {
+                    Expr::Identifier(name) => self.var_types.get(name).cloned(),
+                    _ => None,
+                };
+                let is_extension = receiver_type_key
+                    .as_ref()
+                    .and_then(|tk| self.ext_methods.get(tk))
+                    .map(|methods| methods.contains(method))
+                    .unwrap_or(false);
+
+                if is_extension {
+                    let type_name = receiver_type_key.unwrap();
+                    self.write(&format!("__ext_{}_{}(", type_name, method));
+                    self.emit_expr(expr);
+                    for arg in args {
+                        self.write(", ");
+                        self.emit_expr(arg);
+                    }
+                    self.write(")");
+                } else {
+                    // Regular JS method call (closure field, interop, etc.)
+                    self.emit_expr(expr);
+                    self.write(&format!(".{}(", method));
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 {
+                            self.write(", ");
+                        }
+                        self.emit_expr(arg);
+                    }
+                    self.write(")");
+                }
             }
             Expr::EnumInit {
                 enum_name: _,
