@@ -21,6 +21,14 @@ pub enum Token {
     Some,
     #[token("none")]
     None,
+    #[token("true")]
+    True,
+    #[token("false")]
+    False,
+    #[token("match")]
+    Match,
+    #[token("while")]
+    While,
 
     // Identifiers
     #[regex("[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
@@ -74,4 +82,13 @@ pub enum Token {
     Star,
     #[token("/")]
     Slash,
+    // Logical operators
+    #[token("&&")]
+    And,
+    #[token("||")]
+    Or,
+    #[token("!")]
+    Not,
+    #[token("=>")]
+    FatArrow,
 }

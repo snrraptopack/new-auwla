@@ -1,14 +1,16 @@
-use crate::expr::expr_parser;
+use crate::expr::expr_parser_with_stmt;
 use crate::types::type_parser;
 use auwla_ast::Stmt;
 use auwla_lexer::token::Token;
 use chumsky::prelude::*;
 
 pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone {
-    let expr = expr_parser();
     let ty = type_parser();
 
     recursive(move |stmt| {
+        // Build expression parser WITH stmt support (for match arms)
+        let expr = expr_parser_with_stmt(stmt.clone());
+
         let let_stmt = just(Token::Let)
             .ignore_then(select! { Token::Ident(name) => name })
             .then(just(Token::Colon).ignore_then(ty.clone()).or_not())
@@ -36,7 +38,7 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
         let return_stmt = just(Token::Return)
             .ignore_then(expr.clone().or_not())
             .then_ignore(just(Token::Semicolon))
-            .map(|expr| Stmt::Return(expr));
+            .map(Stmt::Return);
 
         let param = select! { Token::Ident(name) => name }
             .then_ignore(just(Token::Colon))
@@ -84,12 +86,28 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                 else_branch,
             });
 
-        // Assignment: `name = value;`  (must come before expr_stmt since both start with ident)
+        let while_stmt = just(Token::While)
+            .ignore_then(expr.clone())
+            .then(
+                stmt.clone()
+                    .repeated()
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+            )
+            .map(|(condition, body)| Stmt::While { condition, body });
+
+        // Assignment: `name = value;`
         let assign_stmt = select! { Token::Ident(name) => name }
             .then_ignore(just(Token::Assign))
             .then(expr.clone())
             .then_ignore(just(Token::Semicolon))
             .map(|(name, value)| Stmt::Assign { name, value });
+
+        // Expression as statement — with semicolon for most expressions,
+        // but match expressions don't need a trailing semicolon
+        let match_stmt = expr.clone().try_map(|e, span| match &e {
+            auwla_ast::Expr::Match { .. } => Ok(Stmt::Expr(e)),
+            _ => Err(Simple::custom(span, "expected match expression")),
+        });
 
         let expr_stmt = expr
             .clone()
@@ -101,7 +119,9 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             .or(return_stmt)
             .or(fn_decl)
             .or(if_stmt)
-            .or(assign_stmt) // before expr_stmt so `a = x;` isn't consumed as an expression
+            .or(while_stmt)
+            .or(assign_stmt)
+            .or(match_stmt)
             .or(expr_stmt)
     })
 }

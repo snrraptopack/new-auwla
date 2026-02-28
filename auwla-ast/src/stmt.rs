@@ -34,6 +34,8 @@ pub enum Stmt {
     },
     /// An expression evaluated for its side effects (or final value)
     Expr(Expr),
+    /// while condition { body }
+    While { condition: Expr, body: Vec<Stmt> },
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -219,11 +219,22 @@ impl Typechecker {
                 self.check_expr(expr)?;
                 Ok(())
             }
+            Stmt::While { condition, body } => {
+                self.check_expr(condition)?;
+                self.enter_scope();
+                for stmt in body {
+                    self.check_stmt(stmt)?;
+                }
+                self.exit_scope();
+                Ok(())
+            }
         }
     }
 
     pub fn check_expr(&mut self, expr: &Expr) -> Result<Type, String> {
         match expr {
+            Expr::Void => Ok(Type::Basic("void".to_string())),
+            Expr::BoolLit(_) => Ok(Type::Basic("bool".to_string())),
             Expr::StringLit(_) => Ok(Type::Basic("string".to_string())),
             Expr::NumberLit(_) => Ok(Type::Basic("number".to_string())),
             Expr::Identifier(name) => self
@@ -262,6 +273,97 @@ impl Typechecker {
                     ok_type: Box::new(Type::Basic("unknown".to_string())),
                     err_type: Box::new(inner_ty),
                 })
+            }
+            Expr::Call { name, args } => {
+                let (params, return_ty) = self
+                    .lookup_function(name)
+                    .ok_or_else(|| format!("Undefined function: '{}'", name))?;
+
+                if params.len() != args.len() {
+                    return Err(format!(
+                        "Function '{}' expects {} arguments, but {} were provided",
+                        name,
+                        params.len(),
+                        args.len()
+                    ));
+                }
+
+                for (param_ty, arg_expr) in params.iter().zip(args) {
+                    let arg_ty = self.check_expr(arg_expr)?;
+                    self.assert_type_eq(param_ty, &arg_ty)?;
+                }
+
+                Ok(return_ty.unwrap_or(Type::Basic("void".to_string())))
+            }
+            Expr::Unary { op, expr } => {
+                let inner = self.check_expr(expr)?;
+                match op {
+                    auwla_ast::UnaryOp::Not => {
+                        self.assert_type_eq(&Type::Basic("bool".to_string()), &inner)
+                            .map_err(|_| {
+                                "Type error: '!' requires a bool expression".to_string()
+                            })?;
+                        Ok(Type::Basic("bool".to_string()))
+                    }
+                    auwla_ast::UnaryOp::Neg => {
+                        self.assert_type_eq(&Type::Basic("number".to_string()), &inner)
+                            .map_err(|_| {
+                                "Type error: '-' requires a number expression".to_string()
+                            })?;
+                        Ok(Type::Basic("number".to_string()))
+                    }
+                }
+            }
+            Expr::Match {
+                expr,
+                some_arm,
+                none_arm,
+            } => {
+                let result_ty = self.check_expr(expr)?;
+
+                let (ok_ty, err_ty) = match result_ty {
+                    Type::Result { ok_type, err_type } => (*ok_type, *err_type),
+                    other => {
+                        return Err(format!(
+                            "Type error: 'match' requires a Result type (e.g. 'string?string'), but got '{:?}'",
+                            other
+                        ));
+                    }
+                };
+
+                // some arm
+                self.enter_scope();
+                self.declare_variable(some_arm.binding.clone(), ok_ty, Mutability::Immutable);
+                for stmt in &some_arm.stmts {
+                    self.check_stmt(stmt)?;
+                }
+                let some_ty = if let Some(res) = &some_arm.result {
+                    self.check_expr(res)?
+                } else {
+                    Type::Basic("void".to_string())
+                };
+                self.exit_scope();
+
+                // none arm
+                self.enter_scope();
+                self.declare_variable(none_arm.binding.clone(), err_ty, Mutability::Immutable);
+                for stmt in &none_arm.stmts {
+                    self.check_stmt(stmt)?;
+                }
+                let none_ty = if let Some(res) = &none_arm.result {
+                    self.check_expr(res)?
+                } else {
+                    Type::Basic("void".to_string())
+                };
+                self.exit_scope();
+
+                // Both arms must yield the same type
+                self.assert_type_eq(&some_ty, &none_ty).map_err(|_| format!(
+                    "Type error: match arms return different types — some arm returns '{:?}', none arm returns '{:?}'",
+                    some_ty, none_ty
+                ))?;
+
+                Ok(some_ty)
             }
         }
     }
