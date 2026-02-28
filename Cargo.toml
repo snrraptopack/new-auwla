@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "auwla-lexer",
+    "auwla-ast",
+    "auwla-parser",
+    "auwla-cli"
+, "auwla-typechecker"]
+resolver = "2"
