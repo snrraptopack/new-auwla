@@ -14,4 +14,6 @@ pub enum Type {
     Custom(String),
     /// Function type: `(string, number) => bool`
     Function(Vec<Type>, Box<Type>),
+    /// Optional type: `string?`, `number?`
+    Optional(Box<Type>),
 }

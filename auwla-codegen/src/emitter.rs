@@ -116,6 +116,34 @@ impl JsEmitter {
     // ──────────────────────────── Program ────────────────────────────
 
     fn emit_program(&mut self, program: &Program) {
+        // Inject custom print formatter for rich CLI debugging (handles T?, Optionals, Structs)
+        self.output.push_str("function __print(...args) {\n");
+        self.output
+            .push_str("  const format = (val, top = false) => {\n");
+        self.output
+            .push_str("    if (val && typeof val === 'object' && 'ok' in val) {\n");
+        self.output
+            .push_str("      if (val.ok) return `some(${format(val.value)})`;\n");
+        self.output
+            .push_str("      if ('value' in val) return `none(${format(val.value)})`;\n");
+        self.output.push_str("      return 'none';\n");
+        self.output.push_str("    }\n");
+        self.output.push_str(
+            "    if (Array.isArray(val)) return `[${val.map(v => format(v)).join(', ')}]`;\n",
+        );
+        self.output
+            .push_str("    if (typeof val === 'string' && !top) return `\"${val}\"`;\n");
+        self.output
+            .push_str("    if (typeof val === 'object' && val !== null) {\n");
+        self.output.push_str("      const props = Object.entries(val).map(([k, v]) => `${k}: ${format(v)}`).join(', ');\n");
+        self.output.push_str("      return `{ ${props} }`;\n");
+        self.output.push_str("    }\n");
+        self.output.push_str("    return val;\n");
+        self.output.push_str("  };\n");
+        self.output
+            .push_str("  console.log(...args.map(a => format(a, true)));\n");
+        self.output.push_str("}\n\n");
+
         for stmt in &program.statements {
             self.emit_stmt(stmt);
         }
@@ -767,15 +795,19 @@ impl JsEmitter {
                 self.emit_expr(inner);
                 self.write(" })");
             }
-            Expr::None(inner) => {
-                self.write("({ ok: false, value: ");
-                self.emit_expr(inner);
-                self.write(" })");
+            Expr::None(inner_opt) => {
+                if let Some(inner) = inner_opt {
+                    self.write("({ ok: false, value: ");
+                    self.emit_expr(inner);
+                    self.write(" })");
+                } else {
+                    self.write("({ ok: false })");
+                }
             }
             Expr::Call { name, args } => {
                 // Map built-in functions
                 let js_name = if name == "print" {
-                    "console.log"
+                    "__print"
                 } else {
                     name.as_str()
                 };

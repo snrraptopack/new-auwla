@@ -30,14 +30,16 @@ pub fn type_parser() -> impl Parser<Token, Type, Error = Simple<Token>> + Clone 
             )
             .foldl(|ty, _| Type::Array(Box::new(ty)));
 
-        // result type: base?base
+        // optional or result type: base? or base?err
         let result = base
             .clone()
-            .then_ignore(just(Token::QuestionMark))
-            .then(base.clone())
-            .map(|(ok, err)| Type::Result {
-                ok_type: Box::new(ok),
-                err_type: Box::new(err),
+            .then(just(Token::QuestionMark).ignore_then(base.clone().or_not()))
+            .map(|(ok, err_opt)| match err_opt {
+                Some(err) => Type::Result {
+                    ok_type: Box::new(ok),
+                    err_type: Box::new(err),
+                },
+                None => Type::Optional(Box::new(ok)),
             });
 
         result.or(base)

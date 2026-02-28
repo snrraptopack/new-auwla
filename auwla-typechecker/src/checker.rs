@@ -6,6 +6,7 @@ use std::collections::HashMap;
 pub struct Typechecker {
     scopes: Vec<Scope>,
     current_return_type: Option<Option<Type>>,
+    current_function_name: Option<String>,
     structs: HashMap<String, Vec<(String, Type)>>,
     enums: HashMap<String, Vec<(String, Vec<Type>)>>,
     /// type_name -> [(method_name, is_static, params_with_types, return_ty)]
@@ -23,6 +24,7 @@ impl Typechecker {
         Self {
             scopes: vec![Scope::new()],
             current_return_type: None,
+            current_function_name: None,
             structs: HashMap::new(),
             enums: HashMap::new(),
             extensions: HashMap::new(),
@@ -309,7 +311,9 @@ impl Typechecker {
                 self.declare_function(name.clone(), param_types, return_ty.clone());
 
                 let prev_return = self.current_return_type.take();
+                let prev_func_name = self.current_function_name.take();
                 self.current_return_type = Some(return_ty.clone());
+                self.current_function_name = Some(name.clone());
 
                 self.enter_scope();
                 // Fn params are always mutable within their scope
@@ -322,6 +326,7 @@ impl Typechecker {
                 self.exit_scope();
 
                 self.current_return_type = prev_return;
+                self.current_function_name = prev_func_name;
                 Ok(())
             }
             Stmt::If {
@@ -358,28 +363,30 @@ impl Typechecker {
                     None
                 };
 
+                let func_ctx = self.current_function_name.as_deref().unwrap_or("anon");
+
                 if let Some(expected_ty_opt) = &self.current_return_type {
                     match (expected_ty_opt, actual_ty) {
                         (Some(expected), Some(actual)) => {
                             self.assert_type_eq(expected, &actual).map_err(|_| {
                                 format!(
-                                    "Strict Type error: Function expects to return '{:?}', but returned '{:?}'",
-                                    expected, actual
+                                    "Strict Type error: Function '{}' expects to return '{:?}', but returned '{:?}'",
+                                    func_ctx, expected, actual
                                 )
                             })?;
                         }
                         (None, Some(actual)) => {
                             if actual != Type::Basic("void".to_string()) {
                                 return Err(format!(
-                                    "Strict Type error: Function expected to return nothing, but returned '{:?}'",
-                                    actual
+                                    "Strict Type error: Function '{}' expected to return nothing, but returned '{:?}'",
+                                    func_ctx, actual
                                 ));
                             }
                         }
                         (Some(expected), None) => {
                             return Err(format!(
-                                "Strict Type error: Function expects to return '{:?}', but returned nothing",
-                                expected
+                                "Strict Type error: Function '{}' expects to return '{:?}', but returned nothing",
+                                func_ctx, expected
                             ));
                         }
                         (None, None) => {}
@@ -476,15 +483,18 @@ impl Typechecker {
 
                     // Type-check the method body
                     self.enter_scope();
-                    let saved = self.current_return_type.take();
+                    let saved_return = self.current_return_type.take();
+                    let saved_fn = self.current_function_name.take();
                     self.current_return_type = Some(method.return_ty.clone());
+                    self.current_function_name = Some(format!("{}::{}", type_name, method.name));
                     for (pname, pty) in &full_params {
                         self.declare_variable(pname.clone(), pty.clone(), Mutability::Immutable)?;
                     }
                     for s in &method.body {
                         self.check_stmt(s)?;
                     }
-                    self.current_return_type = saved;
+                    self.current_return_type = saved_return;
+                    self.current_function_name = saved_fn;
                     self.exit_scope();
                 }
                 self.extensions
@@ -532,13 +542,16 @@ impl Typechecker {
                     err_type: Box::new(Type::Basic("unknown".to_string())),
                 })
             }
-            // If it evaluates `none()`, it wraps the ERR branch.
-            Expr::None(inner) => {
-                let inner_ty = self.check_expr(inner)?;
-                Ok(Type::Result {
-                    ok_type: Box::new(Type::Basic("unknown".to_string())),
-                    err_type: Box::new(inner_ty),
-                })
+            Expr::None(inner_opt) => {
+                if let Some(inner) = inner_opt {
+                    let inner_ty = self.check_expr(inner)?;
+                    Ok(Type::Result {
+                        ok_type: Box::new(Type::Basic("unknown".to_string())),
+                        err_type: Box::new(inner_ty),
+                    })
+                } else {
+                    Ok(Type::Optional(Box::new(Type::Basic("unknown".to_string()))))
+                }
             }
             Expr::Call { name, args } => {
                 // Built-in functions
@@ -669,7 +682,11 @@ impl Typechecker {
                                 self.assert_type_eq(&result_ty, &start_ty).map_err(|_| format!("Type error: match arm pattern range type does not match expected type '{:?}'", result_ty))?;
                             }
                             auwla_ast::Pattern::Variant { name, bindings } => {
-                                if let Type::Result { ok_type, err_type } = &result_ty {
+                                if let Type::Result {
+                                    ok_type,
+                                    err_type: _,
+                                } = &result_ty
+                                {
                                     if name == "some" {
                                         has_some = true;
                                         if i == 0 {
@@ -683,13 +700,19 @@ impl Typechecker {
                                         }
                                     } else if name == "none" {
                                         has_none = true;
-                                        if i == 0 {
-                                            if let Some(binding) = bindings.first() {
-                                                self.declare_variable(
-                                                    binding.clone(),
-                                                    *err_type.clone(),
-                                                    Mutability::Immutable,
-                                                )?;
+                                        if let Type::Result { err_type, .. } = &result_ty {
+                                            if i == 0 {
+                                                if let Some(binding) = bindings.first() {
+                                                    self.declare_variable(
+                                                        binding.clone(),
+                                                        *err_type.clone(),
+                                                        Mutability::Immutable,
+                                                    )?;
+                                                }
+                                            }
+                                        } else if let Type::Optional(_) = &result_ty {
+                                            if !bindings.is_empty() {
+                                                return Err("Type error: match arm 'none' for Optional type cannot bind arguments".to_string());
                                             }
                                         }
                                     } else {
@@ -935,9 +958,10 @@ impl Typechecker {
                     Type::Result { ok_type, err_type } => {
                         ((**ok_type).clone(), (**err_type).clone())
                     }
+                    Type::Optional(inner) => ((**inner).clone(), Type::Basic("null".to_string())),
                     _ => {
                         return Err(format!(
-                            "Type error: '?' operator requires a Result type, but got '{:?}'",
+                            "Type error: '?' operator requires a Result or Optional type, but got '{:?}'",
                             expr_ty
                         ));
                     }
@@ -949,7 +973,7 @@ impl Typechecker {
                     err_ty
                 };
 
-                // Ensure we are inside a function that returns a Result
+                // Ensure we are inside a function that returns a Result or Optional
                 match &self.current_return_type {
                     Some(Some(Type::Result { err_type: fn_err, .. })) => {
                          self.assert_type_eq(fn_err, &source_err_ty).map_err(|_| format!(
@@ -957,7 +981,12 @@ impl Typechecker {
                             source_err_ty, fn_err
                         ))?;
                     }
-                    _ => return Err("Type error: '?' operator can only be used inside a function that returns a Result type".to_string()),
+                    Some(Some(Type::Optional(_))) => {
+                         self.assert_type_eq(&Type::Basic("null".to_string()), &source_err_ty).map_err(|_| format!(
+                            "Type error: '?' operator on Optional inside an Optional-returning function cannot specify an error value"
+                        ))?;
+                    }
+                    _ => return Err("Type error: '?' operator can only be used inside a function that returns a Result or Optional type".to_string()),
                 }
 
                 Ok(ok_ty)
@@ -1146,9 +1175,12 @@ impl Typechecker {
                 }
                 // Set return context so `return` stmts inside the body are valid
                 let saved_return_type = self.current_return_type.take();
+                let saved_fn_name = self.current_function_name.take();
                 self.current_return_type = Some(return_ty.clone());
+                self.current_function_name = Some("closure".to_string());
                 let body_ty = self.check_expr(body)?;
                 self.current_return_type = saved_return_type;
+                self.current_function_name = saved_fn_name;
                 let final_return_ty = if let Some(expected_ret) = return_ty {
                     self.assert_type_eq(expected_ret, &body_ty)?;
                     expected_ret.clone()
@@ -1163,32 +1195,66 @@ impl Typechecker {
 
     fn assert_type_eq(&self, expected: &Type, actual: &Type) -> Result<(), String> {
         // Handle `type?error_type` resolution from `some()` and `none()` with unknowns.
-        if let (
-            Type::Result {
-                ok_type: e_ok,
-                err_type: e_err,
-            },
-            Type::Result {
-                ok_type: a_ok,
-                err_type: a_err,
-            },
-        ) = (expected, actual)
-        {
-            let ok_match = if let Type::Basic(name) = &**a_ok {
-                name == "unknown" || e_ok == a_ok
-            } else {
-                e_ok == a_ok
-            };
+        match (expected, actual) {
+            (
+                Type::Result {
+                    ok_type: e_ok,
+                    err_type: e_err,
+                },
+                Type::Result {
+                    ok_type: a_ok,
+                    err_type: a_err,
+                },
+            ) => {
+                let ok_match = if let Type::Basic(name) = &**a_ok {
+                    name == "unknown" || e_ok == a_ok
+                } else {
+                    e_ok == a_ok
+                };
 
-            let err_match = if let Type::Basic(name) = &**a_err {
-                name == "unknown" || e_err == a_err
-            } else {
-                e_err == a_err
-            };
+                let err_match = if let Type::Basic(name) = &**a_err {
+                    name == "unknown" || e_err == a_err
+                } else {
+                    e_err == a_err
+                };
 
-            if ok_match && err_match {
-                return Ok(());
+                if ok_match && err_match {
+                    return Ok(());
+                }
             }
+            (Type::Optional(e_inner), Type::Optional(a_inner)) => {
+                let inner_is_unknown = if let Type::Basic(name) = &**a_inner {
+                    name == "unknown"
+                } else {
+                    false
+                };
+
+                if inner_is_unknown || self.assert_type_eq(e_inner, a_inner).is_ok() {
+                    return Ok(());
+                }
+            }
+            (Type::Optional(_), Type::Basic(name)) if name == "null" => return Ok(()),
+
+            // Allow `some(value)` to match `Optional` by treating Result<T, unknown> as Optional<T>
+            (
+                Type::Optional(e_inner),
+                Type::Result {
+                    ok_type: a_ok,
+                    err_type: a_err,
+                },
+            ) => {
+                let err_is_unknown = if let Type::Basic(name) = &**a_err {
+                    name == "unknown"
+                } else {
+                    false
+                };
+
+                if err_is_unknown && self.assert_type_eq(e_inner, a_ok).is_ok() {
+                    return Ok(());
+                }
+            }
+
+            _ => {}
         }
 
         if expected == actual {

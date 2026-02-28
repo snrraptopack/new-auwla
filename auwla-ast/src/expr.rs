@@ -54,8 +54,8 @@ pub enum Expr {
     },
     /// some(value)
     Some(Box<Expr>),
-    /// none(error_value)
-    None(Box<Expr>),
+    /// none(error_value) or none() for Optionals
+    None(Option<Box<Expr>>),
     /// A function call (e.g., add(1, 2))
     Call { name: String, args: Vec<Expr> },
     /// A unary operation (e.g., !flag, -x)

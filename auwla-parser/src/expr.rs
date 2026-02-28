@@ -77,9 +77,10 @@ fn expr_parser_inner(
             let none_expr = just(Token::None)
                 .ignore_then(
                     expr.clone()
-                        .delimited_by(just(Token::LParen), just(Token::RParen)),
+                        .delimited_by(just(Token::LParen), just(Token::RParen))
+                        .or_not(),
                 )
-                .map(|inner| Expr::None(Box::new(inner)));
+                .map(|inner| Expr::None(inner.map(Box::new)));
 
             // EnumInit: EnumName::VariantName(arg1, arg2)
             let enum_init = select! { Token::Ident(name) => name }

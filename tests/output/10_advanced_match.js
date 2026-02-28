@@ -1,3 +1,21 @@
+function __print(...args) {
+  const format = (val, top = false) => {
+    if (val && typeof val === 'object' && 'ok' in val) {
+      if (val.ok) return `some(${format(val.value)})`;
+      if ('value' in val) return `none(${format(val.value)})`;
+      return 'none';
+    }
+    if (Array.isArray(val)) return `[${val.map(v => format(v)).join(', ')}]`;
+    if (typeof val === 'string' && !top) return `"${val}"`;
+    if (typeof val === 'object' && val !== null) {
+      const props = Object.entries(val).map(([k, v]) => `${k}: ${format(v)}`).join(', ');
+      return `{ ${props} }`;
+    }
+    return val;
+  };
+  console.log(...args.map(a => format(a, true)));
+}
+
 function check_status(code) {
   return (() => {
     const __match_0 = code;
@@ -32,21 +50,21 @@ function check_status_code(code) {
     }
 })();
 }
-console.log(check_status_code(200));
-console.log(check_status_code(404));
-console.log(check_status_code(503));
-console.log(check_status_code(999));
+__print(check_status_code(200));
+__print(check_status_code(404));
+__print(check_status_code(503));
+__print(check_status_code(999));
 function handle_event(event) {
   return (() => {
     const __match_2 = event;
     if ((__match_2 === "click" || __match_2 === "tap" || __match_2 === "keypress")) {
-      return console.log("User interaction detected!");
+      return __print("User interaction detected!");
     }
     else if ((__match_2 === "load" || __match_2 === "unload")) {
-      return console.log("Page lifecycle event!");
+      return __print("Page lifecycle event!");
     }
     else if (true) {
-      return console.log("Unknown event!");
+      return __print("Unknown event!");
     }
 })();
 }
@@ -57,14 +75,14 @@ function handle_state(state) {
   return (() => {
     const __match_3 = state;
     if ((__match_3.$variant === "Loading" || __match_3.$variant === "Offline")) {
-      return console.log("App is not interactive right now.");
+      return __print("App is not interactive right now.");
     }
     else if (__match_3.$variant === "Ready") {
-      return console.log("App is ready!");
+      return __print("App is ready!");
     }
     else if (__match_3.$variant === "Error") {
       const msg = __match_3.$data[0];
-      return console.log(`App encountered an error: ${msg}`);
+      return __print(`App encountered an error: ${msg}`);
     }
 })();
 }
@@ -80,11 +98,11 @@ function check_retries(current_retries, max_retries) {
       return (count >= max_retries);
     })()) {
       const count = __match_4;
-      return console.log("Failed: Too many retries!");
+      return __print("Failed: Too many retries!");
     }
     else if (true) {
       const count = __match_4;
-      return console.log(`Retrying... attempt ${count}`);
+      return __print(`Retrying... attempt ${count}`);
     }
 })();
 }
