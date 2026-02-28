@@ -2,35 +2,42 @@ fn checked(n: number): string?string {
     if n > 10 {
         return some("Value is {n}");
     } else {
-        return none("Error!");
+        return none("Original Error");
     }
 }
 
-fn test_try(n: number): string?string {
-    // Try operator: unwraps and assigns to 'val' OR returns early with "Fallback" error
-    let val = checked(n)?("Fallback error from try");
-    print("Inside test_try, unwrapped: {val}");
-    return some("Everything is fine: {val}");
+// Uses explicit override `?("Fallback error")`
+fn test_override(n: number): string?string {
+    let val = checked(n)?("Fallback error");
+    return some("Override success: {val}");
 }
 
-print("--- Test 1 (Success) ---");
-let r1 = test_try(20);
-match r1 {
-    some(v) => print("Success output: {v}")
-    none(e) => print("Error output: {e}")
+// Uses automatic propagation `?`
+fn test_auto(n: number): string?string {
+    let val = checked(n)?;
+    return some("Auto success: {val}");
 }
 
-print("--- Test 2 (Fail) ---");
-let r2 = test_try(5);
-match r2 {
-    some(v) => print("Success output: {v}")
-    none(e) => print("Error output: {e}")
+print("--- Test Override (Success) ---");
+match test_override(20) {
+    some(v) => print("Success: {v}")
+    none(e) => print("Error: {e}")
 }
 
-// ── Other features still working ──
-print("--- Ranges & Arrays ---");
-for x in 1..3 {
-    print("Loop x: {x}");
+print("--- Test Override (Fail) ---");
+match test_override(5) {
+    some(v) => print("Success: {v}")
+    none(e) => print("Error: {e}")
 }
-let arr = ["A", "B"];
-print("Array: {arr}, Fragment: {arr[0]}");
+
+print("--- Test Auto (Success) ---");
+match test_auto(20) {
+    some(v) => print("Success: {v}")
+    none(e) => print("Error: {e}")
+}
+
+print("--- Test Auto (Fail) ---");
+match test_auto(5) {
+    some(v) => print("Success: {v}")
+    none(e) => print("Error: {e}")
+}

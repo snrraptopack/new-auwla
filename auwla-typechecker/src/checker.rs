@@ -459,8 +459,10 @@ impl Typechecker {
             }
             Expr::Try { expr, error_expr } => {
                 let expr_ty = self.check_expr(expr)?;
-                let ok_ty = match expr_ty {
-                    Type::Result { ok_type, .. } => *ok_type,
+                let (ok_ty, err_ty) = match &expr_ty {
+                    Type::Result { ok_type, err_type } => {
+                        ((**ok_type).clone(), (**err_type).clone())
+                    }
                     _ => {
                         return Err(format!(
                             "Type error: '?' operator requires a Result type, but got '{:?}'",
@@ -469,14 +471,18 @@ impl Typechecker {
                     }
                 };
 
-                let err_expr_ty = self.check_expr(error_expr)?;
+                let source_err_ty = if let Some(err_expr) = error_expr {
+                    self.check_expr(err_expr)?
+                } else {
+                    err_ty
+                };
 
                 // Ensure we are inside a function that returns a Result
                 match &self.current_return_type {
                     Some(Some(Type::Result { err_type: fn_err, .. })) => {
-                         self.assert_type_eq(fn_err, &err_expr_ty).map_err(|_| format!(
+                         self.assert_type_eq(fn_err, &source_err_ty).map_err(|_| format!(
                             "Type error: '?' operator error expression type '{:?}' does not match function error return type '{:?}'",
-                            err_expr_ty, fn_err
+                            source_err_ty, fn_err
                         ))?;
                     }
                     _ => return Err("Type error: '?' operator can only be used inside a function that returns a Result type".to_string()),

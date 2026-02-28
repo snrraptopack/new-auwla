@@ -288,7 +288,13 @@ impl JsEmitter {
     }
 
     /// Emit: `const/let name = try expr(error_expr);`
-    fn emit_try_assign(&mut self, decl_kw: &str, target: &str, expr: &Expr, error_expr: &Expr) {
+    fn emit_try_assign(
+        &mut self,
+        decl_kw: &str,
+        target: &str,
+        expr: &Expr,
+        error_expr: &Option<Box<Expr>>,
+    ) {
         let temp = self.fresh_temp();
         self.write_indent();
         self.write(&format!("const {} = ", temp));
@@ -296,9 +302,13 @@ impl JsEmitter {
         self.write(";\n");
 
         self.write_indent();
-        self.write(&format!("if (!{}.ok) return {{ ok: false, value: ", temp));
-        self.emit_expr(error_expr);
-        self.write(" };\n");
+        if let Some(err) = error_expr {
+            self.write(&format!("if (!{}.ok) return {{ ok: false, value: ", temp));
+            self.emit_expr(err);
+            self.write(" };\n");
+        } else {
+            self.write(&format!("if (!{}.ok) return {};\n", temp, temp));
+        }
 
         self.write_indent();
         if !decl_kw.is_empty() {
@@ -309,7 +319,7 @@ impl JsEmitter {
     }
 
     /// Emit a standalone try.
-    fn emit_try_standalone(&mut self, expr: &Expr, error_expr: &Expr) {
+    fn emit_try_standalone(&mut self, expr: &Expr, error_expr: &Option<Box<Expr>>) {
         let temp = self.fresh_temp();
         self.write_indent();
         self.write(&format!("const {} = ", temp));
@@ -317,9 +327,13 @@ impl JsEmitter {
         self.write(";\n");
 
         self.write_indent();
-        self.write(&format!("if (!{}.ok) return {{ ok: false, value: ", temp));
-        self.emit_expr(error_expr);
-        self.write(" };\n");
+        if let Some(err) = error_expr {
+            self.write(&format!("if (!{}.ok) return {{ ok: false, value: ", temp));
+            self.emit_expr(err);
+            self.write(" };\n");
+        } else {
+            self.write(&format!("if (!{}.ok) return {};\n", temp, temp));
+        }
     }
 
     /// Emit arm body for an assigned match: bind the inner value, run stmts, assign result to target.
@@ -535,10 +549,12 @@ impl JsEmitter {
                 let temp = self.fresh_temp();
                 self.write(&format!("const {} = ", temp));
                 self.emit_expr(expr);
-                self.write("; if (!");
-                self.write(&temp);
-                self.write(".ok) throw new Error(");
-                self.emit_expr(error_expr);
+                self.write(&format!("; if (!{}.ok) throw new Error(", temp));
+                if let Some(err) = error_expr {
+                    self.emit_expr(err);
+                } else {
+                    self.write(&format!("{}.value", temp));
+                }
                 self.write("); return ");
                 self.write(&temp);
                 self.write(".value; })()");

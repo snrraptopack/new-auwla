@@ -164,28 +164,29 @@ fn expr_parser_inner(
             let index_postfix = expr
                 .clone()
                 .delimited_by(just(Token::LBracket), just(Token::RBracket))
-                .map(|idx| (true, idx)); // true = index
+                .map(|idx| (true, Some(idx))); // true = index
 
             let try_postfix = just(Token::QuestionMark)
-                .ignore_then(
+                .then(
                     expr.clone()
-                        .delimited_by(just(Token::LParen), just(Token::RParen)),
+                        .delimited_by(just(Token::LParen), just(Token::RParen))
+                        .or_not(),
                 )
-                .map(|err| (false, err)); // false = try
+                .map(|(_, err)| (false, err)); // false = try
 
             let postfix = unary
                 .then(index_postfix.or(try_postfix).repeated())
-                .map(|(base, ops): (Expr, Vec<(bool, Expr)>)| {
+                .map(|(base, ops): (Expr, Vec<(bool, Option<Expr>)>)| {
                     ops.into_iter().fold(base, |acc, (is_index, operand)| {
                         if is_index {
                             Expr::Index {
                                 expr: Box::new(acc),
-                                index: Box::new(operand),
+                                index: Box::new(operand.unwrap()),
                             }
                         } else {
                             Expr::Try {
                                 expr: Box::new(acc),
-                                error_expr: Box::new(operand),
+                                error_expr: operand.map(Box::new),
                             }
                         }
                     })

@@ -59,7 +59,7 @@ pub enum Expr {
     /// Try operator: expr?("error") — unwraps some, or returns none(error) from enclosing fn
     Try {
         expr: Box<Expr>,
-        error_expr: Box<Expr>,
+        error_expr: Option<Box<Expr>>,
     },
 }
 
