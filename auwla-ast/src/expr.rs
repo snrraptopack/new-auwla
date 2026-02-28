@@ -95,6 +95,14 @@ pub enum Expr {
     },
     /// expr.property
     PropertyAccess { expr: Box<Expr>, property: String },
+    /// (x: number) => x * 2
+    Closure {
+        params: Vec<(String, Option<crate::types::Type>)>,
+        return_ty: Option<crate::types::Type>,
+        body: Box<Expr>,
+    },
+    /// { stmt1; stmt2; expr }
+    Block(Vec<crate::stmt::Stmt>, Option<Box<Expr>>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

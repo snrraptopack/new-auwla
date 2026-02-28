@@ -727,6 +727,37 @@ impl JsEmitter {
                 }
                 self.write("] }");
             }
+            Expr::Closure { params, body, .. } => {
+                self.write("(");
+                for (i, (name, _)) in params.iter().enumerate() {
+                    if i > 0 {
+                        self.write(", ");
+                    }
+                    self.write(name);
+                }
+                self.write(") => ");
+                self.emit_expr(body);
+            }
+            Expr::Block(stmts, result) => {
+                // If this is a block expression, we might need a different emitting strategy
+                // depending on context. For now, we emit as a block.
+                // If it's used as a closure body, it works perfectly.
+                self.write("{\n");
+                self.indent += 1;
+                for stmt in stmts {
+                    self.write_indent();
+                    self.emit_stmt(stmt);
+                }
+                if let Some(res) = result {
+                    self.write_indent();
+                    self.write("return ");
+                    self.emit_expr(res);
+                    self.write(";\n");
+                }
+                self.indent -= 1;
+                self.write_indent();
+                self.write("}");
+            }
         }
     }
 }

@@ -448,9 +448,16 @@ impl Typechecker {
                     return Ok(Type::Basic("void".to_string()));
                 }
 
-                let (params, return_ty) = self
-                    .lookup_function(name)
-                    .ok_or_else(|| format!("Undefined function: '{}'", name))?;
+                let (params, return_ty) = if let Some(var_ty) = self.lookup_variable(name) {
+                    if let Type::Function(p, r) = var_ty {
+                        (p, Some(*r))
+                    } else {
+                        return Err(format!("Type error: variable '{}' is not a function", name));
+                    }
+                } else {
+                    self.lookup_function(name)
+                        .ok_or_else(|| format!("Undefined function: '{}'", name))?
+                };
 
                 if params.len() != args.len() {
                     return Err(format!(
@@ -952,6 +959,55 @@ impl Typechecker {
                         ));
                     }
                 }
+            }
+            Expr::Block(stmts, result) => {
+                self.enter_scope();
+                for stmt in stmts {
+                    self.check_stmt(stmt)?;
+                }
+                let ty = if let Some(res) = result {
+                    self.check_expr(res)?
+                } else {
+                    // If we're inside a return context and have no trailing expr,
+                    // the block's type is the declared return type (body uses `return`).
+                    self.current_return_type
+                        .as_ref()
+                        .and_then(|r| r.clone())
+                        .unwrap_or(Type::Basic("void".to_string()))
+                };
+                self.exit_scope();
+                Ok(ty)
+            }
+            Expr::Closure {
+                params,
+                return_ty,
+                body,
+            } => {
+                let mut param_types = Vec::new();
+                self.enter_scope();
+                for (name, ty_opt) in params {
+                    let ty = ty_opt.clone().ok_or_else(|| {
+                        format!(
+                            "Type error: parameter '{}' must have a type annotation",
+                            name
+                        )
+                    })?;
+                    param_types.push(ty.clone());
+                    self.declare_variable(name.clone(), ty, Mutability::Immutable)?;
+                }
+                // Set return context so `return` stmts inside the body are valid
+                let saved_return_type = self.current_return_type.take();
+                self.current_return_type = Some(return_ty.clone());
+                let body_ty = self.check_expr(body)?;
+                self.current_return_type = saved_return_type;
+                let final_return_ty = if let Some(expected_ret) = return_ty {
+                    self.assert_type_eq(expected_ret, &body_ty)?;
+                    expected_ret.clone()
+                } else {
+                    body_ty
+                };
+                self.exit_scope();
+                Ok(Type::Function(param_types, Box::new(final_return_ty)))
             }
         }
     }

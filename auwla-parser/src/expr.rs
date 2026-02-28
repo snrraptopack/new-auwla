@@ -99,9 +99,47 @@ fn expr_parser_inner(
                     args,
                 });
 
+            let closure_params = select! { Token::Ident(name) => name }
+                .then(
+                    just(Token::Colon)
+                        .ignore_then(crate::types::type_parser())
+                        .or_not(),
+                )
+                .separated_by(just(Token::Comma))
+                .delimited_by(just(Token::LParen), just(Token::RParen));
+
+            let closure = closure_params
+                .then(
+                    just(Token::Colon)
+                        .ignore_then(crate::types::type_parser())
+                        .or_not(),
+                )
+                .then_ignore(just(Token::FatArrow))
+                .then(expr.clone())
+                .map(|((params, return_ty), body)| Expr::Closure {
+                    params,
+                    return_ty,
+                    body: Box::new(body),
+                });
+
+            let block = if let Some(ref s_parser) = maybe_stmt {
+                s_parser
+                    .clone()
+                    .repeated()
+                    .then(expr.clone().or_not())
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace))
+                    .map(|(stmts, result)| Expr::Block(stmts, result.map(Box::new)))
+                    .boxed()
+            } else {
+                just(Token::LBrace)
+                    .ignore_then(just(Token::RBrace))
+                    .to(Expr::Block(vec![], None))
+                    .boxed()
+            };
+
             // Build match expression parser conditionally
-            let base_atom = bool_lit
-                .clone()
+            let base_atom = closure
+                .or(bool_lit.clone())
                 .or(some_expr)
                 .or(none_expr)
                 .or(interp)
@@ -111,12 +149,13 @@ fn expr_parser_inner(
                 .or(str_lit.clone())
                 .or(char_lit.clone())
                 .or(array_lit)
+                .or(block.clone())
                 .or(expr
                     .clone()
                     .delimited_by(just(Token::LParen), just(Token::RParen)));
 
             let atom: Box<dyn Parser<Token, Expr, Error = Simple<Token>> + '_> = if let Some(
-                ref stmt,
+                ref _stmt,
             ) = maybe_stmt
             {
                 // parse variant name and optional bindings inside parens
@@ -203,26 +242,12 @@ fn expr_parser_inner(
                         }
                     });
 
-                let block_arm_body = stmt
-                    .clone()
-                    .repeated()
-                    .then(expr.clone().or_not())
-                    .delimited_by(just(Token::LBrace), just(Token::RBrace));
-
                 let arm_rhs = just(Token::FatArrow).ignore_then(
-                    block_arm_body
-                        .map(|(mut stmts, mut result)| {
-                            if result.is_none() {
-                                if let Some(auwla_ast::Stmt::Expr(auwla_ast::Expr::Match {
-                                    ..
-                                })) = stmts.last()
-                                {
-                                    if let auwla_ast::Stmt::Expr(e) = stmts.pop().unwrap() {
-                                        result = Some(e);
-                                    }
-                                }
-                            }
-                            (stmts, result)
+                    block
+                        .clone()
+                        .map(|e| match e {
+                            Expr::Block(stmts, res) => (stmts, res.map(|b| *b)),
+                            _ => unreachable!(),
                         })
                         .or(expr.clone().map(|e| (vec![], Some(e)))),
                 );

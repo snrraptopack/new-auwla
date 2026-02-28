@@ -12,4 +12,6 @@ pub enum Type {
     Array(Box<Type>),
     /// User-defined struct type: `User`, `Point`
     Custom(String),
+    /// Function type: `(string, number) => bool`
+    Function(Vec<Type>, Box<Type>),
 }

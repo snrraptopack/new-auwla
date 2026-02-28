@@ -3,29 +3,32 @@ use auwla_lexer::token::Token;
 use chumsky::prelude::*;
 
 pub fn type_parser() -> impl Parser<Token, Type, Error = Simple<Token>> + Clone {
-    recursive(|_ty| {
-        let basic = select! { Token::Ident(name) => {
+    recursive(|ty| {
+        let basic_or_custom = select! { Token::Ident(name) => {
             match name.as_str() {
                 "number" | "string" | "bool" | "void" => Type::Basic(name),
                 _ => Type::Custom(name),
             }
         } };
 
-        // base_type is either a basic/custom type or array type
-        let base = basic
+        let func = ty
             .clone()
+            .separated_by(just(Token::Comma))
+            .delimited_by(just(Token::LParen), just(Token::RParen))
+            .then_ignore(just(Token::FatArrow))
+            .then(ty.clone())
+            .map(|(params, ret)| Type::Function(params, Box::new(ret)));
+
+        let atom = func.or(basic_or_custom);
+
+        // base_type with optional array brackets (support nested: number[][])
+        let base = atom
             .then(
                 just(Token::LBracket)
                     .ignore_then(just(Token::RBracket))
-                    .or_not(),
+                    .repeated(),
             )
-            .map(|(ty, brackets)| {
-                if brackets.is_some() {
-                    Type::Array(Box::new(ty))
-                } else {
-                    ty
-                }
-            });
+            .foldl(|ty, _| Type::Array(Box::new(ty)));
 
         // result type: base?base
         let result = base
