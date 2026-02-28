@@ -47,6 +47,14 @@ impl JsEmitter {
         self.output.push('\n');
     }
 
+    fn emit_expr_to_string(&mut self, expr: &Expr) -> String {
+        let old = std::mem::take(&mut self.output);
+        self.emit_expr(expr);
+        let result = std::mem::take(&mut self.output);
+        self.output = old;
+        result
+    }
+
     // ──────────────────────────── Program ────────────────────────────
 
     fn emit_program(&mut self, program: &Program) {
@@ -97,19 +105,20 @@ impl JsEmitter {
                     self.write(";\n");
                 }
             }
-            Stmt::Assign { name, value } => {
+            Stmt::Assign { target, value } => {
+                let target_str = self.emit_expr_to_string(target);
                 if let Expr::Match {
                     expr,
                     some_arm,
                     none_arm,
                 } = value
                 {
-                    self.emit_match_assign("", name, expr, some_arm, none_arm);
+                    self.emit_match_assign("", &target_str, expr, some_arm, none_arm);
                 } else if let Expr::Try { expr, error_expr } = value {
-                    self.emit_try_assign("", name, expr, error_expr);
+                    self.emit_try_assign("", &target_str, expr, error_expr);
                 } else {
                     self.write_indent();
-                    self.write(&format!("{} = ", name));
+                    self.write(&format!("{} = ", target_str));
                     self.emit_expr(value);
                     self.write(";\n");
                 }
@@ -213,6 +222,10 @@ impl JsEmitter {
                     self.emit_expr(expr);
                     self.write(";\n");
                 }
+            }
+            Stmt::StructDecl { .. } => {
+                // Struct declarations vanish in JS, they are purely for compile-time typechecking
+                // We emit nothing to keep it zero-cost.
             }
         }
     }
@@ -558,6 +571,21 @@ impl JsEmitter {
                 self.write("); return ");
                 self.write(&temp);
                 self.write(".value; })()");
+            }
+            Expr::StructInit { fields, .. } => {
+                self.write("{ ");
+                for (i, (field_name, field_expr)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        self.write(", ");
+                    }
+                    self.write(&format!("{}: ", field_name));
+                    self.emit_expr(field_expr);
+                }
+                self.write(" }");
+            }
+            Expr::PropertyAccess { expr, property } => {
+                self.emit_expr(expr);
+                self.write(&format!(".{}", property));
             }
         }
     }

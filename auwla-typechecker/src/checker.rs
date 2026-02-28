@@ -1,9 +1,12 @@
 use crate::scope::{Mutability, Scope};
 use auwla_ast::{Expr, Program, Stmt, Type};
 
+use std::collections::HashMap;
+
 pub struct Typechecker {
     scopes: Vec<Scope>,
     current_return_type: Option<Option<Type>>,
+    structs: HashMap<String, Vec<(String, Type)>>,
 }
 
 impl Default for Typechecker {
@@ -17,6 +20,7 @@ impl Typechecker {
         Self {
             scopes: vec![Scope::new()],
             current_return_type: None,
+            structs: HashMap::new(),
         }
     }
 
@@ -28,10 +32,22 @@ impl Typechecker {
         self.scopes.pop().expect("Cannot pop the global scope");
     }
 
-    pub fn declare_variable(&mut self, name: String, ty: Type, mutability: Mutability) {
+    pub fn declare_variable(
+        &mut self,
+        name: String,
+        ty: Type,
+        mutability: Mutability,
+    ) -> Result<(), String> {
         let current_scope = self.scopes.last_mut().unwrap();
+        if current_scope.variables.contains_key(&name) {
+            return Err(format!(
+                "Variable '{}' is already defined in this scope.",
+                name
+            ));
+        }
         current_scope.mutability.insert(name.clone(), mutability);
         current_scope.variables.insert(name, ty);
+        Ok(())
     }
 
     pub fn declare_function(&mut self, name: String, params: Vec<Type>, ret: Option<Type>) {
@@ -87,7 +103,7 @@ impl Typechecker {
                 } else {
                     init_ty
                 };
-                self.declare_variable(name.clone(), final_ty, Mutability::Immutable);
+                self.declare_variable(name.clone(), final_ty, Mutability::Immutable)?;
                 Ok(())
             }
             Stmt::Var {
@@ -102,26 +118,91 @@ impl Typechecker {
                 } else {
                     init_ty
                 };
-                self.declare_variable(name.clone(), final_ty, Mutability::Mutable);
+                self.declare_variable(name.clone(), final_ty, Mutability::Mutable)?;
                 Ok(())
             }
-            Stmt::Assign { name, value } => {
-                let var_ty = self.lookup_variable(name).ok_or_else(|| {
-                    format!(
-                        "Undefined variable '{}' — declare it with `var` first",
-                        name
-                    )
-                })?;
-
-                if !self.is_mutable(name) {
-                    return Err(format!(
-                        "Cannot reassign '{}' — it was declared with `let` (immutable). Use `var` to allow reassignment.",
-                        name
-                    ));
-                }
-
+            Stmt::Assign { target, value } => {
                 let val_ty = self.check_expr(value)?;
-                self.assert_type_eq(&var_ty, &val_ty)?;
+
+                match target {
+                    Expr::Identifier(name) => {
+                        let var_ty = self.lookup_variable(name).ok_or_else(|| {
+                            format!(
+                                "Undefined variable '{}' — declare it with `var` first",
+                                name
+                            )
+                        })?;
+
+                        if !self.is_mutable(name) {
+                            return Err(format!(
+                                "Cannot reassign '{}' — it was declared with `let` (immutable). Use `var` to allow reassignment.",
+                                name
+                            ));
+                        }
+
+                        self.assert_type_eq(&var_ty, &val_ty)?;
+                    }
+                    Expr::PropertyAccess { expr, property } => {
+                        let expr_ty = self.check_expr(expr)?;
+                        match expr_ty {
+                            Type::Custom(name) => {
+                                let struct_def = self
+                                    .structs
+                                    .get(&name)
+                                    .ok_or_else(|| format!("Undefined struct '{}'", name))?;
+                                let mut found = false;
+                                for (field_name, field_ty) in struct_def.iter() {
+                                    if field_name == property {
+                                        found = true;
+                                        self.assert_type_eq(field_ty, &val_ty).map_err(|_| format!("Type error: struct '{}' field '{}' expects '{:?}', but got '{:?}'", name, property, field_ty, val_ty))?;
+                                        break;
+                                    }
+                                }
+                                if !found {
+                                    return Err(format!(
+                                        "Type error: struct '{}' has no property '{}'",
+                                        name, property
+                                    ));
+                                }
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Type error: cannot assign property '{}' on non-struct type '{:?}'",
+                                    property, other
+                                ));
+                            }
+                        }
+                    }
+                    Expr::Index { expr, index } => {
+                        let expr_ty = self.check_expr(expr)?;
+                        let idx_ty = self.check_expr(index)?;
+                        self.assert_type_eq(&Type::Basic("number".to_string()), &idx_ty)
+                            .map_err(|_| {
+                                format!(
+                                    "Type error: array index must be 'number', got '{:?}'",
+                                    idx_ty
+                                )
+                            })?;
+
+                        match expr_ty {
+                            Type::Array(inner) => {
+                                self.assert_type_eq(&inner, &val_ty)?;
+                            }
+                            other => {
+                                return Err(format!(
+                                    "Type error: cannot index into non-array type '{:?}'",
+                                    other
+                                ));
+                            }
+                        }
+                    }
+                    other => {
+                        return Err(format!(
+                            "Type error: invalid assignment target '{:?}'",
+                            other
+                        ));
+                    }
+                }
                 Ok(())
             }
             Stmt::Fn {
@@ -139,7 +220,7 @@ impl Typechecker {
                 self.enter_scope();
                 // Fn params are always mutable within their scope
                 for (param_name, ty) in params {
-                    self.declare_variable(param_name.clone(), ty.clone(), Mutability::Mutable);
+                    self.declare_variable(param_name.clone(), ty.clone(), Mutability::Mutable)?;
                 }
                 for body_stmt in body {
                     self.check_stmt(body_stmt)?;
@@ -244,11 +325,18 @@ impl Typechecker {
                     }
                 };
                 self.enter_scope();
-                self.declare_variable(binding.clone(), elem_ty, Mutability::Immutable);
+                self.declare_variable(binding.clone(), elem_ty, Mutability::Immutable)?;
                 for stmt in body {
                     self.check_stmt(stmt)?;
                 }
                 self.exit_scope();
+                Ok(())
+            }
+            Stmt::StructDecl { name, fields } => {
+                if self.structs.contains_key(name) {
+                    return Err(format!("Struct '{}' is already defined", name));
+                }
+                self.structs.insert(name.clone(), fields.clone());
                 Ok(())
             }
         }
@@ -366,7 +454,7 @@ impl Typechecker {
 
                 // some arm
                 self.enter_scope();
-                self.declare_variable(some_arm.binding.clone(), ok_ty, Mutability::Immutable);
+                self.declare_variable(some_arm.binding.clone(), ok_ty, Mutability::Immutable)?;
                 for stmt in &some_arm.stmts {
                     self.check_stmt(stmt)?;
                 }
@@ -379,7 +467,7 @@ impl Typechecker {
 
                 // none arm
                 self.enter_scope();
-                self.declare_variable(none_arm.binding.clone(), err_ty, Mutability::Immutable);
+                self.declare_variable(none_arm.binding.clone(), err_ty, Mutability::Immutable)?;
                 for stmt in &none_arm.stmts {
                     self.check_stmt(stmt)?;
                 }
@@ -489,6 +577,67 @@ impl Typechecker {
                 }
 
                 Ok(ok_ty)
+            }
+            Expr::StructInit { name, fields } => {
+                let struct_def = self
+                    .structs
+                    .get(name)
+                    .ok_or_else(|| format!("Undefined struct '{}'", name))?
+                    .clone();
+
+                if fields.len() != struct_def.len() {
+                    return Err(format!(
+                        "Struct '{}' expects {} fields, but {} were provided",
+                        name,
+                        struct_def.len(),
+                        fields.len()
+                    ));
+                }
+
+                for (def_name, def_ty) in struct_def.iter() {
+                    let mut found = false;
+                    for (init_name, init_expr) in fields.iter() {
+                        if init_name == def_name {
+                            found = true;
+                            let init_ty = self.check_expr(init_expr)?;
+                            self.assert_type_eq(def_ty, &init_ty).map_err(|_| format!("Type error: struct '{}' field '{}' expects '{:?}', but got '{:?}'", name, def_name, def_ty, init_ty))?;
+                            break;
+                        }
+                    }
+                    if !found {
+                        return Err(format!(
+                            "Type error: missing field '{}' in initialization of struct '{}'",
+                            def_name, name
+                        ));
+                    }
+                }
+                Ok(Type::Custom(name.clone()))
+            }
+            Expr::PropertyAccess { expr, property } => {
+                let expr_ty = self.check_expr(expr)?;
+                match expr_ty {
+                    Type::Custom(name) => {
+                        let struct_def = self
+                            .structs
+                            .get(&name)
+                            .ok_or_else(|| format!("Undefined struct '{}'", name))?;
+                        for (field_name, field_ty) in struct_def.iter() {
+                            if field_name == property {
+                                return Ok(field_ty.clone());
+                            }
+                        }
+                        return Err(format!(
+                            "Type error: struct '{}' has no property '{}'",
+                            name, property
+                        ));
+                    }
+                    other => {
+                        return Err(format!(
+                            "Type error: cannot access property '{}' on non-struct type '{:?}'",
+                            property, other
+                        ));
+                    }
+                }
             }
         }
     }

@@ -15,8 +15,8 @@ pub enum Stmt {
         ty: Option<Type>,
         initializer: Expr,
     },
-    /// x = 10;
-    Assign { name: String, value: Expr },
+    /// target = 10;
+    Assign { target: Expr, value: Expr },
     /// fn add(a: number, b: number): number { ... }
     Fn {
         name: String,
@@ -41,6 +41,11 @@ pub enum Stmt {
         binding: String,
         iterable: Expr,
         body: Vec<Stmt>,
+    },
+    /// struct Name { field: type, ... }
+    StructDecl {
+        name: String,
+        fields: Vec<(String, Type)>, // name, type
     },
 }
 

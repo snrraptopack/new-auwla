@@ -10,4 +10,6 @@ pub enum Type {
     },
     /// Homogeneous array type: `number[]`, `string[]`
     Array(Box<Type>),
+    /// User-defined struct type: `User`, `Point`
+    Custom(String),
 }

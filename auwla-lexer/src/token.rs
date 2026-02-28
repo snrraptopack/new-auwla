@@ -33,6 +33,8 @@ pub enum Token {
     For,
     #[token("in")]
     In,
+    #[token("struct")]
+    Struct,
 
     // Identifiers
     #[regex("[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
@@ -83,6 +85,8 @@ pub enum Token {
     DotDotLt,
     #[token("..")]
     DotDot,
+    #[token(".")]
+    Dot,
     #[token("=")]
     Assign,
     #[token("==")]

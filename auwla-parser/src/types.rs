@@ -4,9 +4,14 @@ use chumsky::prelude::*;
 
 pub fn type_parser() -> impl Parser<Token, Type, Error = Simple<Token>> + Clone {
     recursive(|_ty| {
-        let basic = select! { Token::Ident(name) => Type::Basic(name) };
+        let basic = select! { Token::Ident(name) => {
+            match name.as_str() {
+                "number" | "string" | "bool" | "void" => Type::Basic(name),
+                _ => Type::Custom(name),
+            }
+        } };
 
-        // base_type is either a basic type or basic[] (array)
+        // base_type is either a basic/custom type or array type
         let base = basic
             .clone()
             .then(

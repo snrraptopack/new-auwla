@@ -61,6 +61,13 @@ pub enum Expr {
         expr: Box<Expr>,
         error_expr: Option<Box<Expr>>,
     },
+    /// Name { field: expr, ... }
+    StructInit {
+        name: String,
+        fields: Vec<(String, Expr)>,
+    },
+    /// expr.property
+    PropertyAccess { expr: Box<Expr>, property: String },
 }
 
 #[derive(Debug, Clone, PartialEq)]

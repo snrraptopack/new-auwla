@@ -117,12 +117,25 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                 body,
             });
 
-        // Assignment: `name = value;`
-        let assign_stmt = select! { Token::Ident(name) => name }
+        // Assignment: `target = value;`
+        let assign_stmt = expr
+            .clone()
             .then_ignore(just(Token::Assign))
             .then(expr.clone())
             .then_ignore(just(Token::Semicolon))
-            .map(|(name, value)| Stmt::Assign { name, value });
+            .map(|(target, value)| Stmt::Assign { target, value });
+
+        let struct_decl = just(Token::Struct)
+            .ignore_then(select! { Token::Ident(name) => name })
+            .then(
+                select! { Token::Ident(name) => name }
+                    .then_ignore(just(Token::Colon))
+                    .then(ty.clone())
+                    .separated_by(just(Token::Comma))
+                    .allow_trailing()
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+            )
+            .map(|(name, fields)| Stmt::StructDecl { name, fields });
 
         // Expression as statement — with semicolon for most expressions,
         // but match expressions don't need a trailing semicolon
@@ -144,6 +157,7 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             .or(while_stmt)
             .or(for_stmt)
             .or(assign_stmt)
+            .or(struct_decl)
             .or(match_stmt)
             .or(expr_stmt)
     })

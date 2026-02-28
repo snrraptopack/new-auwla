@@ -19,6 +19,17 @@ fn expr_parser_inner(
                 .to(Expr::BoolLit(true))
                 .or(just(Token::False).to(Expr::BoolLit(false)));
 
+            let struct_init = select! { Token::Ident(name) => name }
+                .then(
+                    select! { Token::Ident(field) => field }
+                        .then_ignore(just(Token::Colon))
+                        .then(expr.clone())
+                        .separated_by(just(Token::Comma))
+                        .allow_trailing()
+                        .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+                )
+                .map(|(name, fields)| Expr::StructInit { name, fields });
+
             let ident_or_call = select! { Token::Ident(s) => s }
                 .then(
                     expr.clone()
@@ -33,6 +44,8 @@ fn expr_parser_inner(
                         Expr::Identifier(name)
                     }
                 });
+
+            let ident_call_struct = struct_init.or(ident_or_call);
 
             let num = select! { Token::NumberLit(n) => Expr::NumberLit(n.parse().unwrap()) };
             let str_lit = select! { Token::StringLit(s) => Expr::StringLit(s) };
@@ -73,7 +86,7 @@ fn expr_parser_inner(
                 .or(some_expr)
                 .or(none_expr)
                 .or(interp)
-                .or(ident_or_call)
+                .or(ident_call_struct.clone())
                 .or(num)
                 .or(str_lit)
                 .or(char_lit)
@@ -160,11 +173,18 @@ fn expr_parser_inner(
                 })
                 .boxed();
 
-            // Postfix: expr[index] and expr?(error_expr)
+            #[derive(Clone)]
+            enum PostOp {
+                Index(Expr),
+                Try(Option<Expr>),
+                Prop(String),
+            }
+
+            // Postfix: expr[index], expr?(error_expr), and expr.property
             let index_postfix = expr
                 .clone()
                 .delimited_by(just(Token::LBracket), just(Token::RBracket))
-                .map(|idx| (true, Some(idx))); // true = index
+                .map(PostOp::Index);
 
             let try_postfix = just(Token::QuestionMark)
                 .then(
@@ -172,23 +192,28 @@ fn expr_parser_inner(
                         .delimited_by(just(Token::LParen), just(Token::RParen))
                         .or_not(),
                 )
-                .map(|(_, err)| (false, err)); // false = try
+                .map(|(_, err)| PostOp::Try(err));
+
+            let prop_postfix = just(Token::Dot)
+                .ignore_then(select! { Token::Ident(prop) => prop })
+                .map(PostOp::Prop);
 
             let postfix = unary
-                .then(index_postfix.or(try_postfix).repeated())
-                .map(|(base, ops): (Expr, Vec<(bool, Option<Expr>)>)| {
-                    ops.into_iter().fold(base, |acc, (is_index, operand)| {
-                        if is_index {
-                            Expr::Index {
-                                expr: Box::new(acc),
-                                index: Box::new(operand.unwrap()),
-                            }
-                        } else {
-                            Expr::Try {
-                                expr: Box::new(acc),
-                                error_expr: operand.map(Box::new),
-                            }
-                        }
+                .then(index_postfix.or(try_postfix).or(prop_postfix).repeated())
+                .map(|(base, ops): (Expr, Vec<PostOp>)| {
+                    ops.into_iter().fold(base, |acc, op| match op {
+                        PostOp::Index(idx) => Expr::Index {
+                            expr: Box::new(acc),
+                            index: Box::new(idx),
+                        },
+                        PostOp::Try(err) => Expr::Try {
+                            expr: Box::new(acc),
+                            error_expr: err.map(Box::new),
+                        },
+                        PostOp::Prop(prop) => Expr::PropertyAccess {
+                            expr: Box::new(acc),
+                            property: prop,
+                        },
                     })
                 })
                 .boxed();

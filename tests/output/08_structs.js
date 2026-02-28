@@ -1,0 +1,10 @@
+const alice = { name: "Alice", age: 30, is_active: true };
+console.log(alice.name);
+console.log(alice.age);
+console.log(alice.is_active);
+let bob = { name: "Bob", age: 25, is_active: false };
+bob.age = 26;
+console.log(bob.age);
+const acc = { user: alice, balance: 1000.5 };
+console.log(acc.user.name);
+console.log(acc.balance);
