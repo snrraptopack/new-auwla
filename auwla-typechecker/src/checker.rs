@@ -108,6 +108,47 @@ impl Typechecker {
                 self.declare_variable(name.clone(), final_ty, Mutability::Immutable)?;
                 Ok(())
             }
+            Stmt::DestructureLet {
+                bindings,
+                initializer,
+            } => {
+                let init_ty = self.check_expr(initializer)?;
+
+                match init_ty {
+                    Type::Custom(struct_name) => {
+                        let struct_def =
+                            self.structs.get(&struct_name).cloned().ok_or_else(|| {
+                                format!("Type error: struct '{}' not found", struct_name)
+                            })?;
+
+                        for binding in bindings {
+                            let field_ty = struct_def
+                                .iter()
+                                .find(|(f, _)| f == binding)
+                                .map(|(_, t)| t.clone())
+                                .ok_or_else(|| {
+                                    format!(
+                                        "Type error: field '{}' not found on struct '{}'",
+                                        binding, struct_name
+                                    )
+                                })?;
+
+                            self.declare_variable(
+                                binding.clone(),
+                                field_ty,
+                                Mutability::Immutable,
+                            )?;
+                        }
+                    }
+                    _ => {
+                        return Err(format!(
+                            "Type error: expected struct for destructuring, found '{:?}'",
+                            init_ty
+                        ));
+                    }
+                }
+                Ok(())
+            }
             Stmt::Var {
                 name,
                 ty,
@@ -472,12 +513,7 @@ impl Typechecker {
                 let is_primitive = matches!(result_ty, Type::Basic(ref s) if s == "string" || s == "number" || s == "bool" || s == "char");
 
                 let enum_def = if let Type::Custom(ref enum_name) = result_ty {
-                    Some(
-                        self.enums
-                            .get(enum_name)
-                            .cloned()
-                            .ok_or_else(|| format!("Type error: unknown type '{}'", enum_name))?,
-                    )
+                    self.enums.get(enum_name).cloned()
                 } else {
                     None
                 };
@@ -493,7 +529,21 @@ impl Typechecker {
                     for (i, p) in sub_patterns.iter().enumerate() {
                         match p {
                             auwla_ast::Pattern::Wildcard => {
-                                has_wildcard = true;
+                                if arm.guard.is_none() {
+                                    has_wildcard = true;
+                                }
+                            }
+                            auwla_ast::Pattern::Variable(name) => {
+                                if i == 0 {
+                                    self.declare_variable(
+                                        name.clone(),
+                                        result_ty.clone(),
+                                        Mutability::Immutable,
+                                    )?;
+                                }
+                                if arm.guard.is_none() {
+                                    has_wildcard = true;
+                                }
                             }
                             auwla_ast::Pattern::Literal(lit_expr) => {
                                 let lit_ty = self.check_expr(lit_expr)?;
@@ -540,7 +590,9 @@ impl Typechecker {
                                         ));
                                     }
                                 } else if let Some(ref def) = enum_def {
-                                    handled_variants.insert(name.clone());
+                                    if arm.guard.is_none() {
+                                        handled_variants.insert(name.clone());
+                                    }
                                     let variant_args = def
                                         .iter()
                                         .find(|(n, _)| n == name)
@@ -577,8 +629,91 @@ impl Typechecker {
                                     ));
                                 }
                             }
+                            auwla_ast::Pattern::Struct(opt_name, fields) => {
+                                match &result_ty {
+                                    Type::Custom(struct_name) => {
+                                        if let Some(name) = opt_name {
+                                            if name != struct_name {
+                                                return Err(format!(
+                                                    "Type error: expected struct '{}', found '{}'",
+                                                    struct_name, name
+                                                ));
+                                            }
+                                        }
+
+                                        let struct_def =
+                                            self.structs.get(struct_name).cloned().ok_or_else(
+                                                || {
+                                                    format!(
+                                                        "Type error: struct '{}' not found",
+                                                        struct_name
+                                                    )
+                                                },
+                                            )?;
+
+                                        for (field_name, sub_pattern_opt) in fields {
+                                            let field_ty = struct_def
+                                                .iter()
+                                                .find(|(f, _)| f == field_name)
+                                                .map(|(_, t)| t.clone())
+                                                .ok_or_else(|| {
+                                                    format!("Type error: field '{}' not found on struct '{}'", field_name, struct_name)
+                                                })?;
+
+                                            if let Some(sub_pattern) = sub_pattern_opt {
+                                                // If there's a nested pattern, we'd need to recursively typecheck it.
+                                                // For now, if it's a variable binding, declare it in scope.
+                                                if let auwla_ast::Pattern::Variable(var_name) =
+                                                    sub_pattern
+                                                {
+                                                    if i == 0 {
+                                                        self.declare_variable(
+                                                            var_name.clone(),
+                                                            field_ty,
+                                                            Mutability::Immutable,
+                                                        )?;
+                                                    }
+                                                }
+                                            } else {
+                                                // Shorthand: `{ role }` acts as `{ role: role }` binding a variable
+                                                if i == 0 {
+                                                    self.declare_variable(
+                                                        field_name.clone(),
+                                                        field_ty,
+                                                        Mutability::Immutable,
+                                                    )?;
+                                                }
+                                            }
+                                        }
+
+                                        if arm.guard.is_none() {
+                                            has_wildcard = true; // Struct patterns are considered exhaustive if shape matches (no full data exhaustiveness yet)
+                                        }
+                                    }
+                                    _ => {
+                                        let display_name = opt_name
+                                            .clone()
+                                            .unwrap_or_else(|| "anonymous struct".to_string());
+                                        return Err(format!(
+                                            "Type error: cannot match struct '{}' on type '{:?}'",
+                                            display_name, result_ty
+                                        ));
+                                    }
+                                }
+                            }
                             auwla_ast::Pattern::Or(_) => unreachable!(),
                         }
+                    }
+
+                    if let Some(ref guard) = arm.guard {
+                        let guard_ty = self.check_expr(guard)?;
+                        self.assert_type_eq(&Type::Basic("bool".to_string()), &guard_ty)
+                            .map_err(|_| {
+                                format!(
+                                    "Type error: match guard must be a boolean, got '{:?}'",
+                                    guard_ty
+                                )
+                            })?;
                     }
 
                     for stmt in &arm.stmts {

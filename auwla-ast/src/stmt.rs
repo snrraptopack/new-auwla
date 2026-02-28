@@ -9,6 +9,11 @@ pub enum Stmt {
         ty: Option<Type>,
         initializer: Expr,
     },
+    /// let { name, age } = user;
+    DestructureLet {
+        bindings: Vec<String>,
+        initializer: Expr,
+    },
     /// var x = 5;
     Var {
         name: String,

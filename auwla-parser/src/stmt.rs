@@ -23,6 +23,20 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                 initializer,
             });
 
+        let destructure_stmt = just(Token::Let)
+            .ignore_then(
+                select! { Token::Ident(name) => name }
+                    .separated_by(just(Token::Comma))
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+            )
+            .then_ignore(just(Token::Assign))
+            .then(expr.clone())
+            .then_ignore(just(Token::Semicolon))
+            .map(|(bindings, initializer)| Stmt::DestructureLet {
+                bindings,
+                initializer,
+            });
+
         let var_stmt = just(Token::Var)
             .ignore_then(select! { Token::Ident(name) => name })
             .then(just(Token::Colon).ignore_then(ty.clone()).or_not())
@@ -171,17 +185,20 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             .then_ignore(just(Token::Semicolon))
             .map(Stmt::Expr);
 
-        let_stmt
-            .or(var_stmt)
-            .or(return_stmt)
-            .or(fn_decl)
-            .or(if_stmt)
-            .or(while_stmt)
-            .or(for_stmt)
-            .or(assign_stmt)
-            .or(struct_decl)
-            .or(enum_decl)
-            .or(match_stmt)
-            .or(expr_stmt)
+        choice((
+            let_stmt,
+            destructure_stmt,
+            var_stmt,
+            return_stmt,
+            if_stmt,
+            while_stmt,
+            for_stmt,
+            struct_decl,
+            enum_decl,
+            fn_decl,
+            assign_stmt,
+            match_stmt,
+            expr_stmt,
+        ))
     })
 }

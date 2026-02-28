@@ -95,6 +95,22 @@ impl JsEmitter {
                     self.write(";\n");
                 }
             }
+            Stmt::DestructureLet {
+                bindings,
+                initializer,
+            } => {
+                self.write_indent();
+                self.write("const { ");
+                for (i, b) in bindings.iter().enumerate() {
+                    if i > 0 {
+                        self.write(", ");
+                    }
+                    self.write(b);
+                }
+                self.write(" } = ");
+                self.emit_expr(initializer);
+                self.write(";\n");
+            }
             Stmt::Assign { target, value } => {
                 let target_str = self.emit_expr_to_string(target);
                 if let Expr::Match { expr, arms } = value {
@@ -249,7 +265,7 @@ impl JsEmitter {
                 self.write("else ");
             }
 
-            self.emit_pattern_condition(temp.clone(), &arm.pattern);
+            self.emit_pattern_condition(&temp, arm);
 
             self.write(" {\n");
             self.indent += 1;
@@ -259,23 +275,45 @@ impl JsEmitter {
         }
     }
 
-    fn emit_pattern_condition(&mut self, temp: String, pattern: &auwla_ast::Pattern) {
+    fn emit_pattern_condition(&mut self, temp: &str, arm: &MatchArm) {
+        self.write("if (");
+
+        // 1. Check shape
+        self.emit_pattern_shape(temp, &arm.pattern);
+
+        // 2. Check guard condition in IIFE
+        if let Some(ref guard) = arm.guard {
+            self.write(" && (() => {\n");
+            self.indent += 1;
+            self.emit_bound_variables(temp, &arm.pattern);
+            self.write_indent();
+            self.write("return ");
+            self.emit_expr(guard);
+            self.write(";\n");
+            self.indent -= 1;
+            self.write_indent();
+            self.write("})()");
+        }
+
+        self.write(")");
+    }
+
+    fn emit_pattern_shape(&mut self, temp: &str, pattern: &auwla_ast::Pattern) {
         match pattern {
-            auwla_ast::Pattern::Wildcard => {
-                self.write("if (true)");
+            auwla_ast::Pattern::Wildcard | auwla_ast::Pattern::Variable(_) => {
+                self.write("true");
             }
             auwla_ast::Pattern::Literal(expr) => {
-                self.write(&format!("if ({} === ", temp));
+                self.write(&format!("{} === ", temp));
                 self.emit_expr(expr);
-                self.write(")");
             }
             auwla_ast::Pattern::Variant { name, bindings: _ } => {
                 if name == "some" {
-                    self.write(&format!("if ({}.ok)", temp));
+                    self.write(&format!("{}.ok", temp));
                 } else if name == "none" {
-                    self.write(&format!("if (!{}.ok)", temp));
+                    self.write(&format!("!{}.ok", temp));
                 } else {
-                    self.write(&format!("if ({}.$variant === \"{}\")", temp, name));
+                    self.write(&format!("{}.$variant === \"{}\"", temp, name));
                 }
             }
             auwla_ast::Pattern::Range {
@@ -284,48 +322,37 @@ impl JsEmitter {
                 inclusive,
             } => {
                 let op = if *inclusive { "<=" } else { "<" };
-                self.write(&format!("if ({} >= ", temp));
+                self.write(&format!("({} >= ", temp));
                 self.emit_expr(start);
                 self.write(&format!(" && {} {} ", temp, op));
                 self.emit_expr(end);
                 self.write(")");
             }
             auwla_ast::Pattern::Or(patterns) => {
-                self.write("if (");
+                self.write("(");
                 for (i, p) in patterns.iter().enumerate() {
                     if i > 0 {
                         self.write(" || ");
                     }
-                    match p {
-                        auwla_ast::Pattern::Wildcard => self.write("true"),
-                        auwla_ast::Pattern::Literal(expr) => {
-                            self.write(&format!("({} === ", temp));
-                            self.emit_expr(expr);
-                            self.write(")");
-                        }
-                        auwla_ast::Pattern::Variant { name, bindings: _ } => {
-                            if name == "some" {
-                                self.write(&format!("{}.ok", temp));
-                            } else if name == "none" {
-                                self.write(&format!("!{}.ok", temp));
-                            } else {
-                                self.write(&format!("{}.$variant === \"{}\"", temp, name));
-                            }
-                        }
-                        auwla_ast::Pattern::Range {
-                            start,
-                            end,
-                            inclusive,
-                        } => {
-                            let op = if *inclusive { "<=" } else { "<" };
-                            self.write(&format!("({} >= ", temp));
-                            self.emit_expr(start);
-                            self.write(&format!(" && {} {} ", temp, op));
-                            self.emit_expr(end);
-                            self.write(")");
-                        }
-                        auwla_ast::Pattern::Or(_) => unreachable!(),
+                    self.emit_pattern_shape(temp, p);
+                }
+                self.write(")");
+            }
+            auwla_ast::Pattern::Struct(_name, fields) => {
+                self.write("(");
+                for (i, (fname, sub_pattern_opt)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        self.write(" && ");
                     }
+                    if let Some(sub_pattern) = sub_pattern_opt {
+                        let inner_temp = format!("{}.{}", temp, fname);
+                        self.emit_pattern_shape(&inner_temp, sub_pattern);
+                    } else {
+                        self.write(&format!("{}.{} !== undefined", temp, fname));
+                    }
+                }
+                if fields.is_empty() {
+                    self.write("true");
                 }
                 self.write(")");
             }
@@ -347,7 +374,7 @@ impl JsEmitter {
                 self.write("else ");
             }
 
-            self.emit_pattern_condition(temp.clone(), &arm.pattern);
+            self.emit_pattern_condition(&temp, arm);
 
             self.write(" {\n");
             self.indent += 1;
@@ -406,38 +433,49 @@ impl JsEmitter {
         }
     }
 
-    /// Returns the first Variant found in the pattern tree, for binding resolution
-    fn get_first_variant_bindings<'a>(
-        &self,
-        pattern: &'a auwla_ast::Pattern,
-    ) -> Option<(&'a str, &'a Vec<String>)> {
+    fn emit_bound_variables(&mut self, temp: &str, pattern: &auwla_ast::Pattern) {
         match pattern {
-            auwla_ast::Pattern::Variant { name, bindings } => Some((name, bindings)),
-            auwla_ast::Pattern::Or(patterns) => {
-                for p in patterns {
-                    if let Some(res) = self.get_first_variant_bindings(p) {
-                        return Some(res);
+            auwla_ast::Pattern::Variable(name) => {
+                self.write_indent();
+                self.write(&format!("const {} = {};\n", name, temp));
+            }
+            auwla_ast::Pattern::Variant { name, bindings } => {
+                if name == "some" || name == "none" {
+                    if let Some(binding) = bindings.first() {
+                        self.write_indent();
+                        self.write(&format!("const {} = {}.value;\n", binding, temp));
+                    }
+                } else {
+                    for (i, binding) in bindings.iter().enumerate() {
+                        self.write_indent();
+                        self.write(&format!("const {} = {}.$data[{}];\n", binding, temp, i));
                     }
                 }
-                None
             }
-            _ => None,
+            auwla_ast::Pattern::Or(patterns) => {
+                if let Some(first) = patterns.first() {
+                    self.emit_bound_variables(temp, first);
+                }
+            }
+            auwla_ast::Pattern::Struct(_name, fields) => {
+                for (fname, sub_pattern_opt) in fields {
+                    if let Some(sub_pattern) = sub_pattern_opt {
+                        let inner_temp = format!("{}.{}", temp, fname);
+                        self.emit_bound_variables(&inner_temp, sub_pattern);
+                    } else {
+                        // shorthand binding e.g `{ role }`
+                        self.write_indent();
+                        self.write(&format!("const {} = {}.{};\n", fname, temp, fname));
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
     /// Emit arm body for an assigned match: bind the inner value, run stmts, assign result to target.
     fn emit_arm_body(&mut self, temp: &str, target: &str, arm: &MatchArm) {
-        if let Some((vname, bindings)) = self.get_first_variant_bindings(&arm.pattern) {
-            if vname == "some" || vname == "none" {
-                if let Some(binding) = bindings.first() {
-                    self.writeln(&format!("const {} = {}.value;", binding, temp));
-                }
-            } else {
-                for (i, binding) in bindings.iter().enumerate() {
-                    self.writeln(&format!("const {} = {}.$data[{}];", binding, temp, i));
-                }
-            }
-        }
+        self.emit_bound_variables(temp, &arm.pattern);
 
         for s in &arm.stmts {
             self.emit_stmt(s);
@@ -450,19 +488,9 @@ impl JsEmitter {
         }
     }
 
-    /// Emit arm body for standalone match: bind the inner value, run stmts, no assignment.
+    /// Emit arm body for a standalone match.
     fn emit_arm_body_standalone(&mut self, temp: &str, arm: &MatchArm) {
-        if let Some((vname, bindings)) = self.get_first_variant_bindings(&arm.pattern) {
-            if vname == "some" || vname == "none" {
-                if let Some(binding) = bindings.first() {
-                    self.writeln(&format!("const {} = {}.value;", binding, temp));
-                }
-            } else {
-                for (i, binding) in bindings.iter().enumerate() {
-                    self.writeln(&format!("const {} = {}.$data[{}];", binding, temp, i));
-                }
-            }
-        }
+        self.emit_bound_variables(temp, &arm.pattern);
 
         for s in &arm.stmts {
             self.emit_stmt(s);
@@ -567,25 +595,12 @@ impl JsEmitter {
                         self.write("else ");
                     }
 
-                    self.emit_pattern_condition(temp.clone(), &arm.pattern);
+                    self.emit_pattern_condition(&temp, arm);
 
                     self.write(" {\n");
                     self.indent += 1;
 
-                    if let Some((vname, bindings)) = self.get_first_variant_bindings(&arm.pattern) {
-                        if vname == "some" || vname == "none" {
-                            if let Some(binding) = bindings.first() {
-                                self.writeln(&format!("const {} = {}.value;", binding, temp));
-                            }
-                        } else {
-                            for (i, binding) in bindings.iter().enumerate() {
-                                self.writeln(&format!(
-                                    "const {} = {}.$data[{}];",
-                                    binding, temp, i
-                                ));
-                            }
-                        }
-                    }
+                    self.emit_bound_variables(&temp, &arm.pattern);
 
                     for s in &arm.stmts {
                         self.emit_stmt(s);

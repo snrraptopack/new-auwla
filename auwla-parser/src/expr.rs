@@ -115,115 +115,151 @@ fn expr_parser_inner(
                     .clone()
                     .delimited_by(just(Token::LParen), just(Token::RParen)));
 
-            let atom: Box<dyn Parser<Token, Expr, Error = Simple<Token>> + '_> =
-                if let Some(ref stmt) = maybe_stmt {
-                    // parse variant name and optional bindings inside parens
-                    let lit_expr = choice((
-                        bool_lit.clone(),
-                        num.clone(),
-                        str_lit.clone(),
-                        char_lit.clone(),
-                    ));
+            let atom: Box<dyn Parser<Token, Expr, Error = Simple<Token>> + '_> = if let Some(
+                ref stmt,
+            ) = maybe_stmt
+            {
+                // parse variant name and optional bindings inside parens
+                let lit_expr = choice((
+                    bool_lit.clone(),
+                    num.clone(),
+                    str_lit.clone(),
+                    char_lit.clone(),
+                ));
 
-                    let range_or_lit = lit_expr
-                        .then(
-                            just(Token::DotDot)
-                                .to(true)
-                                .or(just(Token::DotDotLt).to(false))
-                                .then(choice((num.clone(), char_lit.clone())))
-                                .or_not(),
-                        )
-                        .map(|(lhs, rhs)| {
-                            if let Some((inclusive, end)) = rhs {
-                                auwla_ast::Pattern::Range {
-                                    start: Box::new(lhs),
-                                    end: Box::new(end),
-                                    inclusive,
-                                }
-                            } else {
-                                auwla_ast::Pattern::Literal(lhs)
+                let range_or_lit = lit_expr
+                    .then(
+                        just(Token::DotDot)
+                            .to(true)
+                            .or(just(Token::DotDotLt).to(false))
+                            .then(choice((num.clone(), char_lit.clone())))
+                            .or_not(),
+                    )
+                    .map(|(lhs, rhs)| {
+                        if let Some((inclusive, end)) = rhs {
+                            auwla_ast::Pattern::Range {
+                                start: Box::new(lhs),
+                                end: Box::new(end),
+                                inclusive,
                             }
-                        });
+                        } else {
+                            auwla_ast::Pattern::Literal(lhs)
+                        }
+                    });
 
-                    let base_pattern = choice((
-                        select! { Token::Ident(n) if n == "_" => auwla_ast::Pattern::Wildcard },
-                        range_or_lit,
-                        select! { Token::Ident(n) if n != "_" => n }
-                            .or(just(Token::Some).to("some".to_string()))
-                            .or(just(Token::None).to("none".to_string()))
-                            .then(
-                                select! { Token::Ident(n) => n }
-                                    .separated_by(just(Token::Comma))
-                                    .delimited_by(just(Token::LParen), just(Token::RParen))
-                                    .or_not()
-                                    .map(|o| o.unwrap_or_default()),
-                            )
-                            .map(|(name, bindings)| auwla_ast::Pattern::Variant { name, bindings }),
-                    ));
-
-                    let arm_pattern = base_pattern
-                        .clone()
-                        .separated_by(just(Token::Pipe))
-                        .at_least(1)
-                        .map(|mut patterns| {
-                            if patterns.len() == 1 {
-                                patterns.pop().unwrap()
-                            } else {
-                                auwla_ast::Pattern::Or(patterns)
-                            }
-                        });
-
-                    let block_arm_body = stmt
-                        .clone()
-                        .repeated()
-                        .then(expr.clone().or_not())
-                        .delimited_by(just(Token::LBrace), just(Token::RBrace));
-
-                    let arm_rhs = just(Token::FatArrow).ignore_then(
-                        block_arm_body
-                            .map(|(mut stmts, mut result)| {
-                                if result.is_none() {
-                                    if let Some(auwla_ast::Stmt::Expr(auwla_ast::Expr::Match {
-                                        ..
-                                    })) = stmts.last()
-                                    {
-                                        if let auwla_ast::Stmt::Expr(e) = stmts.pop().unwrap() {
-                                            result = Some(e);
+                let base_pattern = recursive(|pattern| {
+                    choice((
+                            select! { Token::Ident(n) if n == "_" => auwla_ast::Pattern::Wildcard },
+                            range_or_lit.clone(),
+                            // Struct pattern Parser: User { role: "admin", name } or { role: "admin" }
+                            select! { Token::Ident(n) if n.chars().next().map_or(false, |c| c.is_uppercase()) => n }
+                                .or_not()
+                                .then(
+                                    select! { Token::Ident(f) => f }
+                                        .then(just(Token::Colon).ignore_then(pattern.clone()).or_not())
+                                        .separated_by(just(Token::Comma))
+                                        .delimited_by(just(Token::LBrace), just(Token::RBrace))
+                                )
+                                .map(|(name, fields)| auwla_ast::Pattern::Struct(name, fields)),
+                            // Variant and Variable Pattern Parser
+                            select! { Token::Ident(n) if n != "_" => n }
+                                .or(just(Token::Some).to("some".to_string()))
+                                .or(just(Token::None).to("none".to_string()))
+                                .then(
+                                    select! { Token::Ident(n) => n }
+                                        .separated_by(just(Token::Comma))
+                                        .delimited_by(just(Token::LParen), just(Token::RParen))
+                                        .or_not(),
+                                )
+                                .map(|(name, opt_bindings)| {
+                                    if name == "some" || name == "none" {
+                                        auwla_ast::Pattern::Variant {
+                                            name,
+                                            bindings: opt_bindings.unwrap_or_default(),
                                         }
+                                    } else if let Some(bindings) = opt_bindings {
+                                        auwla_ast::Pattern::Variant { name, bindings }
+                                    } else if name.chars().next().map_or(false, |c| c.is_uppercase()) {
+                                        auwla_ast::Pattern::Variant {
+                                            name,
+                                            bindings: vec![],
+                                        }
+                                    } else {
+                                        auwla_ast::Pattern::Variable(name)
+                                    }
+                                }),
+                        ))
+                });
+
+                let arm_pattern = base_pattern
+                    .clone()
+                    .separated_by(just(Token::Pipe))
+                    .at_least(1)
+                    .map(|mut patterns| {
+                        if patterns.len() == 1 {
+                            patterns.pop().unwrap()
+                        } else {
+                            auwla_ast::Pattern::Or(patterns)
+                        }
+                    });
+
+                let block_arm_body = stmt
+                    .clone()
+                    .repeated()
+                    .then(expr.clone().or_not())
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace));
+
+                let arm_rhs = just(Token::FatArrow).ignore_then(
+                    block_arm_body
+                        .map(|(mut stmts, mut result)| {
+                            if result.is_none() {
+                                if let Some(auwla_ast::Stmt::Expr(auwla_ast::Expr::Match {
+                                    ..
+                                })) = stmts.last()
+                                {
+                                    if let auwla_ast::Stmt::Expr(e) = stmts.pop().unwrap() {
+                                        result = Some(e);
                                     }
                                 }
-                                (stmts, result)
-                            })
-                            .or(expr.clone().map(|e| (vec![], Some(e)))),
-                    );
-
-                    let arm_parser = arm_pattern.then(arm_rhs).map(
-                        |(pattern, (stmts, result)): (_, (Vec<auwla_ast::Stmt>, Option<Expr>))| {
-                            MatchArm {
-                                pattern,
-                                stmts,
-                                result: result.map(Box::new),
                             }
-                        },
-                    );
+                            (stmts, result)
+                        })
+                        .or(expr.clone().map(|e| (vec![], Some(e)))),
+                );
 
-                    let match_expr = just(Token::Match)
-                        .ignore_then(expr.clone())
-                        .then(
-                            arm_parser
-                                .separated_by(just(Token::Comma))
-                                .allow_trailing()
-                                .delimited_by(just(Token::LBrace), just(Token::RBrace)),
-                        )
-                        .map(|(e, arms)| Expr::Match {
-                            expr: Box::new(e),
-                            arms,
-                        });
+                let arm_guard = just(Token::If).ignore_then(expr.clone()).or_not();
 
-                    Box::new(match_expr.or(base_atom))
-                } else {
-                    Box::new(base_atom)
-                };
+                let arm_parser = arm_pattern.then(arm_guard).then(arm_rhs).map(
+                    |((pattern, guard), (stmts, result)): (
+                        _,
+                        (Vec<auwla_ast::Stmt>, Option<Expr>),
+                    )| {
+                        MatchArm {
+                            pattern,
+                            guard: guard.map(Box::new),
+                            stmts,
+                            result: result.map(Box::new),
+                        }
+                    },
+                );
+
+                let match_expr = just(Token::Match)
+                    .ignore_then(expr.clone())
+                    .then(
+                        arm_parser
+                            .separated_by(just(Token::Comma))
+                            .allow_trailing()
+                            .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+                    )
+                    .map(|(e, arms)| Expr::Match {
+                        expr: Box::new(e),
+                        arms,
+                    });
+
+                Box::new(match_expr.or(base_atom))
+            } else {
+                Box::new(base_atom)
+            };
 
             // Unary: !expr or -expr
             let unary = just(Token::Not)

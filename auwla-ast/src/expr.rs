@@ -16,11 +16,16 @@ pub enum Pattern {
         end: Box<Expr>,
         inclusive: bool,
     },
+    /// A catch-all variable binding, e.g. `count` or `other`
+    Variable(String),
+    /// Destructured Object format, e.g User { role: "admin", name } or { age, name }
+    Struct(Option<String>, Vec<(String, Option<Pattern>)>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MatchArm {
     pub pattern: Pattern,
+    pub guard: Option<Box<Expr>>,
     /// Optional preliminary statements (only in block-style arms)
     pub stmts: Vec<crate::stmt::Stmt>,
     /// The yielded value expression (None means yields Void)

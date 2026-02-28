@@ -49,7 +49,7 @@ fn handle_state(state: AppState) {
     match state {
         Loading | Offline => print("App is not interactive right now."),
         Ready => print("App is ready!"),
-        Error(msg) => print("App encountered an error: " + msg)
+        Error(msg) => print("App encountered an error: {msg}")
     }
 }
 
@@ -57,3 +57,14 @@ handle_state(AppState::Loading);
 handle_state(AppState::Ready);
 handle_state(AppState::Offline);
 handle_state(AppState::Error("Network timeout"));
+
+// Test match guards and variable bindings
+fn check_retries(current_retries: number, max_retries: number) {
+    match current_retries {
+        count if count >= max_retries => print("Failed: Too many retries!"),
+        count => print("Retrying... attempt {count}")
+    }
+}
+
+check_retries(4, 3);
+check_retries(1, 3);
