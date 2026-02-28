@@ -47,6 +47,11 @@ pub enum Stmt {
         name: String,
         fields: Vec<(String, Type)>, // name, type
     },
+    /// enum Name { Variant1, Variant2(type) }
+    EnumDecl {
+        name: String,
+        variants: Vec<(String, Vec<Type>)>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -7,6 +7,7 @@ pub struct Typechecker {
     scopes: Vec<Scope>,
     current_return_type: Option<Option<Type>>,
     structs: HashMap<String, Vec<(String, Type)>>,
+    enums: HashMap<String, Vec<(String, Vec<Type>)>>,
 }
 
 impl Default for Typechecker {
@@ -21,6 +22,7 @@ impl Typechecker {
             scopes: vec![Scope::new()],
             current_return_type: None,
             structs: HashMap::new(),
+            enums: HashMap::new(),
         }
     }
 
@@ -275,10 +277,12 @@ impl Typechecker {
                             })?;
                         }
                         (None, Some(actual)) => {
-                            return Err(format!(
-                                "Strict Type error: Function expected to return nothing, but returned '{:?}'",
-                                actual
-                            ));
+                            if actual != Type::Basic("void".to_string()) {
+                                return Err(format!(
+                                    "Strict Type error: Function expected to return nothing, but returned '{:?}'",
+                                    actual
+                                ));
+                            }
                         }
                         (Some(expected), None) => {
                             return Err(format!(
@@ -337,6 +341,13 @@ impl Typechecker {
                     return Err(format!("Struct '{}' is already defined", name));
                 }
                 self.structs.insert(name.clone(), fields.clone());
+                Ok(())
+            }
+            Stmt::EnumDecl { name, variants } => {
+                if self.enums.contains_key(name) {
+                    return Err(format!("Enum '{}' is already defined", name));
+                }
+                self.enums.insert(name.clone(), variants.clone());
                 Ok(())
             }
         }
@@ -435,56 +446,185 @@ impl Typechecker {
                     }
                 }
             }
-            Expr::Match {
-                expr,
-                some_arm,
-                none_arm,
-            } => {
+            Expr::Match { expr, arms } => {
                 let result_ty = self.check_expr(expr)?;
+                let mut common_return_ty: Option<Type> = None;
 
-                let (ok_ty, err_ty) = match result_ty {
-                    Type::Result { ok_type, err_type } => (*ok_type, *err_type),
-                    other => {
-                        return Err(format!(
-                            "Type error: 'match' requires a Result type (e.g. 'string?string'), but got '{:?}'",
-                            other
-                        ));
+                fn collect_variants<'a>(
+                    pattern: &'a auwla_ast::Pattern,
+                    variants: &mut Vec<&'a auwla_ast::Pattern>,
+                ) {
+                    match pattern {
+                        auwla_ast::Pattern::Or(patterns) => {
+                            for p in patterns {
+                                collect_variants(p, variants);
+                            }
+                        }
+                        other => variants.push(other),
                     }
-                };
-
-                // some arm
-                self.enter_scope();
-                self.declare_variable(some_arm.binding.clone(), ok_ty, Mutability::Immutable)?;
-                for stmt in &some_arm.stmts {
-                    self.check_stmt(stmt)?;
                 }
-                let some_ty = if let Some(res) = &some_arm.result {
-                    self.check_expr(res)?
-                } else {
-                    Type::Basic("void".to_string())
-                };
-                self.exit_scope();
 
-                // none arm
-                self.enter_scope();
-                self.declare_variable(none_arm.binding.clone(), err_ty, Mutability::Immutable)?;
-                for stmt in &none_arm.stmts {
-                    self.check_stmt(stmt)?;
+                let mut has_wildcard = false;
+                let mut handled_variants = std::collections::HashSet::new();
+                let mut has_some = false;
+                let mut has_none = false;
+
+                let is_primitive = matches!(result_ty, Type::Basic(ref s) if s == "string" || s == "number" || s == "bool" || s == "char");
+
+                let enum_def = if let Type::Custom(ref enum_name) = result_ty {
+                    Some(
+                        self.enums
+                            .get(enum_name)
+                            .cloned()
+                            .ok_or_else(|| format!("Type error: unknown type '{}'", enum_name))?,
+                    )
+                } else {
+                    None
+                };
+
+                for arm in arms {
+                    let mut arm_yields = Type::Basic("void".to_string());
+
+                    let mut sub_patterns = Vec::new();
+                    collect_variants(&arm.pattern, &mut sub_patterns);
+
+                    self.enter_scope();
+
+                    for (i, p) in sub_patterns.iter().enumerate() {
+                        match p {
+                            auwla_ast::Pattern::Wildcard => {
+                                has_wildcard = true;
+                            }
+                            auwla_ast::Pattern::Literal(lit_expr) => {
+                                let lit_ty = self.check_expr(lit_expr)?;
+                                self.assert_type_eq(&result_ty, &lit_ty).map_err(|_| format!("Type error: match arm pattern literal '{:?}' does not match expected type '{:?}'", lit_ty, result_ty))?;
+                            }
+                            auwla_ast::Pattern::Range {
+                                start,
+                                end,
+                                inclusive: _,
+                            } => {
+                                let start_ty = self.check_expr(start)?;
+                                let end_ty = self.check_expr(end)?;
+                                self.assert_type_eq(&start_ty, &end_ty).map_err(|_| format!("Type error: match arm pattern range bounds have different types: '{:?}' and '{:?}'", start_ty, end_ty))?;
+                                self.assert_type_eq(&result_ty, &start_ty).map_err(|_| format!("Type error: match arm pattern range type does not match expected type '{:?}'", result_ty))?;
+                            }
+                            auwla_ast::Pattern::Variant { name, bindings } => {
+                                if let Type::Result { ok_type, err_type } = &result_ty {
+                                    if name == "some" {
+                                        has_some = true;
+                                        if i == 0 {
+                                            if let Some(binding) = bindings.first() {
+                                                self.declare_variable(
+                                                    binding.clone(),
+                                                    *ok_type.clone(),
+                                                    Mutability::Immutable,
+                                                )?;
+                                            }
+                                        }
+                                    } else if name == "none" {
+                                        has_none = true;
+                                        if i == 0 {
+                                            if let Some(binding) = bindings.first() {
+                                                self.declare_variable(
+                                                    binding.clone(),
+                                                    *err_type.clone(),
+                                                    Mutability::Immutable,
+                                                )?;
+                                            }
+                                        }
+                                    } else {
+                                        return Err(format!(
+                                            "Type error: matching on a Result expects 'some' or 'none', found '{}'",
+                                            name
+                                        ));
+                                    }
+                                } else if let Some(ref def) = enum_def {
+                                    handled_variants.insert(name.clone());
+                                    let variant_args = def
+                                        .iter()
+                                        .find(|(n, _)| n == name)
+                                        .ok_or_else(|| {
+                                            format!("Type error: variant '{}' does not exist", name)
+                                        })?
+                                        .1
+                                        .clone();
+
+                                    if bindings.len() != variant_args.len() {
+                                        return Err(format!(
+                                            "Type error: match arm '{}' binds {} arguments, but variant has {}",
+                                            name,
+                                            bindings.len(),
+                                            variant_args.len()
+                                        ));
+                                    }
+
+                                    if i == 0 {
+                                        for (binding, expected_ty) in
+                                            bindings.iter().zip(variant_args)
+                                        {
+                                            self.declare_variable(
+                                                binding.clone(),
+                                                expected_ty,
+                                                Mutability::Immutable,
+                                            )?;
+                                        }
+                                    }
+                                } else {
+                                    return Err(format!(
+                                        "Type error: cannot match variant '{}' on type '{:?}'",
+                                        name, result_ty
+                                    ));
+                                }
+                            }
+                            auwla_ast::Pattern::Or(_) => unreachable!(),
+                        }
+                    }
+
+                    for stmt in &arm.stmts {
+                        self.check_stmt(stmt)?;
+                    }
+                    if let Some(res) = &arm.result {
+                        arm_yields = self.check_expr(res)?;
+                    }
+                    self.exit_scope();
+
+                    if let Some(ref prev_ty) = common_return_ty {
+                        self.assert_type_eq(prev_ty, &arm_yields).map_err(|_| format!("Type error: match arms return different types — expected '{:?}', found '{:?}'", prev_ty, arm_yields))?;
+                    } else {
+                        common_return_ty = Some(arm_yields);
+                    }
                 }
-                let none_ty = if let Some(res) = &none_arm.result {
-                    self.check_expr(res)?
-                } else {
-                    Type::Basic("void".to_string())
-                };
-                self.exit_scope();
 
-                // Both arms must yield the same type
-                self.assert_type_eq(&some_ty, &none_ty).map_err(|_| format!(
-                    "Type error: match arms return different types — some arm returns '{:?}', none arm returns '{:?}'",
-                    some_ty, none_ty
-                ))?;
+                if is_primitive && !has_wildcard {
+                    return Err(format!(
+                        "Type error: match on '{:?}' primitive must have a wildcard '_' arm for exhaustiveness",
+                        result_ty
+                    ));
+                }
 
-                Ok(some_ty)
+                if let Type::Result { .. } = &result_ty {
+                    if !has_wildcard && (!has_some || !has_none) {
+                        return Err("Type error: match on Result must be exhaustive (handle 'some' and 'none' or use '_')".to_string());
+                    }
+                }
+
+                if let Some(def) = enum_def {
+                    if !has_wildcard {
+                        let defined_variants: std::collections::HashSet<_> =
+                            def.iter().map(|(n, _)| n.clone()).collect();
+                        let missing: Vec<_> =
+                            defined_variants.difference(&handled_variants).collect();
+                        if !missing.is_empty() {
+                            return Err(format!(
+                                "Type error: match on enum is not exhaustive. Missing matching arms for variants: {:?}",
+                                missing
+                            ));
+                        }
+                    }
+                }
+
+                Ok(common_return_ty.unwrap_or_else(|| Type::Basic("void".to_string())))
             }
             Expr::Array(elements) => {
                 if elements.is_empty() {
@@ -612,6 +752,45 @@ impl Typechecker {
                     }
                 }
                 Ok(Type::Custom(name.clone()))
+            }
+            Expr::EnumInit {
+                enum_name,
+                variant_name,
+                args,
+            } => {
+                let enum_def = self
+                    .enums
+                    .get(enum_name)
+                    .ok_or_else(|| format!("Undefined enum '{}'", enum_name))?;
+
+                let mut found_variant = None;
+                for (vname, vargs) in enum_def.iter() {
+                    if vname == variant_name {
+                        found_variant = Some(vargs.clone());
+                        break;
+                    }
+                }
+
+                let variant_args = found_variant.ok_or_else(|| {
+                    format!("Enum '{}' has no variant '{}'", enum_name, variant_name)
+                })?;
+
+                if args.len() != variant_args.len() {
+                    return Err(format!(
+                        "Enum variant '{}::{}' expects {} arguments, but {} were provided",
+                        enum_name,
+                        variant_name,
+                        variant_args.len(),
+                        args.len()
+                    ));
+                }
+
+                for (expected_ty, arg_expr) in variant_args.iter().zip(args) {
+                    let actual_ty = self.check_expr(arg_expr)?;
+                    self.assert_type_eq(expected_ty, &actual_ty)?;
+                }
+
+                Ok(Type::Custom(enum_name.clone()))
             }
             Expr::PropertyAccess { expr, property } => {
                 let expr_ty = self.check_expr(expr)?;

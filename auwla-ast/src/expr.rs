@@ -1,9 +1,26 @@
 /// A match arm — either a single expression or a block with a final expression.
 /// For block arms the last expression (no semicolon) is the yielded value.
 #[derive(Debug, Clone, PartialEq)]
+pub enum Pattern {
+    /// E.g. "admin", 42, true
+    Literal(Expr),
+    /// E.g. Banned(reason)
+    Variant { name: String, bindings: Vec<String> },
+    /// E.g. _
+    Wildcard,
+    /// E.g. "click" | "tap"
+    Or(Vec<Pattern>),
+    /// E.g. 1..5 or 'a'..<'z'
+    Range {
+        start: Box<Expr>,
+        end: Box<Expr>,
+        inclusive: bool,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct MatchArm {
-    /// The bound name for the inner value (e.g. `val` in `some(val) => ...`)
-    pub binding: String,
+    pub pattern: Pattern,
     /// Optional preliminary statements (only in block-style arms)
     pub stmts: Vec<crate::stmt::Stmt>,
     /// The yielded value expression (None means yields Void)
@@ -38,11 +55,10 @@ pub enum Expr {
     Call { name: String, args: Vec<Expr> },
     /// A unary operation (e.g., !flag, -x)
     Unary { op: UnaryOp, expr: Box<Expr> },
-    /// match expr { some(val) => arm, none(err) => arm }
+    /// match expr { variant(bind) => arm, ... }
     Match {
         expr: Box<Expr>,
-        some_arm: MatchArm,
-        none_arm: MatchArm,
+        arms: Vec<MatchArm>,
     },
     /// Array literal: [1, 2, 3]
     Array(Vec<Expr>),
@@ -65,6 +81,12 @@ pub enum Expr {
     StructInit {
         name: String,
         fields: Vec<(String, Expr)>,
+    },
+    /// EnumName::VariantName(args)
+    EnumInit {
+        enum_name: String,
+        variant_name: String,
+        args: Vec<Expr>,
     },
     /// expr.property
     PropertyAccess { expr: Box<Expr>, property: String },

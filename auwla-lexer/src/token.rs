@@ -35,6 +35,8 @@ pub enum Token {
     In,
     #[token("struct")]
     Struct,
+    #[token("enum")]
+    Enum,
 
     // Identifiers
     #[regex("[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
@@ -71,6 +73,8 @@ pub enum Token {
     LBracket,
     #[token("]")]
     RBracket,
+    #[token("::")]
+    DoubleColon,
     #[token(":")]
     Colon,
     #[token(";")]
@@ -114,6 +118,8 @@ pub enum Token {
     And,
     #[token("||")]
     Or,
+    #[token("|")]
+    Pipe,
     #[token("!")]
     Not,
     #[token("=>")]

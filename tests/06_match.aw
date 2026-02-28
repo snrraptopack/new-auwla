@@ -9,13 +9,13 @@ fn process(n: number): number?string {
 
 let result1 = process(20);
 match result1 {
-    some(val) => print("Success: {val}")
+    some(val) => print("Success: {val}"),
     none(err) => print("Error: {err}")
 }
 
 // Assignment from match
 let msg = match process(5) {
-    some(val) => "It worked: {val}"
+    some(val) => "It worked: {val}",
     none(err) => "It failed: {err}"
 };
 print(msg);

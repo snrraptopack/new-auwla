@@ -10,7 +10,8 @@ const __match_0 = result1;
 if (__match_0.ok) {
   const val = __match_0.value;
   console.log(`Success: ${val}`);
-} else {
+}
+else if (!__match_0.ok) {
   const err = __match_0.value;
   console.log(`Error: ${err}`);
 }
@@ -19,7 +20,8 @@ let msg;
 if (__match_1.ok) {
   const val = __match_1.value;
   msg = `It worked: ${val}`;
-} else {
+}
+else if (!__match_1.ok) {
   const err = __match_1.value;
   msg = `It failed: ${err}`;
 }

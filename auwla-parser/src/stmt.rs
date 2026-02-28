@@ -62,6 +62,10 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                 // Desugar trailing expression into Stmt::Return
                 if let Some(e) = trailing_expr {
                     body.push(Stmt::Return(Some(e)));
+                } else if let Some(Stmt::Expr(auwla_ast::Expr::Match { .. })) = body.last() {
+                    if let Stmt::Expr(e) = body.pop().unwrap() {
+                        body.push(Stmt::Return(Some(e)));
+                    }
                 }
                 Stmt::Fn {
                     name,
@@ -137,6 +141,24 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             )
             .map(|(name, fields)| Stmt::StructDecl { name, fields });
 
+        // enum Name { Variant1, Variant2(type) }
+        let enum_decl = just(Token::Enum)
+            .ignore_then(select! { Token::Ident(name) => name })
+            .then(
+                select! { Token::Ident(variant_name) => variant_name }
+                    .then(
+                        ty.clone()
+                            .separated_by(just(Token::Comma))
+                            .delimited_by(just(Token::LParen), just(Token::RParen))
+                            .or_not()
+                            .map(|t| t.unwrap_or_default()),
+                    )
+                    .separated_by(just(Token::Comma))
+                    .allow_trailing()
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+            )
+            .map(|(name, variants)| Stmt::EnumDecl { name, variants });
+
         // Expression as statement — with semicolon for most expressions,
         // but match expressions don't need a trailing semicolon
         let match_stmt = expr.clone().try_map(|e, span| match &e {
@@ -158,6 +180,7 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             .or(for_stmt)
             .or(assign_stmt)
             .or(struct_decl)
+            .or(enum_decl)
             .or(match_stmt)
             .or(expr_stmt)
     })

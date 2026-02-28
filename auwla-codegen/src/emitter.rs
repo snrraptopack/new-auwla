@@ -70,13 +70,8 @@ impl JsEmitter {
             Stmt::Let {
                 name, initializer, ..
             } => {
-                if let Expr::Match {
-                    expr,
-                    some_arm,
-                    none_arm,
-                } = initializer
-                {
-                    self.emit_match_assign("const", name, expr, some_arm, none_arm);
+                if let Expr::Match { expr, arms } = initializer {
+                    self.emit_match_assign("const", name, expr, arms);
                 } else if let Expr::Try { expr, error_expr } = initializer {
                     self.emit_try_assign("const", name, expr, error_expr);
                 } else {
@@ -89,13 +84,8 @@ impl JsEmitter {
             Stmt::Var {
                 name, initializer, ..
             } => {
-                if let Expr::Match {
-                    expr,
-                    some_arm,
-                    none_arm,
-                } = initializer
-                {
-                    self.emit_match_assign("let", name, expr, some_arm, none_arm);
+                if let Expr::Match { expr, arms } = initializer {
+                    self.emit_match_assign("let", name, expr, arms);
                 } else if let Expr::Try { expr, error_expr } = initializer {
                     self.emit_try_assign("let", name, expr, error_expr);
                 } else {
@@ -107,13 +97,8 @@ impl JsEmitter {
             }
             Stmt::Assign { target, value } => {
                 let target_str = self.emit_expr_to_string(target);
-                if let Expr::Match {
-                    expr,
-                    some_arm,
-                    none_arm,
-                } = value
-                {
-                    self.emit_match_assign("", &target_str, expr, some_arm, none_arm);
+                if let Expr::Match { expr, arms } = value {
+                    self.emit_match_assign("", &target_str, expr, arms);
                 } else if let Expr::Try { expr, error_expr } = value {
                     self.emit_try_assign("", &target_str, expr, error_expr);
                 } else {
@@ -206,11 +191,10 @@ impl JsEmitter {
                 // Standalone match expression (used as statement)
                 if let Expr::Match {
                     expr: matched,
-                    some_arm,
-                    none_arm,
+                    arms,
                 } = expr
                 {
-                    self.emit_match_standalone(matched, some_arm, none_arm);
+                    self.emit_match_standalone(matched, arms);
                 } else if let Expr::Try {
                     expr: tried,
                     error_expr,
@@ -223,8 +207,8 @@ impl JsEmitter {
                     self.write(";\n");
                 }
             }
-            Stmt::StructDecl { .. } => {
-                // Struct declarations vanish in JS, they are purely for compile-time typechecking
+            Stmt::StructDecl { .. } | Stmt::EnumDecl { .. } => {
+                // Struct/Enum declarations vanish in JS, they are purely for compile-time typechecking
                 // We emit nothing to keep it zero-cost.
             }
         }
@@ -245,8 +229,7 @@ impl JsEmitter {
         decl_kw: &str,
         target: &str,
         matched_expr: &Expr,
-        some_arm: &MatchArm,
-        none_arm: &MatchArm,
+        arms: &Vec<MatchArm>,
     ) {
         let temp = self.fresh_temp();
 
@@ -256,31 +239,101 @@ impl JsEmitter {
         self.emit_expr(matched_expr);
         self.write(";\n");
 
-        // let target;
         if !decl_kw.is_empty() {
             self.writeln(&format!("let {};", target));
         }
 
-        // if (__match_N.ok) { ... }
-        self.write_indent();
-        self.write(&format!("if ({}.ok) {{\n", temp));
-        self.indent += 1;
-        self.emit_arm_body(&temp, target, some_arm);
-        self.indent -= 1;
-        self.writeln("} else {");
-        self.indent += 1;
-        self.emit_arm_body(&temp, target, none_arm);
-        self.indent -= 1;
-        self.writeln("}");
+        for (i, arm) in arms.iter().enumerate() {
+            self.write_indent();
+            if i > 0 {
+                self.write("else ");
+            }
+
+            self.emit_pattern_condition(temp.clone(), &arm.pattern);
+
+            self.write(" {\n");
+            self.indent += 1;
+            self.emit_arm_body(&temp, target, arm);
+            self.indent -= 1;
+            self.writeln("}");
+        }
+    }
+
+    fn emit_pattern_condition(&mut self, temp: String, pattern: &auwla_ast::Pattern) {
+        match pattern {
+            auwla_ast::Pattern::Wildcard => {
+                self.write("if (true)");
+            }
+            auwla_ast::Pattern::Literal(expr) => {
+                self.write(&format!("if ({} === ", temp));
+                self.emit_expr(expr);
+                self.write(")");
+            }
+            auwla_ast::Pattern::Variant { name, bindings: _ } => {
+                if name == "some" {
+                    self.write(&format!("if ({}.ok)", temp));
+                } else if name == "none" {
+                    self.write(&format!("if (!{}.ok)", temp));
+                } else {
+                    self.write(&format!("if ({}.$variant === \"{}\")", temp, name));
+                }
+            }
+            auwla_ast::Pattern::Range {
+                start,
+                end,
+                inclusive,
+            } => {
+                let op = if *inclusive { "<=" } else { "<" };
+                self.write(&format!("if ({} >= ", temp));
+                self.emit_expr(start);
+                self.write(&format!(" && {} {} ", temp, op));
+                self.emit_expr(end);
+                self.write(")");
+            }
+            auwla_ast::Pattern::Or(patterns) => {
+                self.write("if (");
+                for (i, p) in patterns.iter().enumerate() {
+                    if i > 0 {
+                        self.write(" || ");
+                    }
+                    match p {
+                        auwla_ast::Pattern::Wildcard => self.write("true"),
+                        auwla_ast::Pattern::Literal(expr) => {
+                            self.write(&format!("({} === ", temp));
+                            self.emit_expr(expr);
+                            self.write(")");
+                        }
+                        auwla_ast::Pattern::Variant { name, bindings: _ } => {
+                            if name == "some" {
+                                self.write(&format!("{}.ok", temp));
+                            } else if name == "none" {
+                                self.write(&format!("!{}.ok", temp));
+                            } else {
+                                self.write(&format!("{}.$variant === \"{}\"", temp, name));
+                            }
+                        }
+                        auwla_ast::Pattern::Range {
+                            start,
+                            end,
+                            inclusive,
+                        } => {
+                            let op = if *inclusive { "<=" } else { "<" };
+                            self.write(&format!("({} >= ", temp));
+                            self.emit_expr(start);
+                            self.write(&format!(" && {} {} ", temp, op));
+                            self.emit_expr(end);
+                            self.write(")");
+                        }
+                        auwla_ast::Pattern::Or(_) => unreachable!(),
+                    }
+                }
+                self.write(")");
+            }
+        }
     }
 
     /// Emit a standalone match (not assigned to anything).
-    fn emit_match_standalone(
-        &mut self,
-        matched_expr: &Expr,
-        some_arm: &MatchArm,
-        none_arm: &MatchArm,
-    ) {
+    fn emit_match_standalone(&mut self, matched_expr: &Expr, arms: &Vec<MatchArm>) {
         let temp = self.fresh_temp();
 
         self.write_indent();
@@ -288,16 +341,20 @@ impl JsEmitter {
         self.emit_expr(matched_expr);
         self.write(";\n");
 
-        self.write_indent();
-        self.write(&format!("if ({}.ok) {{\n", temp));
-        self.indent += 1;
-        self.emit_arm_body_standalone(&temp, some_arm);
-        self.indent -= 1;
-        self.writeln("} else {");
-        self.indent += 1;
-        self.emit_arm_body_standalone(&temp, none_arm);
-        self.indent -= 1;
-        self.writeln("}");
+        for (i, arm) in arms.iter().enumerate() {
+            self.write_indent();
+            if i > 0 {
+                self.write("else ");
+            }
+
+            self.emit_pattern_condition(temp.clone(), &arm.pattern);
+
+            self.write(" {\n");
+            self.indent += 1;
+            self.emit_arm_body_standalone(&temp, arm);
+            self.indent -= 1;
+            self.writeln("}");
+        }
     }
 
     /// Emit: `const/let name = try expr(error_expr);`
@@ -349,9 +406,39 @@ impl JsEmitter {
         }
     }
 
+    /// Returns the first Variant found in the pattern tree, for binding resolution
+    fn get_first_variant_bindings<'a>(
+        &self,
+        pattern: &'a auwla_ast::Pattern,
+    ) -> Option<(&'a str, &'a Vec<String>)> {
+        match pattern {
+            auwla_ast::Pattern::Variant { name, bindings } => Some((name, bindings)),
+            auwla_ast::Pattern::Or(patterns) => {
+                for p in patterns {
+                    if let Some(res) = self.get_first_variant_bindings(p) {
+                        return Some(res);
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
     /// Emit arm body for an assigned match: bind the inner value, run stmts, assign result to target.
     fn emit_arm_body(&mut self, temp: &str, target: &str, arm: &MatchArm) {
-        self.writeln(&format!("const {} = {}.value;", arm.binding, temp));
+        if let Some((vname, bindings)) = self.get_first_variant_bindings(&arm.pattern) {
+            if vname == "some" || vname == "none" {
+                if let Some(binding) = bindings.first() {
+                    self.writeln(&format!("const {} = {}.value;", binding, temp));
+                }
+            } else {
+                for (i, binding) in bindings.iter().enumerate() {
+                    self.writeln(&format!("const {} = {}.$data[{}];", binding, temp, i));
+                }
+            }
+        }
+
         for s in &arm.stmts {
             self.emit_stmt(s);
         }
@@ -365,7 +452,18 @@ impl JsEmitter {
 
     /// Emit arm body for standalone match: bind the inner value, run stmts, no assignment.
     fn emit_arm_body_standalone(&mut self, temp: &str, arm: &MatchArm) {
-        self.writeln(&format!("const {} = {}.value;", arm.binding, temp));
+        if let Some((vname, bindings)) = self.get_first_variant_bindings(&arm.pattern) {
+            if vname == "some" || vname == "none" {
+                if let Some(binding) = bindings.first() {
+                    self.writeln(&format!("const {} = {}.value;", binding, temp));
+                }
+            } else {
+                for (i, binding) in bindings.iter().enumerate() {
+                    self.writeln(&format!("const {} = {}.$data[{}];", binding, temp, i));
+                }
+            }
+        }
+
         for s in &arm.stmts {
             self.emit_stmt(s);
         }
@@ -450,8 +548,7 @@ impl JsEmitter {
             }
             Expr::Match {
                 expr: matched,
-                some_arm,
-                none_arm,
+                arms,
             } => {
                 // Match used inline as an expression (e.g. inside another expr).
                 // This is rare — most match exprs are caught at the Stmt level.
@@ -464,36 +561,48 @@ impl JsEmitter {
                 self.emit_expr(matched);
                 self.write(";\n");
 
-                self.write_indent();
-                self.write(&format!("if ({}.ok) {{\n", temp));
-                self.indent += 1;
-                self.writeln(&format!("const {} = {}.value;", some_arm.binding, temp));
-                for s in &some_arm.stmts {
-                    self.emit_stmt(s);
-                }
-                if let Some(result) = &some_arm.result {
+                for (i, arm) in arms.iter().enumerate() {
                     self.write_indent();
-                    self.write("return ");
-                    self.emit_expr(result);
-                    self.write(";\n");
+                    if i > 0 {
+                        self.write("else ");
+                    }
+
+                    self.emit_pattern_condition(temp.clone(), &arm.pattern);
+
+                    self.write(" {\n");
+                    self.indent += 1;
+
+                    if let Some((vname, bindings)) = self.get_first_variant_bindings(&arm.pattern) {
+                        if vname == "some" || vname == "none" {
+                            if let Some(binding) = bindings.first() {
+                                self.writeln(&format!("const {} = {}.value;", binding, temp));
+                            }
+                        } else {
+                            for (i, binding) in bindings.iter().enumerate() {
+                                self.writeln(&format!(
+                                    "const {} = {}.$data[{}];",
+                                    binding, temp, i
+                                ));
+                            }
+                        }
+                    }
+
+                    for s in &arm.stmts {
+                        self.emit_stmt(s);
+                    }
+                    if let Some(result) = &arm.result {
+                        self.write_indent();
+                        self.write("return ");
+                        self.emit_expr(result);
+                        self.write(";\n");
+                    } else {
+                        self.writeln("return undefined;");
+                    }
+                    self.indent -= 1;
+                    self.writeln("}");
                 }
+
                 self.indent -= 1;
-                self.writeln("} else {");
-                self.indent += 1;
-                self.writeln(&format!("const {} = {}.value;", none_arm.binding, temp));
-                for s in &none_arm.stmts {
-                    self.emit_stmt(s);
-                }
-                if let Some(result) = &none_arm.result {
-                    self.write_indent();
-                    self.write("return ");
-                    self.emit_expr(result);
-                    self.write(";\n");
-                }
-                self.indent -= 1;
-                self.writeln("}");
-                self.indent -= 1;
-                self.write_indent();
                 self.write("})()");
             }
             Expr::Array(elements) => {
@@ -586,6 +695,22 @@ impl JsEmitter {
             Expr::PropertyAccess { expr, property } => {
                 self.emit_expr(expr);
                 self.write(&format!(".{}", property));
+            }
+            Expr::EnumInit {
+                enum_name: _,
+                variant_name,
+                args,
+            } => {
+                self.write("{ $variant: \"");
+                self.write(variant_name);
+                self.write("\", $data: [");
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        self.write(", ");
+                    }
+                    self.emit_expr(arg);
+                }
+                self.write("] }");
             }
         }
     }
