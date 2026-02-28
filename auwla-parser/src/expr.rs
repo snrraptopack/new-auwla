@@ -36,6 +36,23 @@ fn expr_parser_inner(
 
             let num = select! { Token::NumberLit(n) => Expr::NumberLit(n.parse().unwrap()) };
             let str_lit = select! { Token::StringLit(s) => Expr::StringLit(s) };
+            let char_lit = select! { Token::CharLit(c) => Expr::CharLit(c) };
+
+            // Array literal: [expr, expr, ...]
+            let array_lit = expr
+                .clone()
+                .separated_by(just(Token::Comma))
+                .allow_trailing()
+                .delimited_by(just(Token::LBracket), just(Token::RBracket))
+                .map(Expr::Array);
+
+            // String interpolation: InterpStart (StringFragment | expr)* InterpEnd
+            let interp_part =
+                select! { Token::StringFragment(s) => Expr::StringLit(s) }.or(expr.clone());
+            let interp = just(Token::InterpStart)
+                .ignore_then(interp_part.repeated())
+                .then_ignore(just(Token::InterpEnd))
+                .map(Expr::Interpolation);
 
             let some_expr = just(Token::Some)
                 .ignore_then(
@@ -55,9 +72,12 @@ fn expr_parser_inner(
             let base_atom = bool_lit
                 .or(some_expr)
                 .or(none_expr)
+                .or(interp)
                 .or(ident_or_call)
                 .or(num)
                 .or(str_lit)
+                .or(char_lit)
+                .or(array_lit)
                 .or(expr
                     .clone()
                     .delimited_by(just(Token::LParen), just(Token::RParen)));
@@ -140,15 +160,47 @@ fn expr_parser_inner(
                 })
                 .boxed();
 
+            // Postfix: expr[index] and expr?(error_expr)
+            let index_postfix = expr
+                .clone()
+                .delimited_by(just(Token::LBracket), just(Token::RBracket))
+                .map(|idx| (true, idx)); // true = index
+
+            let try_postfix = just(Token::QuestionMark)
+                .ignore_then(
+                    expr.clone()
+                        .delimited_by(just(Token::LParen), just(Token::RParen)),
+                )
+                .map(|err| (false, err)); // false = try
+
+            let postfix = unary
+                .then(index_postfix.or(try_postfix).repeated())
+                .map(|(base, ops): (Expr, Vec<(bool, Expr)>)| {
+                    ops.into_iter().fold(base, |acc, (is_index, operand)| {
+                        if is_index {
+                            Expr::Index {
+                                expr: Box::new(acc),
+                                index: Box::new(operand),
+                            }
+                        } else {
+                            Expr::Try {
+                                expr: Box::new(acc),
+                                error_expr: Box::new(operand),
+                            }
+                        }
+                    })
+                })
+                .boxed();
+
             // product: * /
-            let product = unary
+            let product = postfix
                 .clone()
                 .then(
                     choice((
                         just(Token::Star).to(BinaryOp::Mul),
                         just(Token::Slash).to(BinaryOp::Div),
                     ))
-                    .then(unary)
+                    .then(postfix)
                     .repeated(),
                 )
                 .map(|(lhs, rhs_list): (Expr, Vec<(BinaryOp, Expr)>)| {
@@ -207,15 +259,37 @@ fn expr_parser_inner(
                         })
                 });
 
+            // range: expr..expr (inclusive) or expr..<expr (exclusive)
+            let range = cmp
+                .clone()
+                .then(
+                    just(Token::DotDot)
+                        .to(true) // inclusive
+                        .or(just(Token::DotDotLt).to(false)) // exclusive
+                        .then(cmp.clone())
+                        .or_not(),
+                )
+                .map(|(lhs, rhs)| {
+                    if let Some((inclusive, end)) = rhs {
+                        Expr::Range {
+                            start: Box::new(lhs),
+                            end: Box::new(end),
+                            inclusive,
+                        }
+                    } else {
+                        lhs
+                    }
+                });
+
             // logical: && ||
-            let logical = cmp
+            let logical = range
                 .clone()
                 .then(
                     choice((
                         just(Token::And).to(BinaryOp::And),
                         just(Token::Or).to(BinaryOp::Or),
                     ))
-                    .then(cmp)
+                    .then(range)
                     .repeated(),
                 )
                 .map(|(lhs, rhs_list): (Expr, Vec<(BinaryOp, Expr)>)| {

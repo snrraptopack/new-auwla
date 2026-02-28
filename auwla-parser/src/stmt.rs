@@ -55,13 +55,20 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             .then(
                 stmt.clone()
                     .repeated()
+                    .then(expr.clone().or_not())
                     .delimited_by(just(Token::LBrace), just(Token::RBrace)),
             )
-            .map(|(((name, params), return_ty), body)| Stmt::Fn {
-                name,
-                params,
-                return_ty,
-                body,
+            .map(|(((name, params), return_ty), (mut body, trailing_expr))| {
+                // Desugar trailing expression into Stmt::Return
+                if let Some(e) = trailing_expr {
+                    body.push(Stmt::Return(Some(e)));
+                }
+                Stmt::Fn {
+                    name,
+                    params,
+                    return_ty,
+                    body,
+                }
             });
 
         let if_stmt = just(Token::If)
@@ -95,6 +102,21 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             )
             .map(|(condition, body)| Stmt::While { condition, body });
 
+        let for_stmt = just(Token::For)
+            .ignore_then(select! { Token::Ident(name) => name })
+            .then_ignore(just(Token::In))
+            .then(expr.clone())
+            .then(
+                stmt.clone()
+                    .repeated()
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+            )
+            .map(|((binding, iterable), body)| Stmt::For {
+                binding,
+                iterable,
+                body,
+            });
+
         // Assignment: `name = value;`
         let assign_stmt = select! { Token::Ident(name) => name }
             .then_ignore(just(Token::Assign))
@@ -120,6 +142,7 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             .or(fn_decl)
             .or(if_stmt)
             .or(while_stmt)
+            .or(for_stmt)
             .or(assign_stmt)
             .or(match_stmt)
             .or(expr_stmt)

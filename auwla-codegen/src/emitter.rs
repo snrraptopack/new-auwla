@@ -62,7 +62,6 @@ impl JsEmitter {
             Stmt::Let {
                 name, initializer, ..
             } => {
-                // Check if initializer is a match expression — needs special handling
                 if let Expr::Match {
                     expr,
                     some_arm,
@@ -70,6 +69,8 @@ impl JsEmitter {
                 } = initializer
                 {
                     self.emit_match_assign("const", name, expr, some_arm, none_arm);
+                } else if let Expr::Try { expr, error_expr } = initializer {
+                    self.emit_try_assign("const", name, expr, error_expr);
                 } else {
                     self.write_indent();
                     self.write(&format!("const {} = ", name));
@@ -87,6 +88,8 @@ impl JsEmitter {
                 } = initializer
                 {
                     self.emit_match_assign("let", name, expr, some_arm, none_arm);
+                } else if let Expr::Try { expr, error_expr } = initializer {
+                    self.emit_try_assign("let", name, expr, error_expr);
                 } else {
                     self.write_indent();
                     self.write(&format!("let {} = ", name));
@@ -102,6 +105,8 @@ impl JsEmitter {
                 } = value
                 {
                     self.emit_match_assign("", name, expr, some_arm, none_arm);
+                } else if let Expr::Try { expr, error_expr } = value {
+                    self.emit_try_assign("", name, expr, error_expr);
                 } else {
                     self.write_indent();
                     self.write(&format!("{} = ", name));
@@ -172,6 +177,22 @@ impl JsEmitter {
                 self.indent -= 1;
                 self.writeln("}");
             }
+            Stmt::For {
+                binding,
+                iterable,
+                body,
+            } => {
+                self.write_indent();
+                self.write(&format!("for (const {} of ", binding));
+                self.emit_expr(iterable);
+                self.write(") {\n");
+                self.indent += 1;
+                for s in body {
+                    self.emit_stmt(s);
+                }
+                self.indent -= 1;
+                self.writeln("}");
+            }
             Stmt::Expr(expr) => {
                 // Standalone match expression (used as statement)
                 if let Expr::Match {
@@ -181,6 +202,12 @@ impl JsEmitter {
                 } = expr
                 {
                     self.emit_match_standalone(matched, some_arm, none_arm);
+                } else if let Expr::Try {
+                    expr: tried,
+                    error_expr,
+                } = expr
+                {
+                    self.emit_try_standalone(tried, error_expr);
                 } else {
                     self.write_indent();
                     self.emit_expr(expr);
@@ -260,6 +287,41 @@ impl JsEmitter {
         self.writeln("}");
     }
 
+    /// Emit: `const/let name = try expr(error_expr);`
+    fn emit_try_assign(&mut self, decl_kw: &str, target: &str, expr: &Expr, error_expr: &Expr) {
+        let temp = self.fresh_temp();
+        self.write_indent();
+        self.write(&format!("const {} = ", temp));
+        self.emit_expr(expr);
+        self.write(";\n");
+
+        self.write_indent();
+        self.write(&format!("if (!{}.ok) return {{ ok: false, value: ", temp));
+        self.emit_expr(error_expr);
+        self.write(" };\n");
+
+        self.write_indent();
+        if !decl_kw.is_empty() {
+            self.write(&format!("{} {} = {}.value;\n", decl_kw, target, temp));
+        } else {
+            self.write(&format!("{} = {}.value;\n", target, temp));
+        }
+    }
+
+    /// Emit a standalone try.
+    fn emit_try_standalone(&mut self, expr: &Expr, error_expr: &Expr) {
+        let temp = self.fresh_temp();
+        self.write_indent();
+        self.write(&format!("const {} = ", temp));
+        self.emit_expr(expr);
+        self.write(";\n");
+
+        self.write_indent();
+        self.write(&format!("if (!{}.ok) return {{ ok: false, value: ", temp));
+        self.emit_expr(error_expr);
+        self.write(" };\n");
+    }
+
     /// Emit arm body for an assigned match: bind the inner value, run stmts, assign result to target.
     fn emit_arm_body(&mut self, temp: &str, target: &str, arm: &MatchArm) {
         self.writeln(&format!("const {} = {}.value;", arm.binding, temp));
@@ -280,7 +342,11 @@ impl JsEmitter {
         for s in &arm.stmts {
             self.emit_stmt(s);
         }
-        // standalone — no result assignment needed, ignore arm.result
+        if let Some(result) = &arm.result {
+            self.write_indent();
+            self.emit_expr(result);
+            self.write(";\n");
+        }
     }
 
     // ──────────────────────────── Expressions ────────────────────────
@@ -298,6 +364,7 @@ impl JsEmitter {
                 }
             }
             Expr::BoolLit(b) => self.write(if *b { "true" } else { "false" }),
+            Expr::CharLit(c) => self.write(&format!("\"{}\"", c)),
             Expr::Identifier(name) => self.write(name),
             Expr::Binary { op, left, right } => {
                 self.write("(");
@@ -401,6 +468,80 @@ impl JsEmitter {
                 self.indent -= 1;
                 self.write_indent();
                 self.write("})()");
+            }
+            Expr::Array(elements) => {
+                self.write("[");
+                for (i, elem) in elements.iter().enumerate() {
+                    if i > 0 {
+                        self.write(", ");
+                    }
+                    self.emit_expr(elem);
+                }
+                self.write("]");
+            }
+            Expr::Index { expr, index } => {
+                self.emit_expr(expr);
+                self.write("[");
+                self.emit_expr(index);
+                self.write("]");
+            }
+            Expr::Range {
+                start,
+                end,
+                inclusive,
+            } => {
+                // Emit a helper that generates the range array
+                // For numbers: Array.from({length: end - start + (inclusive ? 1 : 0)}, (_, i) => i + start)
+                // For chars: same but with String.fromCharCode
+                self.write("((__s, __e) => {");
+                self.write("if (typeof __s === 'number') ");
+                if *inclusive {
+                    self.write("return Array.from({length: __e - __s + 1}, (_, i) => i + __s); ");
+                } else {
+                    self.write("return Array.from({length: __e - __s}, (_, i) => i + __s); ");
+                }
+                self.write("else { const sc = __s.charCodeAt(0), ec = __e.charCodeAt(0); ");
+                if *inclusive {
+                    self.write("return Array.from({length: ec - sc + 1}, (_, i) => String.fromCharCode(i + sc)); ");
+                } else {
+                    self.write("return Array.from({length: ec - sc}, (_, i) => String.fromCharCode(i + sc)); ");
+                }
+                self.write("}})(");
+                self.emit_expr(start);
+                self.write(", ");
+                self.emit_expr(end);
+                self.write(")");
+            }
+            Expr::Interpolation(parts) => {
+                // Emit JS template literal: `Hello ${name}!`
+                self.write("`");
+                for part in parts {
+                    match part {
+                        Expr::StringLit(s) => self.write(s),
+                        other => {
+                            self.write("${");
+                            self.emit_expr(other);
+                            self.write("}");
+                        }
+                    }
+                }
+                self.write("`");
+            }
+            Expr::Try { expr, error_expr } => {
+                // Nested Try expression - using an IIFE.
+                // Note: This won't early-return from the parent function if nested.
+                // Parent-return only works for top-level stmt try (handled in emit_stmt).
+                self.write("(() => { ");
+                let temp = self.fresh_temp();
+                self.write(&format!("const {} = ", temp));
+                self.emit_expr(expr);
+                self.write("; if (!");
+                self.write(&temp);
+                self.write(".ok) throw new Error(");
+                self.emit_expr(error_expr);
+                self.write("); return ");
+                self.write(&temp);
+                self.write(".value; })()");
             }
         }
     }

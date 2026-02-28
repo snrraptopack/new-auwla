@@ -20,6 +20,8 @@ pub enum Expr {
     NumberLit(f64),
     /// A boolean literal (true or false)
     BoolLit(bool),
+    /// A character literal (e.g., 'a')
+    CharLit(char),
     /// A variable usage (e.g., my_var)
     Identifier(String),
     /// A binary operation (e.g., a + b)
@@ -37,11 +39,27 @@ pub enum Expr {
     /// A unary operation (e.g., !flag, -x)
     Unary { op: UnaryOp, expr: Box<Expr> },
     /// match expr { some(val) => arm, none(err) => arm }
-    /// Both arms must yield the same type.
     Match {
         expr: Box<Expr>,
         some_arm: MatchArm,
         none_arm: MatchArm,
+    },
+    /// Array literal: [1, 2, 3]
+    Array(Vec<Expr>),
+    /// Array indexing: arr[0]
+    Index { expr: Box<Expr>, index: Box<Expr> },
+    /// Range: 1..10 (inclusive) or 1..<10 (exclusive), also 'a'..'z'
+    Range {
+        start: Box<Expr>,
+        end: Box<Expr>,
+        inclusive: bool,
+    },
+    /// String interpolation: "Hello {name}!" → vec![StringLit("Hello "), Identifier("name"), StringLit("!")]
+    Interpolation(Vec<Expr>),
+    /// Try operator: expr?("error") — unwraps some, or returns none(error) from enclosing fn
+    Try {
+        expr: Box<Expr>,
+        error_expr: Box<Expr>,
     },
 }
 

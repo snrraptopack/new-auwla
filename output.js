@@ -1,46 +1,40 @@
-const num = 42;
-let a = "hello";
-a = "world";
 function checked(n) {
   if ((n > 10)) {
-    return ({ ok: true, value: "Too big!" });
+    return ({ ok: true, value: `Value is ${n}` });
   } else {
-    return ({ ok: false, value: "Okay!" });
+    return ({ ok: false, value: "Error!" });
   }
 }
-console.log("Number:", num);
-console.log("String:", a);
-console.log("Bool:", true);
-console.log("Expr:", (10 + (20 * 2)));
-const result = checked(num);
-const __match_0 = result;
-let msg;
-if (__match_0.ok) {
+function test_try(n) {
+  const __match_0 = checked(n);
+  if (!__match_0.ok) return { ok: false, value: "Fallback error from try" };
   const val = __match_0.value;
-  msg = val;
-} else {
-  const err = __match_0.value;
-  msg = err;
+  console.log(`Inside test_try, unwrapped: ${val}`);
+  return ({ ok: true, value: `Everything is fine: ${val}` });
 }
-console.log("Match result:", msg);
-let result2 = checked(5);
-const __match_1 = result2;
-let msg2;
+console.log("--- Test 1 (Success) ---");
+const r1 = test_try(20);
+const __match_1 = r1;
 if (__match_1.ok) {
-  const val = __match_1.value;
-  const upper = val;
-  msg2 = upper;
+  const v = __match_1.value;
+  console.log(`Success output: ${v}`);
 } else {
-  const err = __match_1.value;
-  msg2 = err;
+  const e = __match_1.value;
+  console.log(`Error output: ${e}`);
 }
-console.log("Match block:", msg2);
-let result3 = checked(3);
-const __match_2 = result3;
+console.log("--- Test 2 (Fail) ---");
+const r2 = test_try(5);
+const __match_2 = r2;
 if (__match_2.ok) {
-  const val = __match_2.value;
-  console.log("Got value:", val);
+  const v = __match_2.value;
+  console.log(`Success output: ${v}`);
 } else {
-  const err = __match_2.value;
-  console.log("Got error:", err);
+  const e = __match_2.value;
+  console.log(`Error output: ${e}`);
 }
+console.log("--- Ranges & Arrays ---");
+for (const x of ((__s, __e) => {if (typeof __s === 'number') return Array.from({length: __e - __s + 1}, (_, i) => i + __s); else { const sc = __s.charCodeAt(0), ec = __e.charCodeAt(0); return Array.from({length: ec - sc + 1}, (_, i) => String.fromCharCode(i + sc)); }})(1, 3)) {
+  console.log(`Loop x: ${x}`);
+}
+const arr = ["A", "B"];
+console.log(`Array: ${arr}, Fragment: ${arr[0]}`);

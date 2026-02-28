@@ -1,47 +1,36 @@
-let num: number = 42;
-var a = "hello";
-a = "world";
-
 fn checked(n: number): string?string {
     if n > 10 {
-        return some("Too big!");
+        return some("Value is {n}");
     } else {
-        return none("Okay!");
+        return none("Error!");
     }
 }
 
-// print takes any expression
-print("Number:", num);
-print("String:", a);
-print("Bool:", true);
-print("Expr:", 10 + 20 * 2);
-
-// Match as expression
-let result = checked(num);
-let msg = match result {
-    some(val) => val
-    none(err) => err
-};
-print("Match result:", msg);
-
-// Match with block arms
-var result2 = checked(5);
-let msg2 = match result2 {
-    some(val) => {
-        let upper = val;
-        upper
-    }
-    none(err) => err
-};
-print("Match block:", msg2);
-
-// Standalone match
-var result3 = checked(3);
-match result3 {
-    some(val) => {
-        print("Got value:", val);
-    }
-    none(err) => {
-        print("Got error:", err);
-    }
+fn test_try(n: number): string?string {
+    // Try operator: unwraps and assigns to 'val' OR returns early with "Fallback" error
+    let val = checked(n)?("Fallback error from try");
+    print("Inside test_try, unwrapped: {val}");
+    return some("Everything is fine: {val}");
 }
+
+print("--- Test 1 (Success) ---");
+let r1 = test_try(20);
+match r1 {
+    some(v) => print("Success output: {v}")
+    none(e) => print("Error output: {e}")
+}
+
+print("--- Test 2 (Fail) ---");
+let r2 = test_try(5);
+match r2 {
+    some(v) => print("Success output: {v}")
+    none(e) => print("Error output: {e}")
+}
+
+// ── Other features still working ──
+print("--- Ranges & Arrays ---");
+for x in 1..3 {
+    print("Loop x: {x}");
+}
+let arr = ["A", "B"];
+print("Array: {arr}, Fragment: {arr[0]}");

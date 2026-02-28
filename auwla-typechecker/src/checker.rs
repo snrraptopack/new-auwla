@@ -228,6 +228,29 @@ impl Typechecker {
                 self.exit_scope();
                 Ok(())
             }
+            Stmt::For {
+                binding,
+                iterable,
+                body,
+            } => {
+                let iter_ty = self.check_expr(iterable)?;
+                let elem_ty = match iter_ty {
+                    Type::Array(inner) => *inner,
+                    other => {
+                        return Err(format!(
+                            "Type error: 'for..in' requires an array or range, but got '{:?}'",
+                            other
+                        ));
+                    }
+                };
+                self.enter_scope();
+                self.declare_variable(binding.clone(), elem_ty, Mutability::Immutable);
+                for stmt in body {
+                    self.check_stmt(stmt)?;
+                }
+                self.exit_scope();
+                Ok(())
+            }
         }
     }
 
@@ -237,6 +260,7 @@ impl Typechecker {
             Expr::BoolLit(_) => Ok(Type::Basic("bool".to_string())),
             Expr::StringLit(_) => Ok(Type::Basic("string".to_string())),
             Expr::NumberLit(_) => Ok(Type::Basic("number".to_string())),
+            Expr::CharLit(_) => Ok(Type::Basic("char".to_string())),
             Expr::Identifier(name) => self
                 .lookup_variable(name)
                 .ok_or_else(|| format!("Undefined variable: '{}'", name)),
@@ -373,6 +397,92 @@ impl Typechecker {
                 ))?;
 
                 Ok(some_ty)
+            }
+            Expr::Array(elements) => {
+                if elements.is_empty() {
+                    // Empty array — type must be inferred from context (let binding)
+                    // For now return a generic unknown array
+                    Ok(Type::Array(Box::new(Type::Basic("unknown".to_string()))))
+                } else {
+                    let first_ty = self.check_expr(&elements[0])?;
+                    for elem in &elements[1..] {
+                        let elem_ty = self.check_expr(elem)?;
+                        self.assert_type_eq(&first_ty, &elem_ty).map_err(|_| format!(
+                            "Type error: array elements must all be the same type. Expected '{:?}', found '{:?}'",
+                            first_ty, elem_ty
+                        ))?;
+                    }
+                    Ok(Type::Array(Box::new(first_ty)))
+                }
+            }
+            Expr::Index { expr, index } => {
+                let expr_ty = self.check_expr(expr)?;
+                let idx_ty = self.check_expr(index)?;
+                self.assert_type_eq(&Type::Basic("number".to_string()), &idx_ty)
+                    .map_err(|_| {
+                        format!(
+                            "Type error: array index must be 'number', got '{:?}'",
+                            idx_ty
+                        )
+                    })?;
+                match expr_ty {
+                    Type::Array(inner) => Ok(*inner),
+                    other => Err(format!(
+                        "Type error: cannot index into non-array type '{:?}'",
+                        other
+                    )),
+                }
+            }
+            Expr::Range { start, end, .. } => {
+                let start_ty = self.check_expr(start)?;
+                let end_ty = self.check_expr(end)?;
+                self.assert_type_eq(&start_ty, &end_ty).map_err(|_| format!(
+                    "Type error: range endpoints must be the same type. Start: '{:?}', End: '{:?}'",
+                    start_ty, end_ty
+                ))?;
+                match &start_ty {
+                    Type::Basic(name) if name == "number" || name == "char" => {
+                        Ok(Type::Array(Box::new(start_ty)))
+                    }
+                    other => Err(format!(
+                        "Type error: range endpoints must be 'number' or 'char', got '{:?}'",
+                        other
+                    )),
+                }
+            }
+            Expr::Interpolation(parts) => {
+                // Each part can be any type — they all get coerced to string at runtime
+                for part in parts {
+                    self.check_expr(part)?;
+                }
+                Ok(Type::Basic("string".to_string()))
+            }
+            Expr::Try { expr, error_expr } => {
+                let expr_ty = self.check_expr(expr)?;
+                let ok_ty = match expr_ty {
+                    Type::Result { ok_type, .. } => *ok_type,
+                    _ => {
+                        return Err(format!(
+                            "Type error: '?' operator requires a Result type, but got '{:?}'",
+                            expr_ty
+                        ));
+                    }
+                };
+
+                let err_expr_ty = self.check_expr(error_expr)?;
+
+                // Ensure we are inside a function that returns a Result
+                match &self.current_return_type {
+                    Some(Some(Type::Result { err_type: fn_err, .. })) => {
+                         self.assert_type_eq(fn_err, &err_expr_ty).map_err(|_| format!(
+                            "Type error: '?' operator error expression type '{:?}' does not match function error return type '{:?}'",
+                            err_expr_ty, fn_err
+                        ))?;
+                    }
+                    _ => return Err("Type error: '?' operator can only be used inside a function that returns a Result type".to_string()),
+                }
+
+                Ok(ok_ty)
             }
         }
     }

@@ -8,4 +8,6 @@ pub enum Type {
         ok_type: Box<Type>,
         err_type: Box<Type>,
     },
+    /// Homogeneous array type: `number[]`, `string[]`
+    Array(Box<Type>),
 }

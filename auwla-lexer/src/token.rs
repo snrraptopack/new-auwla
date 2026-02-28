@@ -29,6 +29,10 @@ pub enum Token {
     Match,
     #[token("while")]
     While,
+    #[token("for")]
+    For,
+    #[token("in")]
+    In,
 
     // Identifiers
     #[regex("[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
@@ -38,8 +42,19 @@ pub enum Token {
     #[regex(r#""([^"\\]|\\.)*""#, |lex| lex.slice()[1..lex.slice().len()-1].to_string())]
     StringLit(String),
 
+    // String interpolation tokens (emitted by post-processing in lex())
+    /// Start of an interpolated string
+    InterpStart,
+    /// A literal text fragment inside an interpolated string
+    StringFragment(String),
+    /// End of an interpolated string
+    InterpEnd,
+
     #[regex("[0-9]+([.][0-9]+)?", |lex| lex.slice().to_string())]
     NumberLit(String),
+
+    #[regex("'[^']'", |lex| lex.slice().chars().nth(1).unwrap())]
+    CharLit(char),
 
     // Symbols & Punctuation
     #[token("(")]
@@ -50,6 +65,10 @@ pub enum Token {
     LBrace,
     #[token("}")]
     RBrace,
+    #[token("[")]
+    LBracket,
+    #[token("]")]
+    RBracket,
     #[token(":")]
     Colon,
     #[token(";")]
@@ -59,7 +78,11 @@ pub enum Token {
     #[token("?")]
     QuestionMark,
 
-    // Operators
+    // Operators — longer tokens first so logos picks them
+    #[token("..<")]
+    DotDotLt,
+    #[token("..")]
+    DotDot,
     #[token("=")]
     Assign,
     #[token("==")]

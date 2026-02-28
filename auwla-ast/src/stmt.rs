@@ -36,6 +36,12 @@ pub enum Stmt {
     Expr(Expr),
     /// while condition { body }
     While { condition: Expr, body: Vec<Stmt> },
+    /// for binding in iterable { body }
+    For {
+        binding: String,
+        iterable: Expr,
+        body: Vec<Stmt>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
