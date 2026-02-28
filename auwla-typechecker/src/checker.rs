@@ -9,8 +9,18 @@ pub struct Typechecker {
     pub(crate) current_function_name: Option<String>,
     pub(crate) structs: HashMap<String, Vec<(String, Type)>>,
     pub(crate) enums: HashMap<String, Vec<(String, Vec<Type>)>>,
-    /// type_name -> [(method_name, is_static, params_with_types, return_ty)]
-    pub extensions: HashMap<String, Vec<(String, bool, Vec<(String, Type)>, Option<Type>)>>,
+    pub(crate) type_aliases: HashMap<String, Type>,
+    /// type_name -> [(type_params, method_name, is_static, params_with_types, return_ty)]
+    pub extensions: HashMap<
+        String,
+        Vec<(
+            Option<Vec<String>>,
+            String,
+            bool,
+            Vec<(String, Type)>,
+            Option<Type>,
+        )>,
+    >,
 }
 
 impl Default for Typechecker {
@@ -27,6 +37,7 @@ impl Typechecker {
             current_function_name: None,
             structs: HashMap::new(),
             enums: HashMap::new(),
+            type_aliases: HashMap::new(),
             extensions: HashMap::new(),
         }
     }
@@ -35,7 +46,16 @@ impl Typechecker {
     /// Used by the code generator to identify extension call sites.
     pub fn get_extensions(
         &self,
-    ) -> &HashMap<String, Vec<(String, bool, Vec<(String, Type)>, Option<Type>)>> {
+    ) -> &HashMap<
+        String,
+        Vec<(
+            Option<Vec<String>>,
+            String,
+            bool,
+            Vec<(String, Type)>,
+            Option<Type>,
+        )>,
+    > {
         &self.extensions
     }
 
@@ -65,9 +85,17 @@ impl Typechecker {
         Ok(())
     }
 
-    pub(crate) fn declare_function(&mut self, name: String, params: Vec<Type>, ret: Option<Type>) {
+    pub(crate) fn declare_function(
+        &mut self,
+        name: String,
+        type_params: Option<Vec<String>>,
+        params: Vec<Type>,
+        ret: Option<Type>,
+    ) {
         let current_scope = self.scopes.last_mut().unwrap();
-        current_scope.functions.insert(name, (params, ret));
+        current_scope
+            .functions
+            .insert(name, (type_params, params, ret));
     }
 
     pub(crate) fn is_mutable(&self, name: &str) -> bool {
@@ -88,7 +116,10 @@ impl Typechecker {
         None
     }
 
-    pub(crate) fn lookup_function(&self, name: &str) -> Option<(Vec<Type>, Option<Type>)> {
+    pub(crate) fn lookup_function(
+        &self,
+        name: &str,
+    ) -> Option<(Option<Vec<String>>, Vec<Type>, Option<Type>)> {
         for scope in self.scopes.iter().rev() {
             if let Some(sig) = scope.functions.get(name) {
                 return Some(sig.clone());
@@ -121,7 +152,12 @@ impl Typechecker {
                     .ok_or_else(|| format!("Import error: could not resolve module '{}'", path))?;
                 for name in names {
                     if let Some(sig) = export_map.functions.get(name) {
-                        self.declare_function(name.clone(), sig.0.clone(), sig.1.clone());
+                        self.declare_function(
+                            name.clone(),
+                            sig.0.clone(),
+                            sig.1.clone(),
+                            sig.2.clone(),
+                        );
                     } else if let Some(ty) = export_map.variables.get(name) {
                         self.declare_variable(name.clone(), ty.clone(), Mutability::Immutable)?;
                     } else if let Some(fields) = export_map.structs.get(name) {
@@ -144,7 +180,23 @@ impl Typechecker {
         Ok(())
     }
 
+    pub(crate) fn resolve_type(&self, ty: &Type) -> Type {
+        match ty {
+            Type::Custom(name) => {
+                if let Some(aliased) = self.type_aliases.get(name) {
+                    self.resolve_type(aliased)
+                } else {
+                    ty.clone()
+                }
+            }
+            _ => ty.clone(),
+        }
+    }
+
     pub(crate) fn assert_type_eq(&self, expected: &Type, actual: &Type) -> Result<(), String> {
+        let expected = &self.resolve_type(expected);
+        let actual = &self.resolve_type(actual);
+
         // Handle `type?error_type` resolution from `some()` and `none()` with unknowns.
         match (expected, actual) {
             (

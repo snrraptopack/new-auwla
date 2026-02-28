@@ -22,9 +22,10 @@ pub enum Stmt {
     },
     /// target = 10;
     Assign { target: Expr, value: Expr },
-    /// fn add(a: number, b: number): number { ... }
+    /// fn add<T>(a: T, b: T): T { ... }
     Fn {
         name: String,
+        type_params: Option<Vec<String>>,
         params: Vec<(String, Type)>, // name, type
         return_ty: Option<Type>,
         body: Vec<Stmt>,
@@ -47,25 +48,34 @@ pub enum Stmt {
         iterable: Expr,
         body: Vec<Stmt>,
     },
-    /// struct Name { field: type, ... }
+    /// struct Name<T> { field: T, ... }
     StructDecl {
         name: String,
+        type_params: Option<Vec<String>>,
         fields: Vec<(String, Type)>, // name, type
     },
-    /// enum Name { Variant1, Variant2(type) }
+    /// enum Name<T> { Variant1, Variant2(T) }
     EnumDecl {
         name: String,
+        type_params: Option<Vec<String>>,
         variants: Vec<(String, Vec<Type>)>,
     },
     /// import { add, Vec2 } from './math';
     Import { names: Vec<String>, path: String },
     /// export fn / export let / export struct / export enum
     Export { stmt: Box<Stmt> },
-    /// extend TypeName { fn method(self, ...) { ... } }
+    /// extend<T> TypeName { fn method(self, ...) { ... } }
     Extend {
+        type_params: Option<Vec<String>>,
         /// The type being extended — can be a built-in ("number", "string") or a custom struct name.
         type_name: String,
         methods: Vec<Method>,
+    },
+    /// type Name<T> = Result<T, string>;
+    TypeAlias {
+        name: String,
+        type_params: Option<Vec<String>>,
+        aliased_type: Type,
     },
 }
 
@@ -85,4 +95,5 @@ pub struct Method {
     pub body: Vec<Stmt>,
     /// true when the first param is NOT `self` (static method)
     pub is_static: bool,
+    pub type_params: Option<Vec<String>>,
 }

@@ -11,6 +11,7 @@ pub fn emit_js(
     extensions: &HashMap<
         String,
         Vec<(
+            Option<Vec<String>>,
             String,
             bool,
             Vec<(String, auwla_ast::Type)>,
@@ -42,6 +43,7 @@ impl JsEmitter {
         extensions: HashMap<
             String,
             Vec<(
+                Option<Vec<String>>,
                 String,
                 bool,
                 Vec<(String, auwla_ast::Type)>,
@@ -52,7 +54,8 @@ impl JsEmitter {
         let ext_methods = extensions
             .iter()
             .map(|(ty, methods)| {
-                let names: HashSet<String> = methods.iter().map(|(n, _, _, _)| n.clone()).collect();
+                let names: HashSet<String> =
+                    methods.iter().map(|(_, n, _, _, _)| n.clone()).collect();
                 (ty.clone(), names)
             })
             .collect();

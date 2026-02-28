@@ -1,5 +1,6 @@
 pub mod checker;
 pub mod expr;
+pub mod inference;
 pub mod module;
 pub mod scope;
 pub mod stmt;

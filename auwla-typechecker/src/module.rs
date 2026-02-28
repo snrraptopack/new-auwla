@@ -6,8 +6,8 @@ use std::collections::HashMap;
 /// resolving `import { ... } from '...'` statements in other files.
 #[derive(Debug, Clone, Default)]
 pub struct ExportMap {
-    /// Exported top-level functions: name -> (param_types, return_type)
-    pub functions: HashMap<String, (Vec<Type>, Option<Type>)>,
+    /// Exported top-level functions: name -> (type_params, param_types, return_type)
+    pub functions: HashMap<String, (Option<Vec<String>>, Vec<Type>, Option<Type>)>,
     /// Exported variables / constants: name -> type
     pub variables: HashMap<String, Type>,
     /// Exported struct declarations: name -> field list
@@ -35,13 +35,16 @@ fn register_export(map: &mut ExportMap, stmt: &Stmt) {
     match stmt {
         Stmt::Fn {
             name,
+            type_params,
             params,
             return_ty,
             ..
         } => {
             let param_types: Vec<Type> = params.iter().map(|(_, t)| t.clone()).collect();
-            map.functions
-                .insert(name.clone(), (param_types, return_ty.clone()));
+            map.functions.insert(
+                name.clone(),
+                (type_params.clone(), param_types, return_ty.clone()),
+            );
         }
         Stmt::Let {
             name,
@@ -57,7 +60,10 @@ fn register_export(map: &mut ExportMap, stmt: &Stmt) {
                 // Explicit type annotation — register as a typed variable
                 map.variables.insert(name.clone(), t.clone());
             } else if let auwla_ast::Expr::Closure {
-                params, return_ty, ..
+                type_params,
+                params,
+                return_ty,
+                ..
             } = initializer
             {
                 // No annotation, but initializer is a closure — register as a function
@@ -65,14 +71,16 @@ fn register_export(map: &mut ExportMap, stmt: &Stmt) {
                     .iter()
                     .map(|(_, t)| t.clone().unwrap_or(Type::Basic("unknown".to_string())))
                     .collect();
-                map.functions
-                    .insert(name.clone(), (param_types, return_ty.clone()));
+                map.functions.insert(
+                    name.clone(),
+                    (type_params.clone(), param_types, return_ty.clone()),
+                );
             }
         }
-        Stmt::StructDecl { name, fields } => {
+        Stmt::StructDecl { name, fields, .. } => {
             map.structs.insert(name.clone(), fields.clone());
         }
-        Stmt::EnumDecl { name, variants } => {
+        Stmt::EnumDecl { name, variants, .. } => {
             map.enums.insert(name.clone(), variants.clone());
         }
         // nested export (shouldn't occur but handle gracefully)

@@ -56,8 +56,12 @@ pub enum Expr {
     Some(Box<Expr>),
     /// none(error_value) or none() for Optionals
     None(Option<Box<Expr>>),
-    /// A function call (e.g., add(1, 2))
-    Call { name: String, args: Vec<Expr> },
+    /// A function call (e.g., add::<number>(1, 2))
+    Call {
+        name: String,
+        type_args: Option<Vec<crate::types::Type>>,
+        args: Vec<Expr>,
+    },
     /// A unary operation (e.g., !flag, -x)
     Unary { op: UnaryOp, expr: Box<Expr> },
     /// match expr { variant(bind) => arm, ... }
@@ -82,27 +86,31 @@ pub enum Expr {
         expr: Box<Expr>,
         error_expr: Option<Box<Expr>>,
     },
-    /// Name { field: expr, ... }
+    /// Name::<T> { field: expr, ... }
     StructInit {
         name: String,
+        type_args: Option<Vec<crate::types::Type>>,
         fields: Vec<(String, Expr)>,
     },
-    /// EnumName::VariantName(args)
+    /// EnumName::<T>::VariantName(args)
     EnumInit {
         enum_name: String,
+        type_args: Option<Vec<crate::types::Type>>,
         variant_name: String,
         args: Vec<Expr>,
     },
     /// expr.property
     PropertyAccess { expr: Box<Expr>, property: String },
-    /// expr.method(args) — may be an extension call or a closure field call
+    /// expr.method::<T>(args) — may be an extension call or a closure field call
     MethodCall {
         expr: Box<Expr>,
         method: String,
+        type_args: Option<Vec<crate::types::Type>>,
         args: Vec<Expr>,
     },
-    /// (x: number) => x * 2
+    /// <T>(x: T) => x * 2
     Closure {
+        type_params: Option<Vec<String>>,
         params: Vec<(String, Option<crate::types::Type>)>,
         return_ty: Option<crate::types::Type>,
         body: Box<Expr>,

@@ -119,6 +119,7 @@ mod tests {
             params,
             return_ty,
             body,
+            ..
         } = &ast.statements[0]
         {
             assert_eq!(name, "add");

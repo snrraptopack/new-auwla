@@ -58,8 +58,14 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             .then_ignore(just(Token::Colon))
             .then(ty.clone());
 
+        let generic_params = select! { Token::Ident(name) => name }
+            .separated_by(just(Token::Comma))
+            .delimited_by(just(Token::Lt), just(Token::Gt))
+            .or_not();
+
         let fn_decl = just(Token::Fn)
             .ignore_then(select! { Token::Ident(name) => name })
+            .then(generic_params.clone())
             .then(
                 param
                     .separated_by(just(Token::Comma))
@@ -89,12 +95,15 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                         .then_ignore(just(Token::Semicolon))
                         .map(|e| vec![Stmt::Return(Some(e))])),
             )
-            .map(|(((name, params), return_ty), body)| Stmt::Fn {
-                name,
-                params,
-                return_ty,
-                body,
-            });
+            .map(
+                |((((name, type_params), params), return_ty), body)| Stmt::Fn {
+                    name,
+                    type_params,
+                    params,
+                    return_ty,
+                    body,
+                },
+            );
 
         let if_stmt = just(Token::If)
             .ignore_then(expr.clone())
@@ -152,6 +161,7 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
 
         let struct_decl = just(Token::Struct)
             .ignore_then(select! { Token::Ident(name) => name })
+            .then(generic_params.clone())
             .then(
                 select! { Token::Ident(name) => name }
                     .then_ignore(just(Token::Colon))
@@ -160,11 +170,16 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                     .allow_trailing()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace)),
             )
-            .map(|(name, fields)| Stmt::StructDecl { name, fields });
+            .map(|((name, type_params), fields)| Stmt::StructDecl {
+                name,
+                type_params,
+                fields,
+            });
 
         // enum Name { Variant1, Variant2(type) }
         let enum_decl = just(Token::Enum)
             .ignore_then(select! { Token::Ident(name) => name })
+            .then(generic_params.clone())
             .then(
                 select! { Token::Ident(variant_name) => variant_name }
                     .then(
@@ -178,7 +193,11 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                     .allow_trailing()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace)),
             )
-            .map(|(name, variants)| Stmt::EnumDecl { name, variants });
+            .map(|((name, type_params), variants)| Stmt::EnumDecl {
+                name,
+                type_params,
+                variants,
+            });
 
         // import { a, b } from './math';
         let import_stmt = just(Token::Import)
@@ -201,6 +220,7 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
         // extend TypeName { fn method(self, ...) => expr; }
         let extend_decl = just(Token::Extend)
             .ignore_then(select! { Token::Ident(name) => name })
+            .then(generic_params.clone())
             .then({
                 let method_body = stmt
                     .clone()
@@ -210,6 +230,7 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
 
                 let method = just(Token::Fn)
                     .ignore_then(select! { Token::Ident(name) => name })
+                    .then(generic_params.clone())
                     .then(
                         select! { Token::Ident(name) => name }
                             .then(just(Token::Colon).ignore_then(ty.clone()).or_not())
@@ -230,7 +251,7 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                                 .then_ignore(just(Token::Semicolon))
                                 .map(|e| vec![Stmt::Return(Some(e))])),
                     )
-                    .map(|(((name, params), return_ty), body)| {
+                    .map(|((((name, type_params), params), return_ty), body)| {
                         let is_static = params.first().map(|(n, _)| n != "self").unwrap_or(true);
                         auwla_ast::stmt::Method {
                             name,
@@ -238,6 +259,7 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                             return_ty,
                             body,
                             is_static,
+                            type_params,
                         }
                     });
 
@@ -245,7 +267,24 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                     .repeated()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace))
             })
-            .map(|(type_name, methods)| Stmt::Extend { type_name, methods });
+            .map(|((type_name, type_params), methods)| Stmt::Extend {
+                type_params,
+                type_name,
+                methods,
+            });
+
+        // type Name = Result<string, string>;
+        let type_alias = just(Token::Type)
+            .ignore_then(select! { Token::Ident(name) => name })
+            .then(generic_params.clone())
+            .then_ignore(just(Token::Assign))
+            .then(ty.clone())
+            .then_ignore(just(Token::Semicolon))
+            .map(|((name, type_params), aliased_type)| Stmt::TypeAlias {
+                name,
+                type_params,
+                aliased_type,
+            });
 
         // Expression as statement \u2014 with semicolon for most expressions,
         // but match expressions don't need a trailing semicolon
@@ -274,6 +313,7 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             enum_decl,
             fn_decl,
             assign_stmt,
+            type_alias,
             match_stmt,
             expr_stmt,
         ))

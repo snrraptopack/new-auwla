@@ -1,6 +1,6 @@
 use crate::checker::Typechecker;
-use auwla_ast::{Expr, Stmt, Type};
 use crate::scope::Mutability;
+use auwla_ast::{Expr, Stmt, Type};
 
 impl Typechecker {
     pub fn check_stmt(&mut self, stmt: &Stmt) -> Result<(), String> {
@@ -162,12 +162,19 @@ impl Typechecker {
             }
             Stmt::Fn {
                 name,
+                type_params,
                 params,
                 return_ty,
                 body,
+                ..
             } => {
                 let param_types = params.iter().map(|(_, ty)| ty.clone()).collect();
-                self.declare_function(name.clone(), param_types, return_ty.clone());
+                self.declare_function(
+                    name.clone(),
+                    type_params.clone(),
+                    param_types,
+                    return_ty.clone(),
+                );
 
                 let prev_return = self.current_return_type.take();
                 let prev_func_name = self.current_function_name.take();
@@ -294,14 +301,20 @@ impl Typechecker {
                 self.exit_scope();
                 Ok(())
             }
-            Stmt::StructDecl { name, fields } => {
+            Stmt::StructDecl { name, fields, .. } => {
                 if self.structs.contains_key(name) {
                     return Err(format!("Struct '{}' is already defined", name));
                 }
                 self.structs.insert(name.clone(), fields.clone());
                 Ok(())
             }
-            Stmt::EnumDecl { name, variants } => {
+            Stmt::TypeAlias {
+                name, aliased_type, ..
+            } => {
+                self.type_aliases.insert(name.clone(), aliased_type.clone());
+                Ok(())
+            }
+            Stmt::EnumDecl { name, variants, .. } => {
                 if self.enums.contains_key(name) {
                     return Err(format!("Enum '{}' is already defined", name));
                 }
@@ -312,7 +325,9 @@ impl Typechecker {
             Stmt::Import { .. } => Ok(()),
             // Export is transparent — the inner stmt is what matters for type-checking.
             Stmt::Export { stmt: inner } => self.check_stmt(inner),
-            Stmt::Extend { type_name, methods } => {
+            Stmt::Extend {
+                type_name, methods, ..
+            } => {
                 let self_type = match type_name.as_str() {
                     "number" | "string" | "boolean" => Type::Basic(type_name.clone()),
                     _ => Type::Custom(type_name.clone()),
@@ -334,6 +349,7 @@ impl Typechecker {
                         .collect();
 
                     method_sigs.push((
+                        method.type_params.clone(),
                         method.name.clone(),
                         method.is_static,
                         full_params.clone(),
@@ -364,5 +380,4 @@ impl Typechecker {
             }
         }
     }
-
 }

@@ -19,7 +19,16 @@ fn expr_parser_inner(
                 .to(Expr::BoolLit(true))
                 .or(just(Token::False).to(Expr::BoolLit(false)));
 
+            let generic_args = just(Token::DoubleColon)
+                .ignore_then(
+                    crate::types::type_parser()
+                        .separated_by(just(Token::Comma))
+                        .delimited_by(just(Token::Lt), just(Token::Gt)),
+                )
+                .or_not();
+
             let struct_init = select! { Token::Ident(name) => name }
+                .then(generic_args.clone())
                 .then(
                     select! { Token::Ident(field) => field }
                         .then_ignore(just(Token::Colon))
@@ -28,18 +37,27 @@ fn expr_parser_inner(
                         .allow_trailing()
                         .delimited_by(just(Token::LBrace), just(Token::RBrace)),
                 )
-                .map(|(name, fields)| Expr::StructInit { name, fields });
+                .map(|((name, type_args), fields)| Expr::StructInit {
+                    name,
+                    type_args,
+                    fields,
+                });
 
             let ident_or_call = select! { Token::Ident(s) => s }
+                .then(generic_args.clone())
                 .then(
                     expr.clone()
                         .separated_by(just(Token::Comma))
                         .delimited_by(just(Token::LParen), just(Token::RParen))
                         .or_not(),
                 )
-                .map(|(name, args)| {
+                .map(|((name, type_args), args)| {
                     if let Some(args) = args {
-                        Expr::Call { name, args }
+                        Expr::Call {
+                            name,
+                            type_args,
+                            args,
+                        }
                     } else {
                         Expr::Identifier(name)
                     }
@@ -82,8 +100,9 @@ fn expr_parser_inner(
                 )
                 .map(|inner| Expr::None(inner.map(Box::new)));
 
-            // EnumInit: EnumName::VariantName(arg1, arg2)
+            // EnumInit: EnumName::<T>::VariantName(arg1, arg2)
             let enum_init = select! { Token::Ident(name) => name }
+                .then(generic_args.clone())
                 .then_ignore(just(Token::DoubleColon))
                 .then(select! { Token::Ident(vname) => vname })
                 .then(
@@ -94,11 +113,14 @@ fn expr_parser_inner(
                         .or_not()
                         .map(|o| o.unwrap_or_default()),
                 )
-                .map(|((enum_name, variant_name), args)| Expr::EnumInit {
-                    enum_name,
-                    variant_name,
-                    args,
-                });
+                .map(
+                    |(((enum_name, type_args), variant_name), args)| Expr::EnumInit {
+                        enum_name,
+                        type_args,
+                        variant_name,
+                        args,
+                    },
+                );
 
             let closure_params = select! { Token::Ident(name) => name }
                 .then(
@@ -109,7 +131,13 @@ fn expr_parser_inner(
                 .separated_by(just(Token::Comma))
                 .delimited_by(just(Token::LParen), just(Token::RParen));
 
-            let closure = closure_params
+            let generic_params = select! { Token::Ident(name) => name }
+                .separated_by(just(Token::Comma))
+                .delimited_by(just(Token::Lt), just(Token::Gt))
+                .or_not();
+
+            let closure = generic_params
+                .then(closure_params)
                 .then(
                     just(Token::Colon)
                         .ignore_then(crate::types::type_parser())
@@ -117,7 +145,8 @@ fn expr_parser_inner(
                 )
                 .then_ignore(just(Token::FatArrow))
                 .then(expr.clone())
-                .map(|((params, return_ty), body)| Expr::Closure {
+                .map(|(((type_params, params), return_ty), body)| Expr::Closure {
+                    type_params,
                     params,
                     return_ty,
                     body: Box::new(body),
@@ -310,7 +339,7 @@ fn expr_parser_inner(
                 Index(Expr),
                 Try(Option<Expr>),
                 /// Dot followed by ident — resolved to Method (with args) or Prop (no args)
-                Method(String, Vec<Expr>),
+                Method(String, Option<Vec<auwla_ast::Type>>, Vec<Expr>),
                 Prop(String),
             }
 
@@ -331,6 +360,7 @@ fn expr_parser_inner(
             // Dot followed by ident then optional call args
             let dot_postfix = just(Token::Dot)
                 .ignore_then(select! { Token::Ident(name) => name })
+                .then(generic_args.clone())
                 .then(
                     expr.clone()
                         .separated_by(just(Token::Comma))
@@ -338,8 +368,8 @@ fn expr_parser_inner(
                         .delimited_by(just(Token::LParen), just(Token::RParen))
                         .or_not(),
                 )
-                .map(|(name, args_opt)| match args_opt {
-                    Some(args) => PostOp::Method(name, args),
+                .map(|((name, type_args), args_opt)| match args_opt {
+                    Some(args) => PostOp::Method(name, type_args, args),
                     None => PostOp::Prop(name),
                 });
 
@@ -355,9 +385,10 @@ fn expr_parser_inner(
                             expr: Box::new(acc),
                             error_expr: err.map(Box::new),
                         },
-                        PostOp::Method(method, args) => Expr::MethodCall {
+                        PostOp::Method(method, type_args, args) => Expr::MethodCall {
                             expr: Box::new(acc),
                             method,
+                            type_args,
                             args,
                         },
                         PostOp::Prop(prop) => Expr::PropertyAccess {

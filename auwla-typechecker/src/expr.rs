@@ -50,7 +50,11 @@ impl Typechecker {
                     Ok(Type::Optional(Box::new(Type::Basic("unknown".to_string()))))
                 }
             }
-            Expr::Call { name, args } => {
+            Expr::Call {
+                name,
+                args,
+                type_args,
+            } => {
                 // Built-in functions
                 if name == "print" {
                     // print() accepts any number of arguments of any type
@@ -60,9 +64,11 @@ impl Typechecker {
                     return Ok(Type::Basic("void".to_string()));
                 }
 
-                let (params, return_ty) = if let Some(var_ty) = self.lookup_variable(name) {
+                let (type_params, params, return_ty) = if let Some(var_ty) =
+                    self.lookup_variable(name)
+                {
                     if let Type::Function(p, r) = var_ty {
-                        (p, Some(*r))
+                        (None, p, Some(*r))
                     } else {
                         return Err(format!("Type error: variable '{}' is not a function", name));
                     }
@@ -71,21 +77,92 @@ impl Typechecker {
                         .ok_or_else(|| format!("Undefined function: '{}'", name))?
                 };
 
-                if params.len() != args.len() {
+                let mut unifier = crate::inference::unify::Unifier::new();
+
+                // 1. If the function is generic, create InferenceVars for its type parameters
+                let mut type_env = std::collections::HashMap::new();
+                if let Some(t_params) = type_params {
+                    if let Some(t_args) = type_args {
+                        if t_args.len() != t_params.len() {
+                            return Err(format!(
+                                "Function '{}' expects {} type arguments, but {} were provided",
+                                name,
+                                t_params.len(),
+                                t_args.len()
+                            ));
+                        }
+                        for (tp, ta) in t_params.iter().zip(t_args) {
+                            let id = unifier.new_type_var();
+                            unifier.bind(id, ta)?;
+                            type_env.insert(tp.clone(), id);
+                        }
+                    } else {
+                        for tp in t_params {
+                            let id = unifier.new_type_var();
+                            type_env.insert(tp.clone(), id);
+                        }
+                    }
+                } else if type_args.is_some() {
+                    return Err(format!(
+                        "Function '{}' is not generic but type arguments were provided",
+                        name
+                    ));
+                }
+
+                // Helper to completely instantiate a type from the signature into unification variables
+                fn instantiate(ty: &Type, env: &std::collections::HashMap<String, usize>) -> Type {
+                    match ty {
+                        Type::TypeVar(name) | Type::Custom(name) => {
+                            if let Some(&id) = env.get(name) {
+                                Type::InferenceVar(id)
+                            } else {
+                                ty.clone()
+                            }
+                        }
+                        Type::Array(inner) => Type::Array(Box::new(instantiate(inner, env))),
+                        Type::Optional(inner) => Type::Optional(Box::new(instantiate(inner, env))),
+                        Type::Result { ok_type, err_type } => Type::Result {
+                            ok_type: Box::new(instantiate(ok_type, env)),
+                            err_type: Box::new(instantiate(err_type, env)),
+                        },
+                        Type::Function(p, r) => {
+                            let inst_p = p.iter().map(|p| instantiate(p, env)).collect();
+                            let inst_r = Box::new(instantiate(r, env));
+                            Type::Function(inst_p, inst_r)
+                        }
+                        Type::Generic(n, args) => {
+                            let inst_args = args.iter().map(|a| instantiate(a, env)).collect();
+                            Type::Generic(n.clone(), inst_args)
+                        }
+                        _ => ty.clone(),
+                    }
+                }
+
+                let inst_params: Vec<Type> =
+                    params.iter().map(|p| instantiate(p, &type_env)).collect();
+                let inst_return_ty = return_ty.map(|r| instantiate(&r, &type_env));
+
+                if inst_params.len() != args.len() {
                     return Err(format!(
                         "Function '{}' expects {} arguments, but {} were provided",
                         name,
-                        params.len(),
+                        inst_params.len(),
                         args.len()
                     ));
                 }
 
-                for (param_ty, arg_expr) in params.iter().zip(args) {
+                for (param_ty, arg_expr) in inst_params.iter().zip(args) {
                     let arg_ty = self.check_expr(arg_expr)?;
-                    self.assert_type_eq(param_ty, &arg_ty)?;
+                    // Unify the passed argument with the generic parameter signature!
+                    unifier.unify(param_ty, &arg_ty)?;
                 }
 
-                Ok(return_ty.unwrap_or(Type::Basic("void".to_string())))
+                // Resolve the return type with all unified variables bound
+                let resolved_return = inst_return_ty
+                    .map(|r| unifier.resolve(&r))
+                    .unwrap_or(Type::Basic("void".to_string()));
+
+                Ok(resolved_return)
             }
             Expr::Unary { op, expr } => {
                 let inner = self.check_expr(expr)?;
@@ -488,7 +565,7 @@ impl Typechecker {
 
                 Ok(ok_ty)
             }
-            Expr::StructInit { name, fields } => {
+            Expr::StructInit { name, fields, .. } => {
                 let struct_def = self
                     .structs
                     .get(name)
@@ -527,6 +604,7 @@ impl Typechecker {
                 enum_name,
                 variant_name,
                 args,
+                ..
             } => {
                 let enum_def = self
                     .enums
@@ -588,7 +666,12 @@ impl Typechecker {
                     }
                 }
             }
-            Expr::MethodCall { expr, method, args } => {
+            Expr::MethodCall {
+                expr,
+                method,
+                args,
+                type_args,
+            } => {
                 let expr_ty = self.check_expr(expr)?;
                 // Resolve the type name for lookup in the extension registry
                 let type_key = match &expr_ty {
@@ -598,8 +681,8 @@ impl Typechecker {
                 };
                 let method_sigs = self.extensions.get(&type_key).cloned();
                 if let Some(sigs) = method_sigs {
-                    if let Some((_, is_static, params, return_ty)) =
-                        sigs.iter().find(|(n, _, _, _)| n == method).cloned()
+                    if let Some((type_params, _, is_static, params, return_ty)) =
+                        sigs.iter().find(|(_, n, _, _, _)| n == method).cloned()
                     {
                         if is_static {
                             return Err(format!(
@@ -614,19 +697,102 @@ impl Typechecker {
                             } else {
                                 &params[..]
                             };
-                        if explicit_params.len() != args.len() {
+
+                        let mut unifier = crate::inference::unify::Unifier::new();
+
+                        let mut type_env = std::collections::HashMap::new();
+                        if let Some(t_params) = type_params {
+                            if let Some(t_args) = type_args {
+                                if t_args.len() != t_params.len() {
+                                    return Err(format!(
+                                        "Method '{}' expects {} type arguments, but {} were provided",
+                                        method,
+                                        t_params.len(),
+                                        t_args.len()
+                                    ));
+                                }
+                                for (tp, ta) in t_params.iter().zip(t_args) {
+                                    let id = unifier.new_type_var();
+                                    unifier.bind(id, ta)?;
+                                    type_env.insert(tp.clone(), id);
+                                }
+                            } else {
+                                for tp in t_params {
+                                    let id = unifier.new_type_var();
+                                    type_env.insert(tp.clone(), id);
+                                }
+                            }
+                        } else if type_args.is_some() {
+                            return Err(format!(
+                                "Method '{}' is not generic but type arguments were provided",
+                                method
+                            ));
+                        }
+
+                        fn instantiate(
+                            ty: &Type,
+                            env: &std::collections::HashMap<String, usize>,
+                        ) -> Type {
+                            match ty {
+                                Type::TypeVar(name) | Type::Custom(name) => {
+                                    if let Some(&id) = env.get(name) {
+                                        Type::InferenceVar(id)
+                                    } else {
+                                        ty.clone()
+                                    }
+                                }
+                                Type::Array(inner) => {
+                                    Type::Array(Box::new(instantiate(inner, env)))
+                                }
+                                Type::Optional(inner) => {
+                                    Type::Optional(Box::new(instantiate(inner, env)))
+                                }
+                                Type::Result { ok_type, err_type } => Type::Result {
+                                    ok_type: Box::new(instantiate(ok_type, env)),
+                                    err_type: Box::new(instantiate(err_type, env)),
+                                },
+                                Type::Function(p, r) => {
+                                    let inst_p = p.iter().map(|p| instantiate(p, env)).collect();
+                                    let inst_r = Box::new(instantiate(r, env));
+                                    Type::Function(inst_p, inst_r)
+                                }
+                                Type::Generic(n, args) => {
+                                    let inst_args =
+                                        args.iter().map(|a| instantiate(a, env)).collect();
+                                    Type::Generic(n.clone(), inst_args)
+                                }
+                                _ => ty.clone(),
+                            }
+                        }
+
+                        let inst_params: Vec<Type> = explicit_params
+                            .iter()
+                            .map(|(_, p)| instantiate(p, &type_env))
+                            .collect();
+                        let inst_return_ty = return_ty.map(|r| instantiate(&r, &type_env));
+
+                        if inst_params.len() != args.len() {
                             return Err(format!(
                                 "Method '{}' expects {} arg(s), got {}",
                                 method,
-                                explicit_params.len(),
+                                inst_params.len(),
                                 args.len()
                             ));
                         }
-                        for ((_, expected), arg_expr) in explicit_params.iter().zip(args) {
+
+                        // First, unify the `self` instance expression type with the expected `self` argument type
+                        // if the method is generic on the struct.
+                        // For MVP, generic methods just rely on argument types.
+                        for (param_ty, arg_expr) in inst_params.iter().zip(args) {
                             let arg_ty = self.check_expr(arg_expr)?;
-                            self.assert_type_eq(expected, &arg_ty)?;
+                            unifier.unify(param_ty, &arg_ty)?;
                         }
-                        return Ok(return_ty.unwrap_or(Type::Basic("void".to_string())));
+
+                        let resolved_return = inst_return_ty
+                            .map(|r| unifier.resolve(&r))
+                            .unwrap_or(Type::Basic("void".to_string()));
+
+                        return Ok(resolved_return);
                     }
                 }
                 // Not found as extension — might be a closure field call; validate args permissively
@@ -657,6 +823,7 @@ impl Typechecker {
                 params,
                 return_ty,
                 body,
+                ..
             } => {
                 let mut param_types = Vec::new();
                 self.enter_scope();

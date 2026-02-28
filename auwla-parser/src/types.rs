@@ -4,12 +4,23 @@ use chumsky::prelude::*;
 
 pub fn type_parser() -> impl Parser<Token, Type, Error = Simple<Token>> + Clone {
     recursive(|ty| {
-        let basic_or_custom = select! { Token::Ident(name) => {
-            match name.as_str() {
-                "number" | "string" | "bool" | "void" => Type::Basic(name),
-                _ => Type::Custom(name),
-            }
-        } };
+        let basic_or_custom = select! { Token::Ident(name) => name }
+            .then(
+                ty.clone()
+                    .separated_by(just(Token::Comma))
+                    .delimited_by(just(Token::Lt), just(Token::Gt))
+                    .or_not(),
+            )
+            .map(|(name, args)| {
+                if let Some(args) = args {
+                    Type::Generic(name, args)
+                } else {
+                    match name.as_str() {
+                        "number" | "string" | "bool" | "void" => Type::Basic(name),
+                        _ => Type::Custom(name),
+                    }
+                }
+            });
 
         let func = ty
             .clone()

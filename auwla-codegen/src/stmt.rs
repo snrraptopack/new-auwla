@@ -190,7 +190,7 @@ impl JsEmitter {
                     self.write(";\n");
                 }
             }
-            Stmt::StructDecl { .. } | Stmt::EnumDecl { .. } => {
+            Stmt::StructDecl { .. } | Stmt::EnumDecl { .. } | Stmt::TypeAlias { .. } => {
                 // Struct/Enum declarations vanish in JS, they are purely for compile-time typechecking
                 // We emit nothing to keep it zero-cost.
             }
@@ -236,7 +236,7 @@ impl JsEmitter {
                         self.output.truncate(saved_len);
                         self.output.push_str(&new_emitted);
                     }
-                    Stmt::StructDecl { .. } | Stmt::EnumDecl { .. } => {
+                    Stmt::StructDecl { .. } | Stmt::EnumDecl { .. } | Stmt::TypeAlias { .. } => {
                         // types vanish in JS output — no-op
                     }
                     _ => {
@@ -245,7 +245,7 @@ impl JsEmitter {
                     }
                 }
             }
-            Stmt::Extend { type_name, methods } => {
+            Stmt::Extend { type_name, methods, .. } => {
                 // Emit each method as a standalone function: __ext_TypeName_methodName
                 for method in methods {
                     // Register method parameters in var_types

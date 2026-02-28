@@ -65,7 +65,7 @@ impl JsEmitter {
                     self.write("({ ok: false })");
                 }
             }
-            Expr::Call { name, args } => {
+            Expr::Call { name, args, .. } => {
                 // Map built-in functions
                 let js_name = if name == "print" {
                     "__print"
@@ -219,7 +219,9 @@ impl JsEmitter {
                 self.emit_expr(expr);
                 self.write(&format!(".{}", property));
             }
-            Expr::MethodCall { expr, method, args } => {
+            Expr::MethodCall {
+                expr, method, args, ..
+            } => {
                 // Resolve whether this is an extension call by looking up the receiver type.
                 let receiver_type_key: Option<String> = match expr.as_ref() {
                     Expr::Identifier(name) => self.var_types.get(name).cloned(),
@@ -257,6 +259,7 @@ impl JsEmitter {
                 enum_name: _,
                 variant_name,
                 args,
+                ..
             } => {
                 self.write("{ $variant: \"");
                 self.write(variant_name);

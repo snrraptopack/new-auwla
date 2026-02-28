@@ -13,7 +13,7 @@ pub enum Mutability {
 pub struct Scope {
     pub variables: HashMap<String, Type>,
     pub mutability: HashMap<String, Mutability>,
-    pub functions: HashMap<String, (Vec<Type>, Option<Type>)>,
+    pub functions: HashMap<String, (Option<Vec<String>>, Vec<Type>, Option<Type>)>,
 }
 
 impl Default for Scope {
