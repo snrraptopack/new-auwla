@@ -275,6 +275,15 @@ impl Typechecker {
                 })
             }
             Expr::Call { name, args } => {
+                // Built-in functions
+                if name == "print" {
+                    // print() accepts any number of arguments of any type
+                    for arg in args {
+                        self.check_expr(arg)?;
+                    }
+                    return Ok(Type::Basic("void".to_string()));
+                }
+
                 let (params, return_ty) = self
                     .lookup_function(name)
                     .ok_or_else(|| format!("Undefined function: '{}'", name))?;

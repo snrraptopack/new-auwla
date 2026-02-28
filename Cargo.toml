@@ -3,6 +3,8 @@ members = [
     "auwla-lexer",
     "auwla-ast",
     "auwla-parser",
-    "auwla-cli"
-, "auwla-typechecker"]
+    "auwla-typechecker",
+    "auwla-codegen",
+    "auwla-cli",
+]
 resolver = "2"

@@ -1,0 +1,407 @@
+use auwla_ast::expr::{BinaryOp, Expr, MatchArm, UnaryOp};
+use auwla_ast::stmt::Stmt;
+use auwla_ast::Program;
+
+/// Emits JavaScript source code from a type-checked Auwla AST.
+pub fn emit_js(program: &Program) -> String {
+    let mut emitter = JsEmitter::new();
+    emitter.emit_program(program);
+    emitter.output
+}
+
+struct JsEmitter {
+    output: String,
+    indent: usize,
+    /// Counter for generating unique temp variable names (e.g. __match_0, __match_1)
+    temp_counter: usize,
+}
+
+impl JsEmitter {
+    fn new() -> Self {
+        Self {
+            output: String::new(),
+            indent: 0,
+            temp_counter: 0,
+        }
+    }
+
+    fn fresh_temp(&mut self) -> String {
+        let name = format!("__match_{}", self.temp_counter);
+        self.temp_counter += 1;
+        name
+    }
+
+    fn write(&mut self, s: &str) {
+        self.output.push_str(s);
+    }
+
+    fn write_indent(&mut self) {
+        for _ in 0..self.indent {
+            self.output.push_str("  ");
+        }
+    }
+
+    fn writeln(&mut self, s: &str) {
+        self.write_indent();
+        self.output.push_str(s);
+        self.output.push('\n');
+    }
+
+    // ──────────────────────────── Program ────────────────────────────
+
+    fn emit_program(&mut self, program: &Program) {
+        for stmt in &program.statements {
+            self.emit_stmt(stmt);
+        }
+    }
+
+    // ──────────────────────────── Statements ─────────────────────────
+
+    fn emit_stmt(&mut self, stmt: &Stmt) {
+        match stmt {
+            Stmt::Let {
+                name, initializer, ..
+            } => {
+                // Check if initializer is a match expression — needs special handling
+                if let Expr::Match {
+                    expr,
+                    some_arm,
+                    none_arm,
+                } = initializer
+                {
+                    self.emit_match_assign("const", name, expr, some_arm, none_arm);
+                } else {
+                    self.write_indent();
+                    self.write(&format!("const {} = ", name));
+                    self.emit_expr(initializer);
+                    self.write(";\n");
+                }
+            }
+            Stmt::Var {
+                name, initializer, ..
+            } => {
+                if let Expr::Match {
+                    expr,
+                    some_arm,
+                    none_arm,
+                } = initializer
+                {
+                    self.emit_match_assign("let", name, expr, some_arm, none_arm);
+                } else {
+                    self.write_indent();
+                    self.write(&format!("let {} = ", name));
+                    self.emit_expr(initializer);
+                    self.write(";\n");
+                }
+            }
+            Stmt::Assign { name, value } => {
+                if let Expr::Match {
+                    expr,
+                    some_arm,
+                    none_arm,
+                } = value
+                {
+                    self.emit_match_assign("", name, expr, some_arm, none_arm);
+                } else {
+                    self.write_indent();
+                    self.write(&format!("{} = ", name));
+                    self.emit_expr(value);
+                    self.write(";\n");
+                }
+            }
+            Stmt::Fn {
+                name, params, body, ..
+            } => {
+                self.write_indent();
+                let param_names: Vec<&str> = params.iter().map(|(n, _)| n.as_str()).collect();
+                self.write(&format!(
+                    "function {}({}) {{\n",
+                    name,
+                    param_names.join(", ")
+                ));
+                self.indent += 1;
+                for s in body {
+                    self.emit_stmt(s);
+                }
+                self.indent -= 1;
+                self.writeln("}");
+            }
+            Stmt::Return(expr_opt) => {
+                self.write_indent();
+                if let Some(expr) = expr_opt {
+                    self.write("return ");
+                    self.emit_expr(expr);
+                    self.write(";\n");
+                } else {
+                    self.write("return;\n");
+                }
+            }
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                self.write_indent();
+                self.write("if (");
+                self.emit_expr(condition);
+                self.write(") {\n");
+                self.indent += 1;
+                for s in then_branch {
+                    self.emit_stmt(s);
+                }
+                self.indent -= 1;
+                if let Some(els) = else_branch {
+                    self.writeln("} else {");
+                    self.indent += 1;
+                    for s in els {
+                        self.emit_stmt(s);
+                    }
+                    self.indent -= 1;
+                }
+                self.writeln("}");
+            }
+            Stmt::While { condition, body } => {
+                self.write_indent();
+                self.write("while (");
+                self.emit_expr(condition);
+                self.write(") {\n");
+                self.indent += 1;
+                for s in body {
+                    self.emit_stmt(s);
+                }
+                self.indent -= 1;
+                self.writeln("}");
+            }
+            Stmt::Expr(expr) => {
+                // Standalone match expression (used as statement)
+                if let Expr::Match {
+                    expr: matched,
+                    some_arm,
+                    none_arm,
+                } = expr
+                {
+                    self.emit_match_standalone(matched, some_arm, none_arm);
+                } else {
+                    self.write_indent();
+                    self.emit_expr(expr);
+                    self.write(";\n");
+                }
+            }
+        }
+    }
+
+    // ──────────────────────────── Match helpers ──────────────────────
+
+    /// Emit: `const/let name = match expr { some(val) => ... none(err) => ... };`
+    /// Becomes:
+    /// ```js
+    /// const __match_N = <expr>;
+    /// let target;   // or const target, depending on decl_kw
+    /// if (__match_N.ok) { const val = __match_N.value; ... target = <result>; }
+    /// else { const err = __match_N.value; ... target = <result>; }
+    /// ```
+    fn emit_match_assign(
+        &mut self,
+        decl_kw: &str,
+        target: &str,
+        matched_expr: &Expr,
+        some_arm: &MatchArm,
+        none_arm: &MatchArm,
+    ) {
+        let temp = self.fresh_temp();
+
+        // const __match_N = <matched_expr>;
+        self.write_indent();
+        self.write(&format!("const {} = ", temp));
+        self.emit_expr(matched_expr);
+        self.write(";\n");
+
+        // let target;
+        if !decl_kw.is_empty() {
+            self.writeln(&format!("let {};", target));
+        }
+
+        // if (__match_N.ok) { ... }
+        self.write_indent();
+        self.write(&format!("if ({}.ok) {{\n", temp));
+        self.indent += 1;
+        self.emit_arm_body(&temp, target, some_arm);
+        self.indent -= 1;
+        self.writeln("} else {");
+        self.indent += 1;
+        self.emit_arm_body(&temp, target, none_arm);
+        self.indent -= 1;
+        self.writeln("}");
+    }
+
+    /// Emit a standalone match (not assigned to anything).
+    fn emit_match_standalone(
+        &mut self,
+        matched_expr: &Expr,
+        some_arm: &MatchArm,
+        none_arm: &MatchArm,
+    ) {
+        let temp = self.fresh_temp();
+
+        self.write_indent();
+        self.write(&format!("const {} = ", temp));
+        self.emit_expr(matched_expr);
+        self.write(";\n");
+
+        self.write_indent();
+        self.write(&format!("if ({}.ok) {{\n", temp));
+        self.indent += 1;
+        self.emit_arm_body_standalone(&temp, some_arm);
+        self.indent -= 1;
+        self.writeln("} else {");
+        self.indent += 1;
+        self.emit_arm_body_standalone(&temp, none_arm);
+        self.indent -= 1;
+        self.writeln("}");
+    }
+
+    /// Emit arm body for an assigned match: bind the inner value, run stmts, assign result to target.
+    fn emit_arm_body(&mut self, temp: &str, target: &str, arm: &MatchArm) {
+        self.writeln(&format!("const {} = {}.value;", arm.binding, temp));
+        for s in &arm.stmts {
+            self.emit_stmt(s);
+        }
+        if let Some(result) = &arm.result {
+            self.write_indent();
+            self.write(&format!("{} = ", target));
+            self.emit_expr(result);
+            self.write(";\n");
+        }
+    }
+
+    /// Emit arm body for standalone match: bind the inner value, run stmts, no assignment.
+    fn emit_arm_body_standalone(&mut self, temp: &str, arm: &MatchArm) {
+        self.writeln(&format!("const {} = {}.value;", arm.binding, temp));
+        for s in &arm.stmts {
+            self.emit_stmt(s);
+        }
+        // standalone — no result assignment needed, ignore arm.result
+    }
+
+    // ──────────────────────────── Expressions ────────────────────────
+
+    fn emit_expr(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Void => self.write("undefined"),
+            Expr::StringLit(s) => self.write(&format!("\"{}\"", s)),
+            Expr::NumberLit(n) => {
+                // Emit integers without decimal point
+                if *n == (*n as i64) as f64 {
+                    self.write(&format!("{}", *n as i64));
+                } else {
+                    self.write(&format!("{}", n));
+                }
+            }
+            Expr::BoolLit(b) => self.write(if *b { "true" } else { "false" }),
+            Expr::Identifier(name) => self.write(name),
+            Expr::Binary { op, left, right } => {
+                self.write("(");
+                self.emit_expr(left);
+                let op_str = match op {
+                    BinaryOp::Add => " + ",
+                    BinaryOp::Sub => " - ",
+                    BinaryOp::Mul => " * ",
+                    BinaryOp::Div => " / ",
+                    BinaryOp::Eq => " === ",
+                    BinaryOp::Neq => " !== ",
+                    BinaryOp::Lt => " < ",
+                    BinaryOp::Gt => " > ",
+                    BinaryOp::Lte => " <= ",
+                    BinaryOp::Gte => " >= ",
+                    BinaryOp::And => " && ",
+                    BinaryOp::Or => " || ",
+                };
+                self.write(op_str);
+                self.emit_expr(right);
+                self.write(")");
+            }
+            Expr::Unary { op, expr: inner } => {
+                match op {
+                    UnaryOp::Not => self.write("!"),
+                    UnaryOp::Neg => self.write("-"),
+                }
+                self.emit_expr(inner);
+            }
+            Expr::Some(inner) => {
+                self.write("({ ok: true, value: ");
+                self.emit_expr(inner);
+                self.write(" })");
+            }
+            Expr::None(inner) => {
+                self.write("({ ok: false, value: ");
+                self.emit_expr(inner);
+                self.write(" })");
+            }
+            Expr::Call { name, args } => {
+                // Map built-in functions
+                let js_name = if name == "print" {
+                    "console.log"
+                } else {
+                    name.as_str()
+                };
+                self.write(js_name);
+                self.write("(");
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        self.write(", ");
+                    }
+                    self.emit_expr(arg);
+                }
+                self.write(")");
+            }
+            Expr::Match {
+                expr: matched,
+                some_arm,
+                none_arm,
+            } => {
+                // Match used inline as an expression (e.g. inside another expr).
+                // This is rare — most match exprs are caught at the Stmt level.
+                // Emit an IIFE for safety.
+                self.write("(() => {\n");
+                self.indent += 1;
+                let temp = self.fresh_temp();
+                self.write_indent();
+                self.write(&format!("const {} = ", temp));
+                self.emit_expr(matched);
+                self.write(";\n");
+
+                self.write_indent();
+                self.write(&format!("if ({}.ok) {{\n", temp));
+                self.indent += 1;
+                self.writeln(&format!("const {} = {}.value;", some_arm.binding, temp));
+                for s in &some_arm.stmts {
+                    self.emit_stmt(s);
+                }
+                if let Some(result) = &some_arm.result {
+                    self.write_indent();
+                    self.write("return ");
+                    self.emit_expr(result);
+                    self.write(";\n");
+                }
+                self.indent -= 1;
+                self.writeln("} else {");
+                self.indent += 1;
+                self.writeln(&format!("const {} = {}.value;", none_arm.binding, temp));
+                for s in &none_arm.stmts {
+                    self.emit_stmt(s);
+                }
+                if let Some(result) = &none_arm.result {
+                    self.write_indent();
+                    self.write("return ");
+                    self.emit_expr(result);
+                    self.write(";\n");
+                }
+                self.indent -= 1;
+                self.writeln("}");
+                self.indent -= 1;
+                self.write_indent();
+                self.write("})()");
+            }
+        }
+    }
+}

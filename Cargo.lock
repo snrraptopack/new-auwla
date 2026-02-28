@@ -47,9 +47,17 @@ name = "auwla-cli"
 version = "0.1.0"
 dependencies = [
  "auwla-ast",
+ "auwla-codegen",
  "auwla-lexer",
  "auwla-parser",
  "auwla-typechecker",
+]
+
+[[package]]
+name = "auwla-codegen"
+version = "0.1.0"
+dependencies = [
+ "auwla-ast",
 ]
 
 [[package]]

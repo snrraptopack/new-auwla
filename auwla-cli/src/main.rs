@@ -1,4 +1,5 @@
 use auwla_ast::Program;
+use auwla_codegen::emit_js;
 use auwla_lexer::lex;
 use auwla_parser::parse;
 use auwla_typechecker::Typechecker;
@@ -84,7 +85,15 @@ fn main() {
 
     let mut typechecker = Typechecker::new();
     match typechecker.check_program(&ast) {
-        Ok(_) => println!("✓  Typechecking passed — no errors found."),
+        Ok(_) => {
+            println!("✓  Typechecking passed — no errors found.");
+
+            // Code generation
+            let js_output = emit_js(&ast);
+            let output_file = "output.js";
+            fs::write(output_file, &js_output).expect("Failed to write output.js");
+            println!("✓  Generated '{}' ({} bytes)", output_file, js_output.len());
+        }
         Err(e) => {
             eprintln!("╔═══════════════════════════════════╗");
             eprintln!("║       Auwla  ─  Type Error         ║");
