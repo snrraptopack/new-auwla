@@ -47,6 +47,8 @@ pub enum Token {
     Extend,
     #[token("type")]
     Type,
+    #[token("array")]
+    Array,
 
     // Identifiers
     #[regex("[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
@@ -134,6 +136,8 @@ pub enum Token {
     Not,
     #[token("=>")]
     FatArrow,
+    #[token("@")]
+    At,
 }
 
 impl std::fmt::Display for Token {
@@ -160,6 +164,7 @@ impl std::fmt::Display for Token {
             Token::From => write!(f, "from"),
             Token::Extend => write!(f, "extend"),
             Token::Type => write!(f, "type"),
+            Token::Array => write!(f, "array"),
             Token::Ident(name) => write!(f, "{}", name),
             Token::StringLit(s) => write!(f, "\"{}\"", s),
             Token::InterpStart => write!(f, "interp_start"),
@@ -197,6 +202,7 @@ impl std::fmt::Display for Token {
             Token::Pipe => write!(f, "|"),
             Token::Not => write!(f, "!"),
             Token::FatArrow => write!(f, "=>"),
+            Token::At => write!(f, "@"),
         }
     }
 }

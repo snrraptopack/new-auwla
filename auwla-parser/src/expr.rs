@@ -129,7 +129,31 @@ fn expr_parser_inner(
                     auwla_ast::Spanned::new(auwla_ast::ExprKind::None(inner.map(Box::new)), span)
                 });
 
-            // EnumInit: EnumName::<T>::VariantName(arg1, arg2)
+            // StaticMethodCall: TypeName::<T>::method(arg1, arg2)
+            let static_method_call = select! { Token::Ident(name) => name }
+                .or(just(Token::Array).to("array".to_string()))
+                .then(generic_args.clone())
+                .then_ignore(just(Token::DoubleColon))
+                .then(select! { Token::Ident(method) => method })
+                .then(
+                    expr.clone()
+                        .separated_by(just(Token::Comma))
+                        .allow_trailing()
+                        .delimited_by(just(Token::LParen), just(Token::RParen)),
+                )
+                .map_with_span(|(((type_name, type_args), method), args), span| {
+                    auwla_ast::Spanned::new(
+                        auwla_ast::ExprKind::StaticMethodCall {
+                            type_name,
+                            type_args,
+                            method,
+                            args,
+                        },
+                        span,
+                    )
+                });
+
+            // EnumInit: EnumName::<T>::VariantName(arg1, arg2) (subset of static method call if parens present)
             let enum_init = select! { Token::Ident(name) => name }
                 .then(generic_args.clone())
                 .then_ignore(just(Token::DoubleColon))
@@ -218,6 +242,7 @@ fn expr_parser_inner(
                 .or(none_expr)
                 .or(interp)
                 .or(enum_init)
+                .or(static_method_call)
                 .or(ident_call_struct.clone())
                 .or(num.clone())
                 .or(str_lit.clone())

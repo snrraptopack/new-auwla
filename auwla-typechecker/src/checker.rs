@@ -12,16 +12,7 @@ pub struct Typechecker {
     pub(crate) enums: HashMap<String, Vec<(String, Vec<Type>)>>,
     pub(crate) type_aliases: HashMap<String, Type>,
     /// type_name -> [(type_params, method_name, is_static, params_with_types, return_ty)]
-    pub extensions: HashMap<
-        String,
-        Vec<(
-            Option<Vec<String>>,
-            String,
-            bool,
-            Vec<(String, Type)>,
-            Option<Type>,
-        )>,
-    >,
+    pub extensions: HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
 }
 
 impl Default for Typechecker {
@@ -45,18 +36,7 @@ impl Typechecker {
 
     /// Returns a reference to the extension method registry.
     /// Used by the code generator to identify extension call sites.
-    pub fn get_extensions(
-        &self,
-    ) -> &HashMap<
-        String,
-        Vec<(
-            Option<Vec<String>>,
-            String,
-            bool,
-            Vec<(String, Type)>,
-            Option<Type>,
-        )>,
-    > {
+    pub fn get_extensions(&self) -> &HashMap<String, Vec<auwla_ast::ExtensionMethod>> {
         &self.extensions
     }
 
@@ -203,6 +183,35 @@ impl Typechecker {
                 } else {
                     ty.clone()
                 }
+            }
+            _ => ty.clone(),
+        }
+    }
+
+    pub(crate) fn genericize_type(&self, ty: &Type, type_params: &[String]) -> Type {
+        match ty {
+            Type::Custom(name) if type_params.contains(name) => Type::TypeVar(name.clone()),
+            Type::Array(inner) => Type::Array(Box::new(self.genericize_type(inner, type_params))),
+            Type::Optional(inner) => {
+                Type::Optional(Box::new(self.genericize_type(inner, type_params)))
+            }
+            Type::Result { ok_type, err_type } => Type::Result {
+                ok_type: Box::new(self.genericize_type(ok_type, type_params)),
+                err_type: Box::new(self.genericize_type(err_type, type_params)),
+            },
+            Type::Generic(name, args) => {
+                let gen_args = args
+                    .iter()
+                    .map(|a| self.genericize_type(a, type_params))
+                    .collect();
+                Type::Generic(name.clone(), gen_args)
+            }
+            Type::Function(params, ret) => {
+                let gen_params = params
+                    .iter()
+                    .map(|p| self.genericize_type(p, type_params))
+                    .collect();
+                Type::Function(gen_params, Box::new(self.genericize_type(ret, type_params)))
             }
             _ => ty.clone(),
         }

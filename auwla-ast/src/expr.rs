@@ -114,6 +114,13 @@ pub enum ExprKind {
         type_args: Option<Vec<crate::types::Type>>,
         args: Vec<Expr>,
     },
+    /// TypeName::<T>::method(args)
+    StaticMethodCall {
+        type_name: String,
+        type_args: Option<Vec<crate::types::Type>>,
+        method: String,
+        args: Vec<Expr>,
+    },
     /// <T>(x: T) => x * 2
     Closure {
         type_params: Option<Vec<String>>,

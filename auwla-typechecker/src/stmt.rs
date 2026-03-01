@@ -225,22 +225,34 @@ impl Typechecker {
                 body,
                 ..
             } => {
-                let param_types = params.iter().map(|(_, ty)| ty.clone()).collect();
+                let mut all_tps = Vec::new();
+                if let Some(tps) = type_params.as_ref() {
+                    all_tps.extend(tps.clone());
+                }
+
+                let param_types: Vec<Type> = params
+                    .iter()
+                    .map(|(_, ty)| self.genericize_type(ty, &all_tps))
+                    .collect();
+                let return_ty_gen = return_ty
+                    .as_ref()
+                    .map(|ty| self.genericize_type(ty, &all_tps));
+
                 self.declare_function(
                     name.clone(),
                     type_params.clone(),
-                    param_types,
-                    return_ty.clone(),
+                    param_types.clone(),
+                    return_ty_gen.clone(),
                 );
 
                 let prev_return = self.current_return_type.take();
                 let prev_func_name = self.current_function_name.take();
-                self.current_return_type = Some(return_ty.clone());
+                self.current_return_type = Some(return_ty_gen.clone());
                 self.current_function_name = Some(name.clone());
 
                 self.enter_scope();
                 // Fn params are always mutable within their scope
-                for (param_name, ty) in params {
+                for ((param_name, _), ty) in params.iter().zip(param_types) {
                     self.declare_variable(
                         stmt.span.clone(),
                         param_name.clone(),
@@ -410,14 +422,40 @@ impl Typechecker {
             // Export is transparent — the inner stmt is what matters for type-checking.
             auwla_ast::StmtKind::Export { stmt: inner } => self.check_stmt(inner),
             auwla_ast::StmtKind::Extend {
-                type_name, methods, ..
+                type_name,
+                type_params,
+                methods,
+                ..
             } => {
-                let self_type = match type_name.as_str() {
-                    "number" | "string" | "boolean" => Type::Basic(type_name.clone()),
-                    _ => Type::Custom(type_name.clone()),
+                let self_type = if type_name == "array" {
+                    if let Some(tps) = type_params {
+                        if let Some(tp) = tps.first() {
+                            Type::Array(Box::new(Type::TypeVar(tp.clone())))
+                        } else {
+                            Type::Array(Box::new(Type::Basic("unknown".to_string())))
+                        }
+                    } else {
+                        Type::Array(Box::new(Type::Basic("unknown".to_string())))
+                    }
+                } else {
+                    match type_name.as_str() {
+                        "number" | "string" | "boolean" => Type::Basic(type_name.clone()),
+                        _ => Type::Custom(type_name.clone()),
+                    }
                 };
+                let mut base_tps = Vec::new();
+                if let Some(tps) = type_params.as_ref() {
+                    base_tps.extend(tps.clone());
+                }
+
                 let mut method_sigs = Vec::new();
+                let mut method_infos = Vec::new();
                 for method in methods {
+                    let mut method_tps = base_tps.clone();
+                    if let Some(mtps) = method.type_params.as_ref() {
+                        method_tps.extend(mtps.clone());
+                    }
+
                     // Build fully-typed params: inject self type for instance methods
                     let full_params: Vec<(String, Type)> = method
                         .params
@@ -426,25 +464,44 @@ impl Typechecker {
                             let t = if n == "self" {
                                 self_type.clone()
                             } else {
-                                ty_opt.clone().unwrap_or(Type::Basic("unknown".to_string()))
+                                let ty =
+                                    ty_opt.clone().unwrap_or(Type::Basic("unknown".to_string()));
+                                self.genericize_type(&ty, &method_tps)
                             };
                             (n.clone(), t)
                         })
                         .collect();
 
-                    method_sigs.push((
-                        method.type_params.clone(),
-                        method.name.clone(),
-                        method.is_static,
-                        full_params.clone(),
-                        method.return_ty.clone(),
-                    ));
+                    let return_ty_gen = method
+                        .return_ty
+                        .as_ref()
+                        .map(|ty| self.genericize_type(ty, &method_tps));
 
-                    // Type-check the method body
+                    let combined_tps = if method_tps.is_empty() {
+                        None
+                    } else {
+                        Some(method_tps.clone())
+                    };
+
+                    method_sigs.push(auwla_ast::ExtensionMethod {
+                        type_params: combined_tps,
+                        name: method.name.clone(),
+                        is_static: method.is_static,
+                        params: full_params.clone(),
+                        return_ty: return_ty_gen.clone(),
+                        attributes: method.attributes.clone(),
+                    });
+                    method_infos.push((method, full_params, return_ty_gen));
+                }
+                self.extensions
+                    .entry(type_name.clone())
+                    .or_default()
+                    .extend(method_sigs);
+                for (method, full_params, return_ty_gen) in method_infos {
                     self.enter_scope();
                     let saved_return = self.current_return_type.take();
                     let saved_fn = self.current_function_name.take();
-                    self.current_return_type = Some(method.return_ty.clone());
+                    self.current_return_type = Some(return_ty_gen);
                     self.current_function_name = Some(format!("{}::{}", type_name, method.name));
                     for (pname, pty) in &full_params {
                         self.declare_variable(
@@ -461,10 +518,6 @@ impl Typechecker {
                     self.current_function_name = saved_fn;
                     self.exit_scope();
                 }
-                self.extensions
-                    .entry(type_name.clone())
-                    .or_default()
-                    .extend(method_sigs);
                 Ok(())
             }
         }

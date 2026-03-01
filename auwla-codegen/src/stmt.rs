@@ -14,9 +14,17 @@ impl JsEmitter {
                     let type_name = match t {
                         auwla_ast::Type::Custom(n) => n.clone(),
                         auwla_ast::Type::Basic(n) => n.clone(),
+                        auwla_ast::Type::Array(_) => "array".to_string(),
+                        auwla_ast::Type::Optional(_) => "optional".to_string(),
                         _ => format!("{:?}", t),
                     };
                     self.var_types.insert(name.clone(), type_name);
+                } else if let auwla_ast::ExprKind::Array(_) = initializer.node {
+                    self.var_types.insert(name.clone(), "array".to_string());
+                } else if let auwla_ast::ExprKind::StructInit { name: tname, .. } =
+                    &initializer.node
+                {
+                    self.var_types.insert(name.clone(), tname.clone());
                 }
                 if let auwla_ast::ExprKind::Match { expr, arms } = &initializer.node {
                     self.emit_match_assign("const", name, expr, arms);
@@ -42,6 +50,12 @@ impl JsEmitter {
                         _ => format!("{:?}", t),
                     };
                     self.var_types.insert(name.clone(), type_name);
+                } else if let auwla_ast::ExprKind::Array(_) = initializer.node {
+                    self.var_types.insert(name.clone(), "array".to_string());
+                } else if let auwla_ast::ExprKind::StructInit { name: tname, .. } =
+                    &initializer.node
+                {
+                    self.var_types.insert(name.clone(), tname.clone());
                 }
                 if let auwla_ast::ExprKind::Match { expr, arms } = &initializer.node {
                     self.emit_match_assign("let", name, expr, arms);
@@ -90,6 +104,8 @@ impl JsEmitter {
                     let type_name = match ty {
                         auwla_ast::Type::Custom(n) => n.clone(),
                         auwla_ast::Type::Basic(n) => n.clone(),
+                        auwla_ast::Type::Array(_) => "array".to_string(),
+                        auwla_ast::Type::Optional(_) => "optional".to_string(),
                         _ => format!("{:?}", ty),
                     };
                     self.var_types.insert(param_name.clone(), type_name);
@@ -259,6 +275,8 @@ impl JsEmitter {
                         if param_name == "self" {
                             self.var_types
                                 .insert("__self".to_string(), type_name.clone());
+                            self.var_types
+                                .insert("self".to_string(), type_name.clone());
                         } else if let Some(ty) = ty_opt {
                             let t_name = match ty {
                                 auwla_ast::Type::Custom(n) => n.clone(),
@@ -298,16 +316,77 @@ impl JsEmitter {
                         self.write_ext(") {\n");
                     }
                     self.indent += 1;
-                    // Emit body, rewriting `self` identifiers to `__self`
-                    let old_output = std::mem::take(&mut self.output);
+                    let external_attr = method
+                        .attributes
+                        .iter()
+                        .find(|a| a.name == "external")
+                        .cloned();
 
-                    for s in &method.body {
-                        self.emit_stmt_with_self_rename(s);
+                    if let Some(attr) = external_attr {
+                        if attr.args.get(0).map(|s| s.as_str()) == Some("js") {
+                            let mapping_type = attr.args.get(1).map(|s| s.as_str());
+                            if mapping_type == Some("property") {
+                                let target = attr
+                                    .args
+                                    .get(2)
+                                    .map(|s| s.as_str())
+                                    .unwrap_or(method.name.as_str());
+                                self.write_indent_ext();
+                                self.write_ext(&format!("return __self.{};\n", target));
+                            } else if mapping_type == Some("method") {
+                                let target = attr
+                                    .args
+                                    .get(2)
+                                    .map(|s| s.as_str())
+                                    .unwrap_or(method.name.as_str());
+                                let args: Vec<&str> = method
+                                    .params
+                                    .iter()
+                                    .filter(|(n, _)| n != "self")
+                                    .map(|(n, _)| n.as_str())
+                                    .collect();
+                                self.write_indent_ext();
+                                self.write_ext(&format!(
+                                    "return __self.{}({});\n",
+                                    target,
+                                    args.join(", ")
+                                ));
+                            } else if mapping_type == Some("static") {
+                                let obj = attr
+                                    .args
+                                    .get(2)
+                                    .map(|s| s.as_str())
+                                    .unwrap_or(type_name);
+                                let target = attr
+                                    .args
+                                    .get(3)
+                                    .map(|s| s.as_str())
+                                    .unwrap_or(method.name.as_str());
+                                let args: Vec<&str> = method
+                                    .params
+                                    .iter()
+                                    .map(|(n, _)| n.as_str())
+                                    .collect();
+                                self.write_indent_ext();
+                                self.write_ext(&format!(
+                                    "return {}.{}({});\n",
+                                    obj,
+                                    target,
+                                    args.join(", ")
+                                ));
+                            }
+                        }
+                    } else {
+                        let old_output = std::mem::take(&mut self.output);
+
+                        for s in &method.body {
+                            self.emit_stmt_with_self_rename(s);
+                        }
+
+                        let body_output = std::mem::take(&mut self.output);
+                        self.output = old_output;
+                        self.write_ext(&body_output);
                     }
-
-                    let body_output = std::mem::take(&mut self.output);
-                    self.output = old_output;
-                    self.write_ext(&body_output);
 
                     self.indent -= 1;
                     self.writeln_ext("}\n");

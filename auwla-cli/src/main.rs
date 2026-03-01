@@ -195,6 +195,7 @@ fn compile_directory_as_module(dir: &Path, output_dir: &Path) -> Result<(), ()> 
     let mut success_count = 0;
     let mut fail_count = 0;
     let mut all_extensions = String::new();
+    let mut util_needed = false;
 
     for key in &sorted_keys {
         if let (Some(ast), Some(file_path)) = (file_asts.get(key), file_paths.get(key)) {
@@ -218,12 +219,17 @@ fn compile_directory_as_module(dir: &Path, output_dir: &Path) -> Result<(), ()> 
                     let (mut js_output, ext_output) = emit_js(ast, typechecker.get_extensions());
                     all_extensions.push_str(&ext_output);
 
-                    // If this file uses any extensions, inject the import
+                    let mut import_prefix = String::new();
+                    if js_output.contains("__print(") {
+                        util_needed = true;
+                        import_prefix.push_str("import { __print } from './__util.js';\n");
+                    }
                     if js_output.contains("__ext_") {
-                        js_output = format!(
-                            "import * as __auwla from './__runtime.js';\n{}",
-                            js_output.replace("__ext_", "__auwla.__ext_")
-                        );
+                        import_prefix.push_str("import * as __auwla from './__runtime.js';\n");
+                        js_output = js_output.replace("__ext_", "__auwla.__ext_");
+                    }
+                    if !import_prefix.is_empty() {
+                        js_output = format!("{}{}", import_prefix, js_output);
                     }
 
                     let stem = file_path.file_stem().unwrap();
@@ -269,6 +275,14 @@ fn compile_directory_as_module(dir: &Path, output_dir: &Path) -> Result<(), ()> 
             "✓  Generated '__runtime.js' ({} bytes)",
             all_extensions.len()
         );
+    }
+    if util_needed {
+        let util_path = output_dir.join("__util.js");
+        let contents = util_js_source();
+        fs::write(&util_path, contents).unwrap_or_else(|e| {
+            eprintln!("[Error] Failed to write '__util.js': {}", e);
+        });
+        println!("✓  Generated '__util.js' ({} bytes)", contents.len());
     }
 
     println!("\n=============================");
@@ -396,11 +410,23 @@ fn compile_file_standalone(path: &Path, output_file: &Path) -> Result<(), ()> {
                 println!("✓  Generated '__runtime.js' ({} bytes)", ext_output.len());
             }
 
+            let mut import_prefix = String::new();
+            if js_output.contains("__print(") {
+                let out_dir = output_file.parent().unwrap_or(Path::new("."));
+                let util_path = out_dir.join("__util.js");
+                let contents = util_js_source();
+                fs::write(&util_path, contents).unwrap_or_else(|e| {
+                    eprintln!("[Error] Failed to write '__util.js': {}", e);
+                });
+                println!("✓  Generated '__util.js' ({} bytes)", contents.len());
+                import_prefix.push_str("import { __print } from './__util.js';\n");
+            }
             if js_output.contains("__ext_") {
-                js_output = format!(
-                    "import * as __auwla from './__runtime.js';\n{}",
-                    js_output.replace("__ext_", "__auwla.__ext_")
-                );
+                import_prefix.push_str("import * as __auwla from './__runtime.js';\n");
+                js_output = js_output.replace("__ext_", "__auwla.__ext_");
+            }
+            if !import_prefix.is_empty() {
+                js_output = format!("{}{}", import_prefix, js_output);
             }
 
             fs::write(output_file, &js_output).unwrap_or_else(|e| {
@@ -429,6 +455,10 @@ fn compile_file_standalone(path: &Path, output_file: &Path) -> Result<(), ()> {
             Err(())
         }
     }
+}
+
+fn util_js_source() -> &'static str {
+    "export function __print(...args) {\n  const format = (val, top = false) => {\n    if (val && typeof val === 'object' && 'ok' in val) {\n      if (val.ok) return `some(${format(val.value)})`;\n      if ('value' in val) return `none(${format(val.value)})`;\n      return 'none';\n    }\n    if (Array.isArray(val)) return `[${val.map(v => format(v)).join(', ')}]`;\n    if (typeof val === 'string' && !top) return `\"${val}\"`;\n    if (typeof val === 'object' && val !== null) {\n      const props = Object.entries(val).map(([k, v]) => `${k}: ${format(v)}`).join(', ');\n      return `{ ${props} }`;\n    }\n    return val;\n  };\n  console.log(...args.map(a => format(a, true)));\n}\n"
 }
 
 fn parse_source(source: &str, path: &Path) -> Result<(Program, Vec<std::ops::Range<usize>>), ()> {

@@ -227,6 +227,7 @@ impl JsEmitter {
                     auwla_ast::ExprKind::Identifier(name) => self.var_types.get(name).cloned(),
                     _ => None,
                 };
+
                 let is_extension = receiver_type_key
                     .as_ref()
                     .and_then(|tk| self.ext_methods.get(tk))
@@ -246,6 +247,42 @@ impl JsEmitter {
                     // Regular JS method call (closure field, interop, etc.)
                     self.emit_expr(expr);
                     self.write(&format!(".{}(", method));
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 {
+                            self.write(", ");
+                        }
+                        self.emit_expr(arg);
+                    }
+                    self.write(")");
+                }
+            }
+            auwla_ast::ExprKind::StaticMethodCall {
+                type_name,
+                method,
+                args,
+                ..
+            } => {
+                let is_extension = self
+                    .extensions
+                    .get(type_name)
+                    .map(|methods| {
+                        methods
+                            .iter()
+                            .any(|m| m.name == method.as_str() && m.is_static)
+                    })
+                    .unwrap_or(false);
+
+                if is_extension {
+                    self.write(&format!("__ext_{}_{}(", type_name, method));
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 {
+                            self.write(", ");
+                        }
+                        self.emit_expr(arg);
+                    }
+                    self.write(")");
+                } else {
+                    self.write(&format!("{}.{}(", type_name, method));
                     for (i, arg) in args.iter().enumerate() {
                         if i > 0 {
                             self.write(", ");

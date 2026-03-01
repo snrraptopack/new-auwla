@@ -333,7 +333,7 @@ impl Typechecker {
                                                     )?;
                                                 }
                                             }
-                                        } else if let Type::Optional(_) = &result_ty {
+                                        } else {
                                             if !bindings.is_empty() {
                                                 return Err(TypeError {
                                                     span: p.span.clone(),
@@ -346,6 +346,36 @@ impl Typechecker {
                                             p.span.clone(),
                                             format!(
                                                 "Type error: matching on a Result expects 'some' or 'none', found '{}'",
+                                                name
+                                            ),
+                                        );
+                                    }
+                                } else if let Type::Optional(inner) = &result_ty {
+                                    if name == "some" {
+                                        has_some = true;
+                                        if i == 0 {
+                                            if let Some(binding) = bindings.first() {
+                                                self.declare_variable(
+                                                    p.span.clone(),
+                                                    binding.clone(),
+                                                    (**inner).clone(),
+                                                    Mutability::Immutable,
+                                                )?;
+                                            }
+                                        }
+                                    } else if name == "none" {
+                                        has_none = true;
+                                        if !bindings.is_empty() {
+                                            return Err(TypeError {
+                                                span: p.span.clone(),
+                                                message: "Type error: match arm 'none' for Optional type cannot bind arguments".to_string(),
+                                            });
+                                        }
+                                    } else {
+                                        return self.error(
+                                            p.span.clone(),
+                                            format!(
+                                                "Type error: matching on an Optional expects 'some' or 'none', found '{}'",
                                                 name
                                             ),
                                         );
@@ -773,9 +803,9 @@ impl Typechecker {
                 property,
             } => {
                 let expr_ty = self.check_expr(obj_expr)?;
-                match expr_ty {
+                match &expr_ty {
                     Type::Custom(name) => {
-                        let struct_def = self.structs.get(&name).ok_or_else(|| TypeError {
+                        let struct_def = self.structs.get(name).ok_or_else(|| TypeError {
                             span: obj_expr.span.clone(),
                             message: format!("Undefined struct '{}'", name),
                         })?;
@@ -793,6 +823,38 @@ impl Typechecker {
                         });
                     }
                     other => {
+                        let type_key = match &expr_ty {
+                            Type::Array(_) => "array".to_string(),
+                            Type::Basic(name) => name.clone(),
+                            Type::Custom(name) => name.clone(),
+                            _ => format!("{}", other),
+                        };
+                        if let Some(methods) = self.extensions.get(&type_key) {
+                            for method in methods {
+                                if let Some(attr) = method
+                                    .attributes
+                                    .iter()
+                                    .find(|a| a.name == "external")
+                                {
+                                    if attr.args.get(0).map(|s| s.as_str()) == Some("js")
+                                        && attr.args.get(1).map(|s| s.as_str())
+                                            == Some("property")
+                                    {
+                                        let target = attr
+                                            .args
+                                            .get(2)
+                                            .map(|s| s.as_str())
+                                            .unwrap_or(method.name.as_str());
+                                        if target == property {
+                                            return Ok(method
+                                                .return_ty
+                                                .clone()
+                                                .unwrap_or(Type::Basic("unknown".to_string())));
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         return Err(TypeError {
                             span: obj_expr.span.clone(),
                             message: format!(
@@ -814,14 +876,15 @@ impl Typechecker {
                 let type_key = match &expr_ty {
                     Type::Custom(name) => name.clone(),
                     Type::Basic(name) => name.clone(),
+                    Type::Array(_) => "array".to_string(),
                     other => format!("{}", other),
                 };
                 let method_sigs = self.extensions.get(&type_key).cloned();
                 if let Some(sigs) = method_sigs {
-                    if let Some((type_params, _, is_static, params, return_ty)) =
-                        sigs.iter().find(|(_, n, _, _, _)| n == method).cloned()
+                    if let Some(method_sig) =
+                        sigs.iter().find(|m| m.name == method.as_str()).cloned()
                     {
-                        if is_static {
+                        if method_sig.is_static {
                             return Err(TypeError {
                                 span: expr.span.clone(),
                                 message: format!(
@@ -830,18 +893,22 @@ impl Typechecker {
                                 ),
                             });
                         }
-                        // params[0] is self — skip when validating explicit args
-                        let explicit_params =
-                            if params.first().map(|(n, _)| n == "self").unwrap_or(false) {
-                                &params[1..]
-                            } else {
-                                &params[..]
-                            };
+                        // method_sig.params[0] is self — skip when validating explicit args
+                        let explicit_params = if method_sig
+                            .params
+                            .first()
+                            .map(|(n, _)| n == "self")
+                            .unwrap_or(false)
+                        {
+                            &method_sig.params[1..]
+                        } else {
+                            &method_sig.params[..]
+                        };
 
                         let mut unifier = crate::inference::unify::Unifier::new();
 
                         let mut type_env = std::collections::HashMap::new();
-                        if let Some(t_params) = type_params {
+                        if let Some(t_params) = &method_sig.type_params {
                             if let Some(t_args) = type_args {
                                 if t_args.len() != t_params.len() {
                                     return Err(TypeError {
@@ -918,7 +985,10 @@ impl Typechecker {
                             .iter()
                             .map(|(_, p)| instantiate(p, &type_env))
                             .collect();
-                        let inst_return_ty = return_ty.map(|r| instantiate(&r, &type_env));
+                        let inst_return_ty = method_sig
+                            .return_ty
+                            .as_ref()
+                            .map(|r| instantiate(r, &type_env));
 
                         if inst_params.len() != args.len() {
                             return Err(TypeError {
@@ -934,7 +1004,18 @@ impl Typechecker {
 
                         // First, unify the `self` instance expression type with the expected `self` argument type
                         // if the method is generic on the struct.
-                        // For MVP, generic methods just rely on argument types.
+                        if let Some(first_param) = method_sig.params.first() {
+                            if first_param.0 == "self" {
+                                let inst_self = instantiate(&first_param.1, &type_env);
+                                unifier
+                                    .unify(&inst_self, &expr_ty)
+                                    .map_err(|msg| TypeError {
+                                        span: expr.span.clone(),
+                                        message: msg,
+                                    })?;
+                            }
+                        }
+
                         for (param_ty, arg_expr) in inst_params.iter().zip(args) {
                             let arg_ty = self.check_expr(arg_expr)?;
                             unifier.unify(param_ty, &arg_ty).map_err(|msg| TypeError {
@@ -955,6 +1036,55 @@ impl Typechecker {
                     self.check_expr(arg)?;
                 }
                 Ok(Type::Basic("unknown".to_string()))
+            }
+            auwla_ast::ExprKind::StaticMethodCall {
+                type_name,
+                method,
+                args,
+                ..
+            } => {
+                let methods = self.extensions.get(type_name).ok_or_else(|| TypeError {
+                    span: expr.span.clone(),
+                    message: format!("Type error: type '{}' has no extensions", type_name),
+                })?;
+
+                let method_sig = methods
+                    .iter()
+                    .find(|m| m.name == method.as_str() && m.is_static)
+                    .cloned()
+                    .ok_or_else(|| TypeError {
+                        span: expr.span.clone(),
+                        message: format!(
+                            "Type error: static method '{}' not found for type '{}'",
+                            method, type_name
+                        ),
+                    })?;
+
+                if args.len() != method_sig.params.len() {
+                    return Err(TypeError {
+                        span: expr.span.clone(),
+                        message: format!(
+                            "Type error: expected {} arguments for static method '{}', found {}",
+                            method_sig.params.len(),
+                            method,
+                            args.len()
+                        ),
+                    });
+                }
+
+                for (arg, (_, expected_ty)) in args.iter().zip(method_sig.params.iter()) {
+                    let arg_ty = self.check_expr(arg)?;
+                    self.assert_type_eq(expected_ty, &arg_ty)
+                        .map_err(|msg| TypeError {
+                            span: arg.span.clone(),
+                            message: msg,
+                        })?;
+                }
+
+                Ok(method_sig
+                    .return_ty
+                    .clone()
+                    .unwrap_or(Type::Basic("void".to_string())))
             }
             auwla_ast::ExprKind::Block(stmts, result) => {
                 self.enter_scope();

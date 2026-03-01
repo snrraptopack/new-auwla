@@ -11,6 +11,19 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
         // Build expression parser WITH stmt support (for match arms)
         let expr = expr_parser_with_stmt(stmt.clone());
 
+        let attribute = just(Token::At)
+            .ignore_then(select! { Token::Ident(name) => name })
+            .then(
+                select! { Token::StringLit(s) => s }
+                    .separated_by(just(Token::Comma))
+                    .delimited_by(just(Token::LParen), just(Token::RParen))
+                    .or_not()
+                    .map(|args| args.unwrap_or_default()),
+            )
+            .map(|(name, args)| auwla_ast::Attribute { name, args });
+
+        let attributes = attribute.repeated();
+
         let let_stmt = just(Token::Let)
             .ignore_then(select! { Token::Ident(name) => name })
             .then(just(Token::Colon).ignore_then(ty.clone()).or_not())
@@ -78,8 +91,10 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             .delimited_by(just(Token::Lt), just(Token::Gt))
             .or_not();
 
-        let fn_decl = just(Token::Fn)
-            .ignore_then(select! { Token::Ident(name) => name })
+        let fn_decl = attributes
+            .clone()
+            .then_ignore(just(Token::Fn))
+            .then(select! { Token::Ident(name) => name })
             .then(generic_params.clone())
             .then(
                 param
@@ -120,18 +135,21 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                             vec![auwla_ast::Spanned::new(StmtKind::Return(Some(e)), span)]
                         })),
             )
-            .map_with_span(|((((name, type_params), params), return_ty), body), span| {
-                auwla_ast::Spanned::new(
-                    StmtKind::Fn {
-                        name,
-                        type_params,
-                        params,
-                        return_ty,
-                        body,
-                    },
-                    span,
-                )
-            });
+            .map_with_span(
+                |(((((attributes, name), type_params), params), return_ty), body), span| {
+                    auwla_ast::Spanned::new(
+                        StmtKind::Fn {
+                            name,
+                            type_params,
+                            params,
+                            return_ty,
+                            body,
+                            attributes,
+                        },
+                        span,
+                    )
+                },
+            );
 
         let if_stmt = just(Token::If)
             .ignore_then(expr.clone())
@@ -275,7 +293,10 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
 
         // extend TypeName { fn method(self, ...) => expr; }
         let extend_decl = just(Token::Extend)
-            .ignore_then(select! { Token::Ident(name) => name })
+            .ignore_then(
+                select! { Token::Ident(name) => name }
+                    .or(just(Token::Array).to("array".to_string())),
+            )
             .then(generic_params.clone())
             .then({
                 let method_body = stmt
@@ -284,8 +305,15 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                     .then(expr.clone().or_not())
                     .delimited_by(just(Token::LBrace), just(Token::RBrace));
 
-                let method = just(Token::Fn)
-                    .ignore_then(select! { Token::Ident(name) => name })
+                let static_kw = select! { Token::Ident(name) if name == "static" => name }
+                    .or_not()
+                    .map(|kw| kw.is_some());
+
+                let method = attributes
+                    .clone()
+                    .then(static_kw)
+                    .then_ignore(just(Token::Fn))
+                    .then(select! { Token::Ident(name) => name })
                     .then(generic_params.clone())
                     .then(
                         select! { Token::Ident(name) => name }
@@ -315,21 +343,41 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                                         auwla_ast::StmtKind::Return(Some(e)),
                                         span,
                                     )]
-                                })),
+                                }))
+                            .or(just(Token::Semicolon).to(Vec::new())),
                     )
-                    .map_with_span(|args, span: std::ops::Range<usize>| {
-                        let ((((name, type_params), params), return_ty), body) = args;
-                        let is_static = params.first().map(|(n, _)| n != "self").unwrap_or(true);
-                        auwla_ast::stmt::Method {
-                            name,
-                            params,
-                            return_ty,
-                            body,
-                            is_static,
-                            type_params,
-                            span,
-                        }
-                    });
+                    .map_with_span(
+                        |args: (
+                            (
+                                (
+                                    (
+                                        ((Vec<auwla_ast::Attribute>, bool), String),
+                                        Option<Vec<String>>,
+                                    ),
+                                    Vec<(String, Option<auwla_ast::Type>)>,
+                                ),
+                                Option<auwla_ast::Type>,
+                            ),
+                            Vec<auwla_ast::Stmt>,
+                        ),
+                         span: std::ops::Range<usize>| {
+                            let (
+                                ((((attributes_and_static, name), type_params), params), return_ty),
+                                body,
+                            ) = args;
+                            let (attributes, is_static) = attributes_and_static;
+                            auwla_ast::Method {
+                                name,
+                                attributes,
+                                params,
+                                return_ty,
+                                body,
+                                is_static,
+                                type_params,
+                                span,
+                            }
+                        },
+                    );
 
                 method
                     .repeated()

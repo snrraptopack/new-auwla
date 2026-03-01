@@ -8,16 +8,7 @@ use std::collections::{HashMap, HashSet};
 /// `extensions` maps type_name -> [(method_name, is_static, params, return_ty)].
 pub fn emit_js(
     program: &Program,
-    extensions: &HashMap<
-        String,
-        Vec<(
-            Option<Vec<String>>,
-            String,
-            bool,
-            Vec<(String, auwla_ast::Type)>,
-            Option<auwla_ast::Type>,
-        )>,
-    >,
+    extensions: &HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
 ) -> (String, String) {
     let mut emitter = JsEmitter::new(extensions.clone());
     emitter.emit_program(program);
@@ -36,26 +27,16 @@ pub(crate) struct JsEmitter {
     pub(crate) ext_methods: HashMap<String, HashSet<String>>,
     /// Flag to trigger `self` -> `__self` rewriting
     pub(crate) in_extension_method: bool,
+    /// Full extension signatures for attribute lookup
+    pub(crate) extensions: HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
 }
 
 impl JsEmitter {
-    fn new(
-        extensions: HashMap<
-            String,
-            Vec<(
-                Option<Vec<String>>,
-                String,
-                bool,
-                Vec<(String, auwla_ast::Type)>,
-                Option<auwla_ast::Type>,
-            )>,
-        >,
-    ) -> Self {
+    fn new(extensions: HashMap<String, Vec<auwla_ast::ExtensionMethod>>) -> Self {
         let ext_methods = extensions
             .iter()
             .map(|(ty, methods)| {
-                let names: HashSet<String> =
-                    methods.iter().map(|(_, n, _, _, _)| n.clone()).collect();
+                let names: HashSet<String> = methods.iter().map(|m| m.name.clone()).collect();
                 (ty.clone(), names)
             })
             .collect();
@@ -67,6 +48,7 @@ impl JsEmitter {
             var_types: HashMap::new(),
             ext_methods,
             in_extension_method: false,
+            extensions,
         }
     }
 
@@ -119,34 +101,6 @@ impl JsEmitter {
     // ──────────────────────────── Program ────────────────────────────
 
     fn emit_program(&mut self, program: &Program) {
-        // Inject custom print formatter for rich CLI debugging (handles T?, Optionals, Structs)
-        self.output.push_str("function __print(...args) {\n");
-        self.output
-            .push_str("  const format = (val, top = false) => {\n");
-        self.output
-            .push_str("    if (val && typeof val === 'object' && 'ok' in val) {\n");
-        self.output
-            .push_str("      if (val.ok) return `some(${format(val.value)})`;\n");
-        self.output
-            .push_str("      if ('value' in val) return `none(${format(val.value)})`;\n");
-        self.output.push_str("      return 'none';\n");
-        self.output.push_str("    }\n");
-        self.output.push_str(
-            "    if (Array.isArray(val)) return `[${val.map(v => format(v)).join(', ')}]`;\n",
-        );
-        self.output
-            .push_str("    if (typeof val === 'string' && !top) return `\"${val}\"`;\n");
-        self.output
-            .push_str("    if (typeof val === 'object' && val !== null) {\n");
-        self.output.push_str("      const props = Object.entries(val).map(([k, v]) => `${k}: ${format(v)}`).join(', ');\n");
-        self.output.push_str("      return `{ ${props} }`;\n");
-        self.output.push_str("    }\n");
-        self.output.push_str("    return val;\n");
-        self.output.push_str("  };\n");
-        self.output
-            .push_str("  console.log(...args.map(a => format(a, true)));\n");
-        self.output.push_str("}\n\n");
-
         for stmt in &program.statements {
             self.emit_stmt(stmt);
         }

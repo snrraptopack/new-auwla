@@ -12,7 +12,18 @@ pub fn type_parser() -> impl Parser<Token, Type, Error = Simple<Token>> + Clone 
                     .or_not(),
             )
             .map(|(name, args)| {
-                if let Some(args) = args {
+                if name == "array" {
+                    if let Some(mut args) = args {
+                        if args.len() == 1 {
+                            Type::Array(Box::new(args.pop().unwrap()))
+                        } else {
+                            // Fallback or error: array expects 1 arg
+                            Type::Generic(name, args)
+                        }
+                    } else {
+                        Type::Custom(name)
+                    }
+                } else if let Some(args) = args {
                     Type::Generic(name, args)
                 } else {
                     match name.as_str() {
@@ -30,7 +41,21 @@ pub fn type_parser() -> impl Parser<Token, Type, Error = Simple<Token>> + Clone 
             .then(ty.clone())
             .map(|(params, ret)| Type::Function(params, Box::new(ret)));
 
-        let atom = func.or(basic_or_custom);
+        let array_keyword = just(Token::Array)
+            .then(
+                ty.clone()
+                    .separated_by(just(Token::Comma))
+                    .delimited_by(just(Token::Lt), just(Token::Gt)),
+            )
+            .map(|(_, mut args)| {
+                if args.len() == 1 {
+                    Type::Array(Box::new(args.pop().unwrap()))
+                } else {
+                    Type::Generic("array".to_string(), args)
+                }
+            });
+
+        let atom = func.or(array_keyword).or(basic_or_custom);
 
         // base_type with optional array brackets (support nested: number[][])
         let base = atom

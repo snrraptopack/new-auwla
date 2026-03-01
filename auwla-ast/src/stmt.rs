@@ -1,8 +1,25 @@
 use crate::Spanned;
 use crate::expr::Expr;
 use crate::types::Type;
+use serde::{Deserialize, Serialize};
 
 pub type Stmt = Spanned<StmtKind>;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Attribute {
+    pub name: String,
+    pub args: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExtensionMethod {
+    pub type_params: Option<Vec<String>>,
+    pub name: String,
+    pub is_static: bool,
+    pub params: Vec<(String, Type)>,
+    pub return_ty: Option<Type>,
+    pub attributes: Vec<Attribute>,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum StmtKind {
@@ -32,6 +49,7 @@ pub enum StmtKind {
         params: Vec<(String, Type)>, // name, type
         return_ty: Option<Type>,
         body: Vec<Stmt>,
+        attributes: Vec<Attribute>,
     },
     /// return expr;
     Return(Option<Expr>),
@@ -91,6 +109,7 @@ pub struct Program {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Method {
     pub name: String,
+    pub attributes: Vec<Attribute>,
     /// Parameters — `self` appears as the first param for instance methods.
     /// The typechecker injects the correct type for `self`.
     pub params: Vec<(String, Option<Type>)>,

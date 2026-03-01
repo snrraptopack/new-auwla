@@ -12,7 +12,7 @@ fn main() {
     let z: string = identity::<string>("forced");
 
     var again = identity(10);
-    again = 10
+    again = 10;
 
     let list: StringList = ["a", "b"];
     
