@@ -15,18 +15,32 @@ extend array<T> {
         return some(self[self.len() - 1]);
     }
 
+    fn low(self):number => 0;
+    fn high(self):number => self.len();
+    
+}
+
+extend array<number>{
     fn max(self):number{
-        var c_max = self[0];
-        for i in self{
-            if i > c_max{
-                c_max = i;
+        var c_max = 0;
+        for i in self.low() ..< self.high(){
+            if self[i] > c_max{
+                c_max = self[i];
             }
         }
+        return c_max;
     }
+}
+
+extend string{
+    @external("js","method","repeat")
+    fn repeat(self,times:number):string;
 }
 
 fn main() {
     let arr = [1, 2, 3];
+
+    print("the max value : {arr.max()}");
     
     // Test instance property mapping
     print("Length: {arr.len()}");
@@ -47,3 +61,10 @@ fn main() {
 }
 
 main();
+
+print("hello".repeat(10));
+
+let nums = 1 .. 100;
+for i in 1 .. 100{
+    print("the current number is : {i}");
+}

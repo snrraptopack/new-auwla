@@ -88,6 +88,7 @@ pub enum StmtKind {
     /// extend<T> TypeName { fn method(self, ...) { ... } }
     Extend {
         type_params: Option<Vec<String>>,
+        type_args: Option<Vec<Type>>,
         /// The type being extended — can be a built-in ("number", "string") or a custom struct name.
         type_name: String,
         methods: Vec<Method>,

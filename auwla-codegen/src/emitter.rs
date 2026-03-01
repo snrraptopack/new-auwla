@@ -1,6 +1,5 @@
 use auwla_ast::expr::Expr;
-
-use auwla_ast::Program;
+use auwla_ast::{ExprKind, Program, Type};
 use std::collections::{HashMap, HashSet};
 
 /// Emits JavaScript source code from a type-checked Auwla AST.
@@ -96,6 +95,64 @@ impl JsEmitter {
         let result = std::mem::take(&mut self.output);
         self.output = old;
         result
+    }
+
+    pub(crate) fn type_to_key(&self, ty: &Type) -> String {
+        match ty {
+            Type::Basic(name) => name.clone(),
+            Type::Custom(name) => name.clone(),
+            Type::Array(inner) => format!("array<{}>", self.type_to_key(inner)),
+            Type::Optional(inner) => format!("{}?", self.type_to_key(inner)),
+            Type::Result { ok_type, err_type } => {
+                format!("{}?{}", self.type_to_key(ok_type), self.type_to_key(err_type))
+            }
+            Type::Generic(name, args) => {
+                let parts: Vec<String> = args.iter().map(|a| self.type_to_key(a)).collect();
+                format!("{}<{}>", name, parts.join(", "))
+            }
+            Type::Function(_, _) => "fn".to_string(),
+            Type::TypeVar(name) => name.clone(),
+            Type::InferenceVar(id) => format!("_{}", id),
+        }
+    }
+
+    pub(crate) fn extend_key(&self, type_name: &str, type_args: &Option<Vec<Type>>) -> String {
+        if let Some(args) = type_args {
+            let parts: Vec<String> = args.iter().map(|a| self.type_to_key(a)).collect();
+            format!("{}<{}>", type_name, parts.join(", "))
+        } else {
+            type_name.to_string()
+        }
+    }
+
+    pub(crate) fn type_key_ident(&self, key: &str) -> String {
+        key.chars()
+            .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+            .collect()
+    }
+
+    pub(crate) fn array_literal_type_key(&self, elems: &[Expr]) -> Option<String> {
+        if elems.is_empty() {
+            return None;
+        }
+        let mut kind: Option<&'static str> = None;
+        for e in elems {
+            let k = match &e.node {
+                ExprKind::NumberLit(_) => "number",
+                ExprKind::StringLit(_) => "string",
+                ExprKind::BoolLit(_) => "bool",
+                ExprKind::CharLit(_) => "char",
+                _ => return None,
+            };
+            if let Some(prev) = kind {
+                if prev != k {
+                    return None;
+                }
+            } else {
+                kind = Some(k);
+            }
+        }
+        kind.map(|k| format!("array<{}>", k))
     }
 
     // ──────────────────────────── Program ────────────────────────────

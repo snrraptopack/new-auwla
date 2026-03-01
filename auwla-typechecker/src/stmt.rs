@@ -424,10 +424,21 @@ impl Typechecker {
             auwla_ast::StmtKind::Extend {
                 type_name,
                 type_params,
+                type_args,
                 methods,
                 ..
             } => {
-                let self_type = if type_name == "array" {
+                let self_type = if let Some(args) = type_args {
+                    if type_name == "array" {
+                        if let Some(first) = args.first() {
+                            Type::Array(Box::new(first.clone()))
+                        } else {
+                            Type::Array(Box::new(Type::Basic("unknown".to_string())))
+                        }
+                    } else {
+                        Type::Generic(type_name.clone(), args.clone())
+                    }
+                } else if type_name == "array" {
                     if let Some(tps) = type_params {
                         if let Some(tp) = tps.first() {
                             Type::Array(Box::new(Type::TypeVar(tp.clone())))
@@ -439,7 +450,9 @@ impl Typechecker {
                     }
                 } else {
                     match type_name.as_str() {
-                        "number" | "string" | "boolean" => Type::Basic(type_name.clone()),
+                        "number" | "string" | "boolean" | "bool" => {
+                            Type::Basic(type_name.clone())
+                        }
                         _ => Type::Custom(type_name.clone()),
                     }
                 };
@@ -493,10 +506,8 @@ impl Typechecker {
                     });
                     method_infos.push((method, full_params, return_ty_gen));
                 }
-                self.extensions
-                    .entry(type_name.clone())
-                    .or_default()
-                    .extend(method_sigs);
+                let ext_key = self.extend_key(type_name, type_args);
+                self.extensions.entry(ext_key).or_default().extend(method_sigs);
                 for (method, full_params, return_ty_gen) in method_infos {
                     self.enter_scope();
                     let saved_return = self.current_return_type.take();

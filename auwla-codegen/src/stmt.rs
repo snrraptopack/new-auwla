@@ -11,16 +11,14 @@ impl JsEmitter {
                 ..
             } => {
                 if let Some(t) = ty {
-                    let type_name = match t {
-                        auwla_ast::Type::Custom(n) => n.clone(),
-                        auwla_ast::Type::Basic(n) => n.clone(),
-                        auwla_ast::Type::Array(_) => "array".to_string(),
-                        auwla_ast::Type::Optional(_) => "optional".to_string(),
-                        _ => format!("{:?}", t),
-                    };
+                    let type_name = self.type_to_key(t);
                     self.var_types.insert(name.clone(), type_name);
-                } else if let auwla_ast::ExprKind::Array(_) = initializer.node {
-                    self.var_types.insert(name.clone(), "array".to_string());
+                } else if let auwla_ast::ExprKind::Array(elems) = &initializer.node {
+                    if let Some(key) = self.array_literal_type_key(elems) {
+                        self.var_types.insert(name.clone(), key);
+                    } else {
+                        self.var_types.insert(name.clone(), "array".to_string());
+                    }
                 } else if let auwla_ast::ExprKind::StructInit { name: tname, .. } =
                     &initializer.node
                 {
@@ -44,14 +42,14 @@ impl JsEmitter {
                 ..
             } => {
                 if let Some(t) = ty {
-                    let type_name = match t {
-                        auwla_ast::Type::Custom(n) => n.clone(),
-                        auwla_ast::Type::Basic(n) => n.clone(),
-                        _ => format!("{:?}", t),
-                    };
+                    let type_name = self.type_to_key(t);
                     self.var_types.insert(name.clone(), type_name);
-                } else if let auwla_ast::ExprKind::Array(_) = initializer.node {
-                    self.var_types.insert(name.clone(), "array".to_string());
+                } else if let auwla_ast::ExprKind::Array(elems) = &initializer.node {
+                    if let Some(key) = self.array_literal_type_key(elems) {
+                        self.var_types.insert(name.clone(), key);
+                    } else {
+                        self.var_types.insert(name.clone(), "array".to_string());
+                    }
                 } else if let auwla_ast::ExprKind::StructInit { name: tname, .. } =
                     &initializer.node
                 {
@@ -266,23 +264,24 @@ impl JsEmitter {
                 }
             }
             auwla_ast::StmtKind::Extend {
-                type_name, methods, ..
+                type_name,
+                type_args,
+                methods,
+                ..
             } => {
+                let type_key = self.extend_key(type_name, type_args);
+                let safe_type_key = self.type_key_ident(&type_key);
                 // Emit each method as a standalone function: __ext_TypeName_methodName
                 for method in methods {
                     // Register method parameters in var_types
                     for (param_name, ty_opt) in &method.params {
                         if param_name == "self" {
                             self.var_types
-                                .insert("__self".to_string(), type_name.clone());
+                                .insert("__self".to_string(), type_key.clone());
                             self.var_types
-                                .insert("self".to_string(), type_name.clone());
+                                .insert("self".to_string(), type_key.clone());
                         } else if let Some(ty) = ty_opt {
-                            let t_name = match ty {
-                                auwla_ast::Type::Custom(n) => n.clone(),
-                                auwla_ast::Type::Basic(n) => n.clone(),
-                                _ => format!("{:?}", ty),
-                            };
+                            let t_name = self.type_to_key(ty);
                             self.var_types.insert(param_name.clone(), t_name);
                         }
                     }
@@ -292,7 +291,7 @@ impl JsEmitter {
                         self.write_indent_ext();
                         self.write_ext(&format!(
                             "export function __ext_{}_{}(",
-                            type_name, method.name
+                            safe_type_key, method.name
                         ));
                         let params: Vec<_> = method.params.iter().collect();
                         for (i, (pname, _)) in params.iter().enumerate() {
@@ -307,7 +306,7 @@ impl JsEmitter {
                         self.write_indent_ext();
                         self.write_ext(&format!(
                             "export function __ext_{}_{}(__self",
-                            type_name, method.name
+                            safe_type_key, method.name
                         ));
                         for (pname, _) in method.params.iter().filter(|(n, _)| n != "self") {
                             self.write_ext(", ");

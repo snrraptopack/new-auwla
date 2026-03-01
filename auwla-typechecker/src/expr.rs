@@ -823,33 +823,36 @@ impl Typechecker {
                         });
                     }
                     other => {
-                        let type_key = match &expr_ty {
-                            Type::Array(_) => "array".to_string(),
-                            Type::Basic(name) => name.clone(),
-                            Type::Custom(name) => name.clone(),
-                            _ => format!("{}", other),
-                        };
-                        if let Some(methods) = self.extensions.get(&type_key) {
-                            for method in methods {
-                                if let Some(attr) = method
-                                    .attributes
-                                    .iter()
-                                    .find(|a| a.name == "external")
-                                {
-                                    if attr.args.get(0).map(|s| s.as_str()) == Some("js")
-                                        && attr.args.get(1).map(|s| s.as_str())
-                                            == Some("property")
+                        let mut keys = vec![self.type_to_key(&expr_ty)];
+                        if let Type::Array(_) = expr_ty {
+                            keys.push("array".to_string());
+                        }
+                        if let Type::Generic(name, _) = &expr_ty {
+                            keys.push(name.clone());
+                        }
+                        for key in keys {
+                            if let Some(methods) = self.extensions.get(&key) {
+                                for method in methods {
+                                    if let Some(attr) = method
+                                        .attributes
+                                        .iter()
+                                        .find(|a| a.name == "external")
                                     {
-                                        let target = attr
-                                            .args
-                                            .get(2)
-                                            .map(|s| s.as_str())
-                                            .unwrap_or(method.name.as_str());
-                                        if target == property {
-                                            return Ok(method
-                                                .return_ty
-                                                .clone()
-                                                .unwrap_or(Type::Basic("unknown".to_string())));
+                                        if attr.args.get(0).map(|s| s.as_str()) == Some("js")
+                                            && attr.args.get(1).map(|s| s.as_str())
+                                                == Some("property")
+                                        {
+                                            let target = attr
+                                                .args
+                                                .get(2)
+                                                .map(|s| s.as_str())
+                                                .unwrap_or(method.name.as_str());
+                                            if target == property {
+                                                return Ok(method
+                                                    .return_ty
+                                                    .clone()
+                                                    .unwrap_or(Type::Basic("unknown".to_string())));
+                                            }
                                         }
                                     }
                                 }
@@ -873,163 +876,159 @@ impl Typechecker {
             } => {
                 let expr_ty = self.check_expr(expr)?;
                 // Resolve the type name for lookup in the extension registry
-                let type_key = match &expr_ty {
-                    Type::Custom(name) => name.clone(),
-                    Type::Basic(name) => name.clone(),
-                    Type::Array(_) => "array".to_string(),
-                    other => format!("{}", other),
-                };
-                let method_sigs = self.extensions.get(&type_key).cloned();
-                if let Some(sigs) = method_sigs {
-                    if let Some(method_sig) =
-                        sigs.iter().find(|m| m.name == method.as_str()).cloned()
-                    {
-                        if method_sig.is_static {
-                            return Err(TypeError {
-                                span: expr.span.clone(),
-                                message: format!(
-                                    "Type error: '{}::{}' is a static extension — not callable on a value",
-                                    type_key, method
-                                ),
-                            });
-                        }
-                        // method_sig.params[0] is self — skip when validating explicit args
-                        let explicit_params = if method_sig
-                            .params
-                            .first()
-                            .map(|(n, _)| n == "self")
-                            .unwrap_or(false)
+                let mut keys = vec![self.type_to_key(&expr_ty)];
+                if let Type::Array(_) = expr_ty {
+                    keys.push("array".to_string());
+                }
+                if let Type::Generic(name, _) = &expr_ty {
+                    keys.push(name.clone());
+                }
+                let mut found_method = None;
+                for key in keys {
+                    if let Some(sigs) = self.extensions.get(&key) {
+                        if let Some(method_sig) =
+                            sigs.iter().find(|m| m.name == method.as_str()).cloned()
                         {
-                            &method_sig.params[1..]
+                            found_method = Some(method_sig);
+                            break;
+                        }
+                    }
+                }
+                if let Some(method_sig) = found_method {
+                    if method_sig.is_static {
+                        return Err(TypeError {
+                            span: expr.span.clone(),
+                            message: format!(
+                                "Type error: '{}::{}' is a static extension — not callable on a value",
+                                self.type_to_key(&expr_ty),
+                                method
+                            ),
+                        });
+                    }
+                    // method_sig.params[0] is self — skip when validating explicit args
+                    let explicit_params = if method_sig
+                        .params
+                        .first()
+                        .map(|(n, _)| n == "self")
+                        .unwrap_or(false)
+                    {
+                        &method_sig.params[1..]
+                    } else {
+                        &method_sig.params[..]
+                    };
+
+                    let mut unifier = crate::inference::unify::Unifier::new();
+
+                    let mut type_env = std::collections::HashMap::new();
+                    if let Some(t_params) = &method_sig.type_params {
+                        if let Some(t_args) = type_args {
+                            if t_args.len() != t_params.len() {
+                                return Err(TypeError {
+                                    span: expr.span.clone(),
+                                    message: format!(
+                                        "Method '{}' expects {} type arguments, but {} were provided",
+                                        method,
+                                        t_params.len(),
+                                        t_args.len()
+                                    ),
+                                });
+                            }
+                            for (tp, ta) in t_params.iter().zip(t_args) {
+                                let id = unifier.new_type_var();
+                                unifier.bind(id, ta).map_err(|msg| TypeError {
+                                    span: expr.span.clone(),
+                                    message: msg,
+                                })?;
+                                type_env.insert(tp.clone(), id);
+                            }
                         } else {
-                            &method_sig.params[..]
-                        };
+                            for tp in t_params {
+                                let id = unifier.new_type_var();
+                                type_env.insert(tp.clone(), id);
+                            }
+                        }
+                    } else if type_args.is_some() {
+                        return Err(TypeError {
+                            span: expr.span.clone(),
+                            message: format!(
+                                "Method '{}' is not generic but type arguments were provided",
+                                method
+                            ),
+                        });
+                    }
 
-                        let mut unifier = crate::inference::unify::Unifier::new();
-
-                        let mut type_env = std::collections::HashMap::new();
-                        if let Some(t_params) = &method_sig.type_params {
-                            if let Some(t_args) = type_args {
-                                if t_args.len() != t_params.len() {
-                                    return Err(TypeError {
-                                        span: expr.span.clone(),
-                                        message: format!(
-                                            "Method '{}' expects {} type arguments, but {} were provided",
-                                            method,
-                                            t_params.len(),
-                                            t_args.len()
-                                        ),
-                                    });
-                                }
-                                for (tp, ta) in t_params.iter().zip(t_args) {
-                                    let id = unifier.new_type_var();
-                                    unifier.bind(id, ta).map_err(|msg| TypeError {
-                                        span: expr.span.clone(),
-                                        message: msg,
-                                    })?;
-                                    type_env.insert(tp.clone(), id);
-                                }
-                            } else {
-                                for tp in t_params {
-                                    let id = unifier.new_type_var();
-                                    type_env.insert(tp.clone(), id);
+                    fn instantiate(ty: &Type, env: &std::collections::HashMap<String, usize>) -> Type {
+                        match ty {
+                            Type::TypeVar(name) | Type::Custom(name) => {
+                                if let Some(&id) = env.get(name) {
+                                    Type::InferenceVar(id)
+                                } else {
+                                    ty.clone()
                                 }
                             }
-                        } else if type_args.is_some() {
-                            return Err(TypeError {
+                            Type::Array(inner) => Type::Array(Box::new(instantiate(inner, env))),
+                            Type::Optional(inner) => Type::Optional(Box::new(instantiate(inner, env))),
+                            Type::Result { ok_type, err_type } => Type::Result {
+                                ok_type: Box::new(instantiate(ok_type, env)),
+                                err_type: Box::new(instantiate(err_type, env)),
+                            },
+                            Type::Function(p, r) => {
+                                let inst_p = p.iter().map(|p| instantiate(p, env)).collect();
+                                let inst_r = Box::new(instantiate(r, env));
+                                Type::Function(inst_p, inst_r)
+                            }
+                            Type::Generic(n, args) => {
+                                let inst_args = args.iter().map(|a| instantiate(a, env)).collect();
+                                Type::Generic(n.clone(), inst_args)
+                            }
+                            _ => ty.clone(),
+                        }
+                    }
+
+                    let inst_params: Vec<Type> = explicit_params
+                        .iter()
+                        .map(|(_, p)| instantiate(p, &type_env))
+                        .collect();
+                    let inst_return_ty = method_sig
+                        .return_ty
+                        .as_ref()
+                        .map(|r| instantiate(r, &type_env));
+
+                    if inst_params.len() != args.len() {
+                        return Err(TypeError {
+                            span: expr.span.clone(),
+                            message: format!(
+                                "Method '{}' expects {} arg(s), got {}",
+                                method,
+                                inst_params.len(),
+                                args.len()
+                            ),
+                        });
+                    }
+
+                    if let Some(first_param) = method_sig.params.first() {
+                        if first_param.0 == "self" {
+                            let inst_self = instantiate(&first_param.1, &type_env);
+                            unifier.unify(&inst_self, &expr_ty).map_err(|msg| TypeError {
                                 span: expr.span.clone(),
-                                message: format!(
-                                    "Method '{}' is not generic but type arguments were provided",
-                                    method
-                                ),
-                            });
-                        }
-
-                        fn instantiate(
-                            ty: &Type,
-                            env: &std::collections::HashMap<String, usize>,
-                        ) -> Type {
-                            match ty {
-                                Type::TypeVar(name) | Type::Custom(name) => {
-                                    if let Some(&id) = env.get(name) {
-                                        Type::InferenceVar(id)
-                                    } else {
-                                        ty.clone()
-                                    }
-                                }
-                                Type::Array(inner) => {
-                                    Type::Array(Box::new(instantiate(inner, env)))
-                                }
-                                Type::Optional(inner) => {
-                                    Type::Optional(Box::new(instantiate(inner, env)))
-                                }
-                                Type::Result { ok_type, err_type } => Type::Result {
-                                    ok_type: Box::new(instantiate(ok_type, env)),
-                                    err_type: Box::new(instantiate(err_type, env)),
-                                },
-                                Type::Function(p, r) => {
-                                    let inst_p = p.iter().map(|p| instantiate(p, env)).collect();
-                                    let inst_r = Box::new(instantiate(r, env));
-                                    Type::Function(inst_p, inst_r)
-                                }
-                                Type::Generic(n, args) => {
-                                    let inst_args =
-                                        args.iter().map(|a| instantiate(a, env)).collect();
-                                    Type::Generic(n.clone(), inst_args)
-                                }
-                                _ => ty.clone(),
-                            }
-                        }
-
-                        let inst_params: Vec<Type> = explicit_params
-                            .iter()
-                            .map(|(_, p)| instantiate(p, &type_env))
-                            .collect();
-                        let inst_return_ty = method_sig
-                            .return_ty
-                            .as_ref()
-                            .map(|r| instantiate(r, &type_env));
-
-                        if inst_params.len() != args.len() {
-                            return Err(TypeError {
-                                span: expr.span.clone(),
-                                message: format!(
-                                    "Method '{}' expects {} arg(s), got {}",
-                                    method,
-                                    inst_params.len(),
-                                    args.len()
-                                ),
-                            });
-                        }
-
-                        // First, unify the `self` instance expression type with the expected `self` argument type
-                        // if the method is generic on the struct.
-                        if let Some(first_param) = method_sig.params.first() {
-                            if first_param.0 == "self" {
-                                let inst_self = instantiate(&first_param.1, &type_env);
-                                unifier
-                                    .unify(&inst_self, &expr_ty)
-                                    .map_err(|msg| TypeError {
-                                        span: expr.span.clone(),
-                                        message: msg,
-                                    })?;
-                            }
-                        }
-
-                        for (param_ty, arg_expr) in inst_params.iter().zip(args) {
-                            let arg_ty = self.check_expr(arg_expr)?;
-                            unifier.unify(param_ty, &arg_ty).map_err(|msg| TypeError {
-                                span: arg_expr.span.clone(),
                                 message: msg,
                             })?;
                         }
-
-                        let resolved_return = inst_return_ty
-                            .map(|r| unifier.resolve(&r))
-                            .unwrap_or(Type::Basic("void".to_string()));
-
-                        return Ok(resolved_return);
                     }
+
+                    for (param_ty, arg_expr) in inst_params.iter().zip(args) {
+                        let arg_ty = self.check_expr(arg_expr)?;
+                        unifier.unify(param_ty, &arg_ty).map_err(|msg| TypeError {
+                            span: arg_expr.span.clone(),
+                            message: msg,
+                        })?;
+                    }
+
+                    let resolved_return = inst_return_ty
+                        .map(|r| unifier.resolve(&r))
+                        .unwrap_or(Type::Basic("void".to_string()));
+
+                    return Ok(resolved_return);
                 }
                 // Not found as extension — might be a closure field call; validate args permissively
                 for arg in args {
@@ -1039,26 +1038,33 @@ impl Typechecker {
             }
             auwla_ast::ExprKind::StaticMethodCall {
                 type_name,
+                type_args,
                 method,
                 args,
                 ..
             } => {
-                let methods = self.extensions.get(type_name).ok_or_else(|| TypeError {
+                let mut keys = vec![self.extend_key(type_name, type_args)];
+                keys.push(type_name.clone());
+                let mut method_sig = None;
+                for key in keys {
+                    if let Some(methods) = self.extensions.get(&key) {
+                        if let Some(found) = methods
+                            .iter()
+                            .find(|m| m.name == method.as_str() && m.is_static)
+                            .cloned()
+                        {
+                            method_sig = Some(found);
+                            break;
+                        }
+                    }
+                }
+                let method_sig = method_sig.ok_or_else(|| TypeError {
                     span: expr.span.clone(),
-                    message: format!("Type error: type '{}' has no extensions", type_name),
+                    message: format!(
+                        "Type error: static method '{}' not found for type '{}'",
+                        method, type_name
+                    ),
                 })?;
-
-                let method_sig = methods
-                    .iter()
-                    .find(|m| m.name == method.as_str() && m.is_static)
-                    .cloned()
-                    .ok_or_else(|| TypeError {
-                        span: expr.span.clone(),
-                        message: format!(
-                            "Type error: static method '{}' not found for type '{}'",
-                            method, type_name
-                        ),
-                    })?;
 
                 if args.len() != method_sig.params.len() {
                     return Err(TypeError {

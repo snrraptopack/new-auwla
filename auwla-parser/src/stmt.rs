@@ -292,12 +292,18 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             });
 
         // extend TypeName { fn method(self, ...) => expr; }
+        let extend_type_args = ty
+            .clone()
+            .separated_by(just(Token::Comma))
+            .delimited_by(just(Token::Lt), just(Token::Gt))
+            .or_not();
+
         let extend_decl = just(Token::Extend)
             .ignore_then(
                 select! { Token::Ident(name) => name }
                     .or(just(Token::Array).to("array".to_string())),
             )
-            .then(generic_params.clone())
+            .then(extend_type_args)
             .then({
                 let method_body = stmt
                     .clone()
@@ -383,10 +389,30 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                     .repeated()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace))
             })
-            .map_with_span(|((type_name, type_params), methods), span| {
+            .map_with_span(|((type_name, type_args_raw), methods), span| {
+                let (type_params, type_args) = if let Some(args) = type_args_raw {
+                    let is_type_params = args.iter().all(|t| {
+                        matches!(t, auwla_ast::Type::Custom(name) if name.len() == 1 && name.chars().all(|c| c.is_ascii_uppercase()))
+                    });
+                    if is_type_params {
+                        let params = args
+                            .into_iter()
+                            .map(|t| match t {
+                                auwla_ast::Type::Custom(name) => name,
+                                _ => String::new(),
+                            })
+                            .collect();
+                        (Some(params), None)
+                    } else {
+                        (None, Some(args))
+                    }
+                } else {
+                    (None, None)
+                };
                 auwla_ast::Spanned::new(
                     StmtKind::Extend {
                         type_params,
+                        type_args,
                         type_name,
                         methods,
                     },

@@ -228,15 +228,25 @@ impl JsEmitter {
                     _ => None,
                 };
 
-                let is_extension = receiver_type_key
-                    .as_ref()
-                    .and_then(|tk| self.ext_methods.get(tk))
-                    .map(|methods| methods.contains(method))
-                    .unwrap_or(false);
+                let mut resolved_key: Option<String> = None;
+                if let Some(tk) = receiver_type_key.as_ref() {
+                    let mut keys = vec![tk.clone()];
+                    if let Some(idx) = tk.find('<') {
+                        keys.push(tk[..idx].to_string());
+                    }
+                    for key in keys {
+                        if let Some(methods) = self.ext_methods.get(&key) {
+                            if methods.contains(method) {
+                                resolved_key = Some(key);
+                                break;
+                            }
+                        }
+                    }
+                }
 
-                if is_extension {
-                    let type_name = receiver_type_key.unwrap();
-                    self.write(&format!("__ext_{}_{}(", type_name, method));
+                if let Some(type_name) = resolved_key {
+                    let safe_type = self.type_key_ident(&type_name);
+                    self.write(&format!("__ext_{}_{}(", safe_type, method));
                     self.emit_expr(expr);
                     for arg in args {
                         self.write(", ");
@@ -258,13 +268,14 @@ impl JsEmitter {
             }
             auwla_ast::ExprKind::StaticMethodCall {
                 type_name,
+                type_args,
                 method,
                 args,
                 ..
             } => {
                 let is_extension = self
                     .extensions
-                    .get(type_name)
+                    .get(&self.extend_key(type_name, type_args))
                     .map(|methods| {
                         methods
                             .iter()
@@ -273,7 +284,9 @@ impl JsEmitter {
                     .unwrap_or(false);
 
                 if is_extension {
-                    self.write(&format!("__ext_{}_{}(", type_name, method));
+                    let type_key = self.extend_key(type_name, type_args);
+                    let safe_type = self.type_key_ident(&type_key);
+                    self.write(&format!("__ext_{}_{}(", safe_type, method));
                     for (i, arg) in args.iter().enumerate() {
                         if i > 0 {
                             self.write(", ");

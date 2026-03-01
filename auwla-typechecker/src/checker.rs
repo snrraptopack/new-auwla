@@ -44,6 +44,35 @@ impl Typechecker {
         self.scopes.push(Scope::new());
     }
 
+    pub(crate) fn type_to_key(&self, ty: &Type) -> String {
+        match ty {
+            Type::Basic(name) => name.clone(),
+            Type::Custom(name) => name.clone(),
+            Type::Array(inner) => format!("array<{}>", self.type_to_key(inner)),
+            Type::Optional(inner) => format!("{}?", self.type_to_key(inner)),
+            Type::Result { ok_type, err_type } => {
+                format!("{}?{}", self.type_to_key(ok_type), self.type_to_key(err_type))
+            }
+            Type::Generic(name, args) => {
+                let parts: Vec<String> = args.iter().map(|a| self.type_to_key(a)).collect();
+                format!("{}<{}>", name, parts.join(", "))
+            }
+            Type::Function(_, _) => "fn".to_string(),
+            Type::TypeVar(name) => name.clone(),
+            Type::InferenceVar(id) => format!("_{}", id),
+        }
+    }
+
+    pub(crate) fn extend_key(&self, type_name: &str, type_args: &Option<Vec<Type>>) -> String {
+        if let Some(args) = type_args {
+            let parts: Vec<String> = args.iter().map(|a| self.type_to_key(a)).collect();
+            format!("{}<{}>", type_name, parts.join(", "))
+        } else {
+            type_name.to_string()
+        }
+    }
+
+
     pub(crate) fn exit_scope(&mut self) {
         self.scopes.pop().expect("Cannot pop the global scope");
     }
