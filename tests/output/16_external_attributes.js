@@ -8,16 +8,14 @@ function main() {
   __print(`New length: ${__auwla._ext_array_len(arr)}`);
   const check = __auwla._ext_array_is_arr(arr);
   __print(`Is array: ${check}`);
-  return (() => {
-    const __match_0 = __auwla._ext_array_last(arr);
-    if (__match_0.ok) {
-      const v = __match_0.value;
-      return __print(`Last: ${v}`);
-    }
-    else if (!__match_0.ok) {
-      return __print("Empty");
-    }
-})();
+  const __match_0 = __auwla._ext_array_last(arr);
+  if (__match_0.ok) {
+    const v = __match_0.value;
+    return __print(`Last: ${v}`);
+  }
+  else if (!__match_0.ok) {
+    return __print("Empty");
+  }
 }
 main();
 __print("hello".repeat(10));

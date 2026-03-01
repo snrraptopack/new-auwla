@@ -1,26 +1,23 @@
 import { __print } from './__util.js';
-const ok_status = { $variant: "Active", $data: [] };
-const ok_inactive = { $variant: "Inactive", $data: [] };
+const ok_status = { $variant: "Active" };
+const ok_inactive = { $variant: "Inactive" };
 const banned_status = { $variant: "Banned", $data: ["Violation of terms"] };
 __print("--- EXHAUSTIVE MATCH TESTING ---");
 function check_status(status) {
-  return (() => {
-    const __match_0 = status;
-    if (__match_0.$variant === "Active") {
+  const __match_0 = status;
+  switch (__match_0.$variant) {
+    case "Active":
       __print("Status is Active");
-      return undefined;
-    }
-    else if (__match_0.$variant === "Inactive") {
+      return;
+    case "Inactive":
       __print("Status is Inactive");
-      return undefined;
-    }
-    else if (__match_0.$variant === "Banned") {
+      return;
+    case "Banned":
       const reason = __match_0.$data[0];
       __print("Status is Banned: ");
       __print(reason);
-      return undefined;
-    }
-})();
+      return;
+  }
 }
 check_status(ok_status);
 check_status(ok_inactive);
@@ -28,14 +25,16 @@ check_status(banned_status);
 __print("--- DIRECT MATCH ASSIGNMENT ---");
 const __match_1 = banned_status;
 let message;
-if (__match_1.$variant === "Active") {
-  message = "All good";
-}
-else if (__match_1.$variant === "Inactive") {
-  message = "User is inactive";
-}
-else if (__match_1.$variant === "Banned") {
-  const reason = __match_1.$data[0];
-  message = reason;
+switch (__match_1.$variant) {
+  case "Active":
+    message = "All good";
+    break;
+  case "Inactive":
+    message = "User is inactive";
+    break;
+  case "Banned":
+    const reason = __match_1.$data[0];
+    message = reason;
+    break;
 }
 __print(message);

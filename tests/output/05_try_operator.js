@@ -8,13 +8,13 @@ function checked(n) {
 }
 function test_auto(n) {
   const __match_0 = checked(n);
-  if (!__match_0.ok) return __match_0;
+  if (!__match_0.ok) throw new Error(__match_0.value);
   const val = __match_0.value;
   return ({ ok: true, value: `Success: ${val}` });
 }
 function test_override(n) {
   const __match_1 = checked(n);
-  if (!__match_1.ok) return { ok: false, value: "Override Error" };
+  if (!__match_1.ok) throw new Error("Override Error");
   const val = __match_1.value;
   return ({ ok: true, value: `Success: ${val}` });
 }
@@ -27,7 +27,7 @@ function checked_opt(n) {
 }
 function test_opt_auto(n) {
   const __match_2 = checked_opt(n);
-  if (!__match_2.ok) return __match_2;
+  if (!__match_2.ok) throw new Error(__match_2.value);
   const val = __match_2.value;
   return ({ ok: true, value: `Opt Success: ${val}` });
 }

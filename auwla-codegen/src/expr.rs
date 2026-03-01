@@ -86,47 +86,7 @@ impl JsEmitter {
                 expr: matched,
                 arms,
             } => {
-                // Match used inline as an expression (e.g. inside another expr).
-                // This is rare — most match exprs are caught at the Stmt level.
-                // Emit an IIFE for safety.
-                self.write("(() => {\n");
-                self.indent += 1;
-                let temp = self.fresh_temp();
-                self.write_indent();
-                self.write(&format!("const {} = ", temp));
-                self.emit_expr(matched);
-                self.write(";\n");
-
-                for (i, arm) in arms.iter().enumerate() {
-                    self.write_indent();
-                    if i > 0 {
-                        self.write("else ");
-                    }
-
-                    self.emit_pattern_condition(&temp, arm);
-
-                    self.write(" {\n");
-                    self.indent += 1;
-
-                    self.emit_bound_variables(&temp, &arm.pattern);
-
-                    for s in &arm.stmts {
-                        self.emit_stmt(s);
-                    }
-                    if let Some(result) = &arm.result {
-                        self.write_indent();
-                        self.write("return ");
-                        self.emit_expr(result);
-                        self.write(";\n");
-                    } else {
-                        self.writeln("return undefined;");
-                    }
-                    self.indent -= 1;
-                    self.writeln("}");
-                }
-
-                self.indent -= 1;
-                self.write("})()");
+                self.emit_match_expr(matched, arms);
             }
             auwla_ast::ExprKind::Array(elements) => {
                 self.write("[");
@@ -174,22 +134,7 @@ impl JsEmitter {
                 self.write("`");
             }
             auwla_ast::ExprKind::Try { expr, error_expr } => {
-                // Nested Try expression - using an IIFE.
-                // Note: This won't early-return from the parent function if nested.
-                // Parent-return only works for top-level stmt try (handled in emit_stmt).
-                self.write("(() => { ");
-                let temp = self.fresh_temp();
-                self.write(&format!("const {} = ", temp));
-                self.emit_expr(expr);
-                self.write(&format!("; if (!{}.ok) throw new Error(", temp));
-                if let Some(err) = error_expr {
-                    self.emit_expr(err);
-                } else {
-                    self.write(&format!("{}.value", temp));
-                }
-                self.write("); return ");
-                self.write(&temp);
-                self.write(".value; })()");
+                self.emit_try_expr(expr, error_expr);
             }
             auwla_ast::ExprKind::StructInit { fields, .. } => {
                 self.write("{ ");
@@ -293,21 +238,22 @@ impl JsEmitter {
                 }
             }
             auwla_ast::ExprKind::EnumInit {
-                enum_name: _,
-                variant_name,
-                args,
-                ..
+                variant_name, args, ..
             } => {
                 self.write("{ $variant: \"");
                 self.write(variant_name);
-                self.write("\", $data: [");
-                for (i, arg) in args.iter().enumerate() {
-                    if i > 0 {
-                        self.write(", ");
+                self.write("\"");
+                if !args.is_empty() {
+                    self.write(", $data: [");
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 {
+                            self.write(", ");
+                        }
+                        self.emit_expr(arg);
                     }
-                    self.emit_expr(arg);
+                    self.write("]");
                 }
-                self.write("] }");
+                self.write(" }");
             }
             auwla_ast::ExprKind::Closure { params, body, .. } => {
                 self.write("(");

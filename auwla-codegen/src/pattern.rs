@@ -1,42 +1,7 @@
 use crate::emitter::JsEmitter;
-use auwla_ast::{Expr, MatchArm};
+use auwla_ast::MatchArm;
 
 impl JsEmitter {
-    pub(crate) fn emit_match_assign(
-        &mut self,
-        decl_kw: &str,
-        target: &str,
-        matched_expr: &Expr,
-        arms: &Vec<MatchArm>,
-    ) {
-        let temp = self.fresh_temp();
-
-        // const __match_N = <matched_expr>;
-        self.write_indent();
-        self.write(&format!("const {} = ", temp));
-        self.emit_expr(matched_expr);
-        self.write(";\n");
-
-        if !decl_kw.is_empty() {
-            self.writeln(&format!("let {};", target));
-        }
-
-        for (i, arm) in arms.iter().enumerate() {
-            self.write_indent();
-            if i > 0 {
-                self.write("else ");
-            }
-
-            self.emit_pattern_condition(&temp, arm);
-
-            self.write(" {\n");
-            self.indent += 1;
-            self.emit_arm_body(&temp, target, arm);
-            self.indent -= 1;
-            self.writeln("}");
-        }
-    }
-
     pub(crate) fn emit_pattern_condition(&mut self, temp: &str, arm: &MatchArm) {
         self.write("if (");
 
@@ -121,80 +86,6 @@ impl JsEmitter {
         }
     }
 
-    /// Emit a standalone match (not assigned to anything).
-    pub(crate) fn emit_match_standalone(&mut self, matched_expr: &Expr, arms: &Vec<MatchArm>) {
-        let temp = self.fresh_temp();
-
-        self.write_indent();
-        self.write(&format!("const {} = ", temp));
-        self.emit_expr(matched_expr);
-        self.write(";\n");
-
-        for (i, arm) in arms.iter().enumerate() {
-            self.write_indent();
-            if i > 0 {
-                self.write("else ");
-            }
-
-            self.emit_pattern_condition(&temp, arm);
-
-            self.write(" {\n");
-            self.indent += 1;
-            self.emit_arm_body_standalone(&temp, arm);
-            self.indent -= 1;
-            self.writeln("}");
-        }
-    }
-
-    /// Emit: `const/let name = try expr(error_expr);`
-    pub(crate) fn emit_try_assign(
-        &mut self,
-        decl_kw: &str,
-        target: &str,
-        expr: &Expr,
-        error_expr: &Option<Box<Expr>>,
-    ) {
-        let temp = self.fresh_temp();
-        self.write_indent();
-        self.write(&format!("const {} = ", temp));
-        self.emit_expr(expr);
-        self.write(";\n");
-
-        self.write_indent();
-        if let Some(err) = error_expr {
-            self.write(&format!("if (!{}.ok) return {{ ok: false, value: ", temp));
-            self.emit_expr(err);
-            self.write(" };\n");
-        } else {
-            self.write(&format!("if (!{}.ok) return {};\n", temp, temp));
-        }
-
-        self.write_indent();
-        if !decl_kw.is_empty() {
-            self.write(&format!("{} {} = {}.value;\n", decl_kw, target, temp));
-        } else {
-            self.write(&format!("{} = {}.value;\n", target, temp));
-        }
-    }
-
-    /// Emit a standalone try.
-    pub(crate) fn emit_try_standalone(&mut self, expr: &Expr, error_expr: &Option<Box<Expr>>) {
-        let temp = self.fresh_temp();
-        self.write_indent();
-        self.write(&format!("const {} = ", temp));
-        self.emit_expr(expr);
-        self.write(";\n");
-
-        self.write_indent();
-        if let Some(err) = error_expr {
-            self.write(&format!("if (!{}.ok) return {{ ok: false, value: ", temp));
-            self.emit_expr(err);
-            self.write(" };\n");
-        } else {
-            self.write(&format!("if (!{}.ok) return {};\n", temp, temp));
-        }
-    }
-
     pub(crate) fn emit_bound_variables(&mut self, temp: &str, pattern: &auwla_ast::Pattern) {
         match &pattern.node {
             auwla_ast::PatternKind::Variable(name) => {
@@ -215,6 +106,8 @@ impl JsEmitter {
                 }
             }
             auwla_ast::PatternKind::Or(patterns) => {
+                // For 'Or' patterns, we assume they all bind the same variables if any.
+                // Typechecker guarantees they are compatible.
                 if let Some(first) = patterns.first() {
                     self.emit_bound_variables(temp, first);
                 }
@@ -225,7 +118,6 @@ impl JsEmitter {
                         let inner_temp = format!("{}.{}", temp, fname);
                         self.emit_bound_variables(&inner_temp, sub_pattern);
                     } else {
-                        // shorthand binding e.g `{ role }`
                         self.write_indent();
                         self.write(&format!("const {} = {}.{};\n", fname, temp, fname));
                     }
@@ -234,35 +126,4 @@ impl JsEmitter {
             _ => {}
         }
     }
-
-    /// Emit arm body for an assigned match: bind the inner value, run stmts, assign result to target.
-    pub(crate) fn emit_arm_body(&mut self, temp: &str, target: &str, arm: &MatchArm) {
-        self.emit_bound_variables(temp, &arm.pattern);
-
-        for s in &arm.stmts {
-            self.emit_stmt(s);
-        }
-        if let Some(result) = &arm.result {
-            self.write_indent();
-            self.write(&format!("{} = ", target));
-            self.emit_expr(result);
-            self.write(";\n");
-        }
-    }
-
-    /// Emit arm body for a standalone match.
-    pub(crate) fn emit_arm_body_standalone(&mut self, temp: &str, arm: &MatchArm) {
-        self.emit_bound_variables(temp, &arm.pattern);
-
-        for s in &arm.stmts {
-            self.emit_stmt(s);
-        }
-        if let Some(result) = &arm.result {
-            self.write_indent();
-            self.emit_expr(result);
-            self.write(";\n");
-        }
-    }
-
-    // ──────────────────────────── Expressions ────────────────────────
 }

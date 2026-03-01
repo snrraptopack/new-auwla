@@ -131,12 +131,33 @@ impl JsEmitter {
                 self.writeln("}");
             }
             auwla_ast::StmtKind::Return(expr_opt) => {
-                self.write_indent();
                 if let Some(expr) = expr_opt {
-                    self.write("return ");
-                    self.emit_expr(expr);
-                    self.write(";\n");
+                    if let auwla_ast::ExprKind::Match {
+                        expr: matched,
+                        arms,
+                    } = &expr.node
+                    {
+                        self.emit_match_return(matched, arms);
+                    } else if let auwla_ast::ExprKind::Try {
+                        expr: tried,
+                        error_expr,
+                    } = &expr.node
+                    {
+                        self.emit_try_standalone(tried, error_expr); // Wait, Try as return is tricky
+                                                                     // For Try return, we actually want to return the result of the IIFE.
+                                                                     // Actually, emit_try_expr works fine since it returns the value.
+                        self.write_indent();
+                        self.write("return ");
+                        self.emit_expr(expr);
+                        self.write(";\n");
+                    } else {
+                        self.write_indent();
+                        self.write("return ");
+                        self.emit_expr(expr);
+                        self.write(";\n");
+                    }
                 } else {
+                    self.write_indent();
                     self.write("return;\n");
                 }
             }
@@ -210,19 +231,10 @@ impl JsEmitter {
                 self.writeln("}");
             }
             auwla_ast::StmtKind::Expr(expr) => {
-                // Standalone match expression (used as statement)
-                if let auwla_ast::ExprKind::Match {
-                    expr: matched,
-                    arms,
-                } = &expr.node
-                {
-                    self.emit_match_standalone(matched, arms);
-                } else if let auwla_ast::ExprKind::Try {
-                    expr: tried,
-                    error_expr,
-                } = &expr.node
-                {
-                    self.emit_try_standalone(tried, error_expr);
+                if let auwla_ast::ExprKind::Match { expr, arms } = &expr.node {
+                    self.emit_match_standalone(expr, arms);
+                } else if let auwla_ast::ExprKind::Try { expr, error_expr } = &expr.node {
+                    self.emit_try_standalone(expr, error_expr);
                 } else {
                     self.write_indent();
                     self.emit_expr(expr);
@@ -418,15 +430,4 @@ impl JsEmitter {
         self.emit_stmt(stmt);
         self.in_extension_method = old;
     }
-
-    // ──────────────────────────── Match helpers ──────────────────────
-
-    // Emit: `const/let name = match expr { some(val) => ... none(err) => ... };`
-    // Becomes:
-    // ```js
-    // const __match_N = <expr>;
-    // let target;   // or const target, depending on decl_kw
-    // if (__match_N.ok) { const val = __match_N.value; ... target = <result>; }
-    // else { const err = __match_N.value; ... target = <result>; }
-    // ```
 }
