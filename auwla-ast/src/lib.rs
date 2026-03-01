@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 pub mod expr;
 pub mod stmt;
 pub mod types;
@@ -8,7 +10,7 @@ pub use types::Type;
 
 pub type Span = std::ops::Range<usize>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Spanned<T> {
     pub node: T,
     pub span: Span,

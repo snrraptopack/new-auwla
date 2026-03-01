@@ -13,6 +13,7 @@ pub struct Typechecker {
     pub(crate) type_aliases: HashMap<String, Type>,
     /// type_name -> [(type_params, method_name, is_static, params_with_types, return_ty)]
     pub extensions: HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
+    pub(crate) current_file: String,
 }
 
 impl Default for Typechecker {
@@ -31,7 +32,12 @@ impl Typechecker {
             enums: HashMap::new(),
             type_aliases: HashMap::new(),
             extensions: HashMap::new(),
+            current_file: String::new(),
         }
+    }
+
+    pub fn set_current_file(&mut self, file: &str) {
+        self.current_file = file.to_string();
     }
 
     /// Returns a reference to the extension method registry.

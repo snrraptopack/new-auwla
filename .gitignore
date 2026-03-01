@@ -1,1 +1,10 @@
 /target
+node_modules/
+dist/
+out/
+/tests/output/
+auwla_metadata.json
+__runtime.js
+__util.js
+*.log
+.DS_Store

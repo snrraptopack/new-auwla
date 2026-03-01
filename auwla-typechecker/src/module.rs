@@ -21,17 +21,17 @@ pub struct ExportMap {
 /// First-pass scan: collect every exported name and its type signature
 /// without doing full type-checking.  This is fast and used to build the
 /// import context for files that depend on this one.
-pub fn collect_exports(program: &Program) -> ExportMap {
+pub fn collect_exports(program: &Program, file_path: &str) -> ExportMap {
     let mut map = ExportMap::default();
 
     for stmt in &program.statements {
         match &stmt.node {
             auwla_ast::StmtKind::Export { stmt: inner } => {
-                register_export(&mut map, inner);
+                register_export(&mut map, inner, file_path);
             }
             auwla_ast::StmtKind::Extend { .. } => {
                 // Extensions are globally visible in Auwla if the file is part of the project
-                register_export(&mut map, stmt);
+                register_export(&mut map, stmt, file_path);
             }
             _ => {}
         }
@@ -40,7 +40,7 @@ pub fn collect_exports(program: &Program) -> ExportMap {
     map
 }
 
-fn register_export(map: &mut ExportMap, stmt: &Stmt) {
+fn register_export(map: &mut ExportMap, stmt: &Stmt, file_path: &str) {
     match &stmt.node {
         auwla_ast::StmtKind::Fn {
             name,
@@ -93,7 +93,7 @@ fn register_export(map: &mut ExportMap, stmt: &Stmt) {
             map.enums.insert(name.clone(), variants.clone());
         }
         // nested export (shouldn't occur but handle gracefully)
-        auwla_ast::StmtKind::Export { stmt: inner } => register_export(map, inner),
+        auwla_ast::StmtKind::Export { stmt: inner } => register_export(map, inner, file_path),
         auwla_ast::StmtKind::Extend {
             type_name,
             type_params,
@@ -171,6 +171,8 @@ fn register_export(map: &mut ExportMap, stmt: &Stmt) {
                     params: full_params,
                     return_ty: method.return_ty.clone(),
                     attributes: method.attributes.clone(),
+                    file: file_path.to_string(),
+                    span: method.span.clone(),
                 });
             }
             map.extensions

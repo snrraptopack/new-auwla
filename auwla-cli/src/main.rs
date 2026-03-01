@@ -27,6 +27,7 @@ fn main() {
 
     let mut global_extensions_js = String::new();
     let mut global_util_needed = false;
+    let mut global_extensions = HashMap::new();
 
     if path.is_file() {
         // Single-file mode — still scan the parent directory for "magic" extensions
@@ -44,7 +45,7 @@ fn main() {
         }
     } else if path.is_dir() {
         // Project-wide extension discovery BEFORE compiling anything
-        let global_extensions = discover_all_extensions(path);
+        global_extensions = discover_all_extensions(path);
 
         let is_module_dir = has_module_structure(path);
 
@@ -162,6 +163,27 @@ fn main() {
         });
         println!("✓  Generated global '__util.js' ({} bytes)", contents.len());
     }
+
+    // Emit LSP metadata
+    emit_project_metadata(&global_output_root, &global_extensions);
+}
+
+/// Emits a JSON file containing all discovered project-wide metadata (extensions, etc.)
+/// for the LSP and developer tools.
+fn emit_project_metadata(
+    output_root: &Path,
+    extensions: &HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
+) {
+    let metadata_path = output_root.join("auwla_metadata.json");
+    let json = serde_json::to_string_pretty(extensions).unwrap_or_default();
+    fs::write(&metadata_path, &json).unwrap_or_else(|e| {
+        eprintln!("[Error] Failed to write 'auwla_metadata.json': {}", e);
+    });
+    println!(
+        "✓  Generated LSP metadata: {} ({} bytes)",
+        metadata_path.display(),
+        json.len()
+    );
 }
 
 /// Returns true if the directory contains any .aw file with import/export statements,
@@ -255,8 +277,11 @@ fn compile_directory_as_module(
     // 4. First pass: collect exports from each file in dependency order
     let mut export_maps: HashMap<String, ExportMap> = HashMap::new();
     for key in &sorted_keys {
-        if let Some(ast) = file_asts.get(key) {
-            export_maps.insert(key.clone(), collect_exports(ast));
+        if let (Some(ast), Some(file_path)) = (file_asts.get(key), file_paths.get(key)) {
+            export_maps.insert(
+                key.clone(),
+                collect_exports(ast, &file_path.to_string_lossy()),
+            );
         }
     }
 
@@ -300,6 +325,7 @@ fn compile_directory_as_module(
             }
 
             let mut typechecker = Typechecker::new();
+            typechecker.set_current_file(&file_path.to_string_lossy());
             // Inject all discovered extensions into the typechecker
             typechecker.extensions = merged_extensions.clone();
 
@@ -491,6 +517,7 @@ fn compile_file_standalone(
     }
 
     let mut typechecker = Typechecker::new();
+    typechecker.set_current_file(&path.to_string_lossy());
     typechecker.extensions = global_extensions.clone();
     match typechecker.check_program(&ast) {
         Ok(_) => {
@@ -647,7 +674,7 @@ fn discover_all_extensions(root: &Path) -> HashMap<String, Vec<auwla_ast::Extens
                 } else if p.is_file() && p.extension().and_then(|s| s.to_str()) == Some("aw") {
                     if let Ok(source) = fs::read_to_string(&p) {
                         if let Ok((ast, _)) = parse_source(&source, &p) {
-                            let map = collect_exports(&ast);
+                            let map = collect_exports(&ast, &p.to_string_lossy());
                             for (type_key, methods) in map.extensions {
                                 extensions
                                     .entry(type_key)

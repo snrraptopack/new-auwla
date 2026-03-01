@@ -1,10 +1,11 @@
 use crate::Spanned;
+use serde::{Deserialize, Serialize};
 
 pub type Pattern = Spanned<PatternKind>;
 
 /// A match arm — either a single expression or a block with a final expression.
 /// For block arms the last expression (no semicolon) is the yielded value.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PatternKind {
     /// E.g. "admin", 42, true
     Literal(Expr),
@@ -26,7 +27,7 @@ pub enum PatternKind {
     Struct(Option<String>, Vec<(String, Option<Pattern>)>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MatchArm {
     pub pattern: Pattern,
     pub guard: Option<Box<Expr>>,
@@ -38,7 +39,7 @@ pub struct MatchArm {
 
 pub type Expr = Spanned<ExprKind>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ExprKind {
     /// Void / Unit value
     Void,
@@ -48,7 +49,7 @@ pub enum ExprKind {
     NumberLit(f64),
     /// A boolean literal (true or false)
     BoolLit(bool),
-    /// A character literal (e.g., 'a')
+    /// A boolean literal (e.g., true or false)
     CharLit(char),
     /// A variable usage (e.g., my_var)
     Identifier(String),
@@ -132,7 +133,7 @@ pub enum ExprKind {
     Block(Vec<crate::stmt::Stmt>, Option<Box<Expr>>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -148,7 +149,7 @@ pub enum BinaryOp {
     Or,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum UnaryOp {
     Not, // !
     Neg, // -

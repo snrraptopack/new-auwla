@@ -450,9 +450,7 @@ impl Typechecker {
                     }
                 } else {
                     match type_name.as_str() {
-                        "number" | "string" | "boolean" | "bool" => {
-                            Type::Basic(type_name.clone())
-                        }
+                        "number" | "string" | "boolean" | "bool" => Type::Basic(type_name.clone()),
                         _ => Type::Custom(type_name.clone()),
                     }
                 };
@@ -503,11 +501,16 @@ impl Typechecker {
                         params: full_params.clone(),
                         return_ty: return_ty_gen.clone(),
                         attributes: method.attributes.clone(),
+                        file: self.current_file.clone(),
+                        span: method.span.clone(),
                     });
                     method_infos.push((method, full_params, return_ty_gen));
                 }
                 let ext_key = self.extend_key(type_name, type_args);
-                self.extensions.entry(ext_key).or_default().extend(method_sigs);
+                self.extensions
+                    .entry(ext_key)
+                    .or_default()
+                    .extend(method_sigs);
                 for (method, full_params, return_ty_gen) in method_infos {
                     self.enter_scope();
                     let saved_return = self.current_return_type.take();

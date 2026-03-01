@@ -1,0 +1,80 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "Auwla",
+    "scopeName": "source.auwla",
+    "patterns": [
+        {
+            "include": "#comments"
+        },
+        {
+            "include": "#keywords"
+        },
+        {
+            "include": "#strings"
+        },
+        {
+            "include": "#numbers"
+        },
+        {
+            "include": "#types"
+        }
+    ],
+    "repository": {
+        "comments": {
+            "patterns": [
+                {
+                    "name": "comment.line.double-slash.auwla",
+                    "match": "//.*$"
+                },
+                {
+                    "name": "comment.block.auwla",
+                    "begin": "/\\*",
+                    "end": "\\*/"
+                }
+            ]
+        },
+        "keywords": {
+            "patterns": [
+                {
+                    "name": "keyword.control.auwla",
+                    "match": "\\b(if|else|while|for|in|return|match|import|export|extend|type)\\b"
+                },
+                {
+                    "name": "keyword.other.auwla",
+                    "match": "\\b(let|var|fn|struct|enum|await|self)\\b"
+                },
+                {
+                    "name": "constant.language.auwla",
+                    "match": "\\b(true|false|none|some|ok|err)\\b"
+                }
+            ]
+        },
+        "strings": {
+            "name": "string.quoted.double.auwla",
+            "begin": "\"",
+            "end": "\"",
+            "patterns": [
+                {
+                    "name": "constant.character.escape.auwla",
+                    "match": "\\\\."
+                }
+            ]
+        },
+        "numbers": {
+            "name": "constant.numeric.auwla",
+            "match": "\\b\\d+(\\.\\d+)?\\b"
+        },
+        "types": {
+            "patterns": [
+                {
+                    "name": "entity.name.type.auwla",
+                    "match": "\\b(number|string|boolean|bool|void)\\b"
+                },
+                {
+                    "name": "entity.name.type.custom.auwla",
+                    "match": "\\b[A-Z][a-zA-Z0-9]*\\b"
+                }
+            ]
+        }
+    }
+}

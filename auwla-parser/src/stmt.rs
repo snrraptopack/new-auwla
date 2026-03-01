@@ -380,6 +380,7 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                                 body,
                                 is_static,
                                 type_params,
+                                file: String::new(),
                                 span,
                             }
                         },

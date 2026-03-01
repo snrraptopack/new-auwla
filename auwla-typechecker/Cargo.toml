@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 auwla-ast = { version = "0.1.0", path = "../auwla-ast" }
+serde = { version = "1.0", features = ["derive"] }

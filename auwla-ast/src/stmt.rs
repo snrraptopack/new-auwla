@@ -19,9 +19,11 @@ pub struct ExtensionMethod {
     pub params: Vec<(String, Type)>,
     pub return_ty: Option<Type>,
     pub attributes: Vec<Attribute>,
+    pub file: String,
+    pub span: crate::Span,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum StmtKind {
     /// let x: string?string = "hello";
     Let {
@@ -101,16 +103,18 @@ pub enum StmtKind {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Program {
     pub statements: Vec<Stmt>,
 }
 
 /// A method defined inside an `extend` block.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Method {
     pub name: String,
     pub attributes: Vec<Attribute>,
+    pub file: String,
+    pub span: crate::Span,
     /// Parameters — `self` appears as the first param for instance methods.
     /// The typechecker injects the correct type for `self`.
     pub params: Vec<(String, Option<Type>)>,
@@ -119,5 +123,4 @@ pub struct Method {
     /// true when the first param is NOT `self` (static method)
     pub is_static: bool,
     pub type_params: Option<Vec<String>>,
-    pub span: crate::Span,
 }
