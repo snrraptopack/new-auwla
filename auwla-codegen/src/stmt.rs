@@ -1,10 +1,10 @@
 use crate::emitter::JsEmitter;
-use auwla_ast::{Expr, Stmt};
+use auwla_ast::Stmt;
 
 impl JsEmitter {
     pub(crate) fn emit_stmt(&mut self, stmt: &Stmt) {
-        match stmt {
-            Stmt::Let {
+        match &stmt.node {
+            auwla_ast::StmtKind::Let {
                 name,
                 ty,
                 initializer,
@@ -18,9 +18,9 @@ impl JsEmitter {
                     };
                     self.var_types.insert(name.clone(), type_name);
                 }
-                if let Expr::Match { expr, arms } = initializer {
+                if let auwla_ast::ExprKind::Match { expr, arms } = &initializer.node {
                     self.emit_match_assign("const", name, expr, arms);
-                } else if let Expr::Try { expr, error_expr } = initializer {
+                } else if let auwla_ast::ExprKind::Try { expr, error_expr } = &initializer.node {
                     self.emit_try_assign("const", name, expr, error_expr);
                 } else {
                     self.write_indent();
@@ -29,7 +29,7 @@ impl JsEmitter {
                     self.write(";\n");
                 }
             }
-            Stmt::Var {
+            auwla_ast::StmtKind::Var {
                 name,
                 ty,
                 initializer,
@@ -43,9 +43,9 @@ impl JsEmitter {
                     };
                     self.var_types.insert(name.clone(), type_name);
                 }
-                if let Expr::Match { expr, arms } = initializer {
+                if let auwla_ast::ExprKind::Match { expr, arms } = &initializer.node {
                     self.emit_match_assign("let", name, expr, arms);
-                } else if let Expr::Try { expr, error_expr } = initializer {
+                } else if let auwla_ast::ExprKind::Try { expr, error_expr } = &initializer.node {
                     self.emit_try_assign("let", name, expr, error_expr);
                 } else {
                     self.write_indent();
@@ -54,7 +54,7 @@ impl JsEmitter {
                     self.write(";\n");
                 }
             }
-            Stmt::DestructureLet {
+            auwla_ast::StmtKind::DestructureLet {
                 bindings,
                 initializer,
             } => {
@@ -70,11 +70,11 @@ impl JsEmitter {
                 self.emit_expr(initializer);
                 self.write(";\n");
             }
-            Stmt::Assign { target, value } => {
+            auwla_ast::StmtKind::Assign { target, value } => {
                 let target_str = self.emit_expr_to_string(target);
-                if let Expr::Match { expr, arms } = value {
+                if let auwla_ast::ExprKind::Match { expr, arms } = &value.node {
                     self.emit_match_assign("", &target_str, expr, arms);
-                } else if let Expr::Try { expr, error_expr } = value {
+                } else if let auwla_ast::ExprKind::Try { expr, error_expr } = &value.node {
                     self.emit_try_assign("", &target_str, expr, error_expr);
                 } else {
                     self.write_indent();
@@ -83,7 +83,7 @@ impl JsEmitter {
                     self.write(";\n");
                 }
             }
-            Stmt::Fn {
+            auwla_ast::StmtKind::Fn {
                 name, params, body, ..
             } => {
                 for (param_name, ty) in params {
@@ -108,7 +108,7 @@ impl JsEmitter {
                 self.indent -= 1;
                 self.writeln("}");
             }
-            Stmt::Return(expr_opt) => {
+            auwla_ast::StmtKind::Return(expr_opt) => {
                 self.write_indent();
                 if let Some(expr) = expr_opt {
                     self.write("return ");
@@ -118,7 +118,7 @@ impl JsEmitter {
                     self.write("return;\n");
                 }
             }
-            Stmt::If {
+            auwla_ast::StmtKind::If {
                 condition,
                 then_branch,
                 else_branch,
@@ -142,7 +142,7 @@ impl JsEmitter {
                 }
                 self.writeln("}");
             }
-            Stmt::While { condition, body } => {
+            auwla_ast::StmtKind::While { condition, body } => {
                 self.write_indent();
                 self.write("while (");
                 self.emit_expr(condition);
@@ -154,7 +154,7 @@ impl JsEmitter {
                 self.indent -= 1;
                 self.writeln("}");
             }
-            Stmt::For {
+            auwla_ast::StmtKind::For {
                 binding,
                 iterable,
                 body,
@@ -170,18 +170,18 @@ impl JsEmitter {
                 self.indent -= 1;
                 self.writeln("}");
             }
-            Stmt::Expr(expr) => {
+            auwla_ast::StmtKind::Expr(expr) => {
                 // Standalone match expression (used as statement)
-                if let Expr::Match {
+                if let auwla_ast::ExprKind::Match {
                     expr: matched,
                     arms,
-                } = expr
+                } = &expr.node
                 {
                     self.emit_match_standalone(matched, arms);
-                } else if let Expr::Try {
+                } else if let auwla_ast::ExprKind::Try {
                     expr: tried,
                     error_expr,
-                } = expr
+                } = &expr.node
                 {
                     self.emit_try_standalone(tried, error_expr);
                 } else {
@@ -190,11 +190,13 @@ impl JsEmitter {
                     self.write(";\n");
                 }
             }
-            Stmt::StructDecl { .. } | Stmt::EnumDecl { .. } | Stmt::TypeAlias { .. } => {
+            auwla_ast::StmtKind::StructDecl { .. }
+            | auwla_ast::StmtKind::EnumDecl { .. }
+            | auwla_ast::StmtKind::TypeAlias { .. } => {
                 // Struct/Enum declarations vanish in JS, they are purely for compile-time typechecking
                 // We emit nothing to keep it zero-cost.
             }
-            Stmt::Import { names, path } => {
+            auwla_ast::StmtKind::Import { names, path } => {
                 // Rewrite Auwla relative path to .js extension
                 let js_path = if path.ends_with(".aw") {
                     format!("{}.js", &path[..path.len() - 3])
@@ -211,9 +213,9 @@ impl JsEmitter {
                 }
                 self.write(&format!(" }} from '{}';\n", js_path));
             }
-            Stmt::Export { stmt: inner } => {
-                match inner.as_ref() {
-                    Stmt::Fn { name: _, .. } => {
+            auwla_ast::StmtKind::Export { stmt: inner } => {
+                match &inner.node {
+                    auwla_ast::StmtKind::Fn { name: _, .. } => {
                         // Temporarily emit the fn, then prefix with `export `
                         let saved_len = self.output.len();
                         self.emit_stmt(inner);
@@ -223,7 +225,7 @@ impl JsEmitter {
                         self.output.truncate(saved_len);
                         self.output.push_str(&new_emitted);
                     }
-                    Stmt::Let { .. } | Stmt::Var { .. } => {
+                    auwla_ast::StmtKind::Let { .. } | auwla_ast::StmtKind::Var { .. } => {
                         let saved_len = self.output.len();
                         self.emit_stmt(inner);
                         let emitted = &self.output[saved_len..];
@@ -236,7 +238,9 @@ impl JsEmitter {
                         self.output.truncate(saved_len);
                         self.output.push_str(&new_emitted);
                     }
-                    Stmt::StructDecl { .. } | Stmt::EnumDecl { .. } | Stmt::TypeAlias { .. } => {
+                    auwla_ast::StmtKind::StructDecl { .. }
+                    | auwla_ast::StmtKind::EnumDecl { .. }
+                    | auwla_ast::StmtKind::TypeAlias { .. } => {
                         // types vanish in JS output — no-op
                     }
                     _ => {
@@ -245,7 +249,9 @@ impl JsEmitter {
                     }
                 }
             }
-            Stmt::Extend { type_name, methods, .. } => {
+            auwla_ast::StmtKind::Extend {
+                type_name, methods, ..
+            } => {
                 // Emit each method as a standalone function: __ext_TypeName_methodName
                 for method in methods {
                     // Register method parameters in var_types

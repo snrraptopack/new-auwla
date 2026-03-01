@@ -1,5 +1,6 @@
+use crate::TypeError;
 use crate::scope::{Mutability, Scope};
-use auwla_ast::{Program, Stmt, Type};
+use auwla_ast::{Program, Span, Type};
 
 use std::collections::HashMap;
 
@@ -67,18 +68,26 @@ impl Typechecker {
         self.scopes.pop().expect("Cannot pop the global scope");
     }
 
+    pub(crate) fn error<T>(&self, span: Span, message: impl Into<String>) -> Result<T, TypeError> {
+        Err(TypeError {
+            span,
+            message: message.into(),
+        })
+    }
+
     pub(crate) fn declare_variable(
         &mut self,
+        _span: Span, // Will be used for error reporting if needed
         name: String,
         ty: Type,
         mutability: Mutability,
-    ) -> Result<(), String> {
+    ) -> Result<(), TypeError> {
         let current_scope = self.scopes.last_mut().unwrap();
         if current_scope.variables.contains_key(&name) {
-            return Err(format!(
-                "Variable '{}' is already defined in this scope.",
-                name
-            ));
+            return self.error(
+                _span,
+                format!("Variable '{}' is already defined in this scope.", name),
+            );
         }
         current_scope.mutability.insert(name.clone(), mutability);
         current_scope.variables.insert(name, ty);
@@ -129,7 +138,7 @@ impl Typechecker {
     }
 
     /// Typecheck a standalone program (no cross-file imports).
-    pub fn check_program(&mut self, program: &Program) -> Result<(), String> {
+    pub fn check_program(&mut self, program: &Program) -> Result<(), TypeError> {
         for stmt in &program.statements {
             self.check_stmt(stmt)?;
         }
@@ -143,13 +152,14 @@ impl Typechecker {
         &mut self,
         program: &Program,
         imports: &std::collections::HashMap<String, crate::module::ExportMap>,
-    ) -> Result<(), String> {
+    ) -> Result<(), TypeError> {
         // Pre-populate the global scope with everything each `import` statement needs.
         for stmt in &program.statements {
-            if let Stmt::Import { names, path } = stmt {
-                let export_map = imports
-                    .get(path.as_str())
-                    .ok_or_else(|| format!("Import error: could not resolve module '{}'", path))?;
+            if let auwla_ast::StmtKind::Import { names, path } = &stmt.node {
+                let export_map = imports.get(path.as_str()).ok_or_else(|| TypeError {
+                    span: stmt.span.clone(),
+                    message: format!("Import error: could not resolve module '{}'", path),
+                })?;
                 for name in names {
                     if let Some(sig) = export_map.functions.get(name) {
                         self.declare_function(
@@ -159,16 +169,21 @@ impl Typechecker {
                             sig.2.clone(),
                         );
                     } else if let Some(ty) = export_map.variables.get(name) {
-                        self.declare_variable(name.clone(), ty.clone(), Mutability::Immutable)?;
+                        self.declare_variable(
+                            stmt.span.clone(),
+                            name.clone(),
+                            ty.clone(),
+                            Mutability::Immutable,
+                        )?;
                     } else if let Some(fields) = export_map.structs.get(name) {
                         self.structs.insert(name.clone(), fields.clone());
                     } else if let Some(variants) = export_map.enums.get(name) {
                         self.enums.insert(name.clone(), variants.clone());
                     } else {
-                        return Err(format!(
-                            "Import error: '{}' not found in module '{}'",
-                            name, path
-                        ));
+                        return self.error(
+                            stmt.span.clone(),
+                            format!("Import error: '{}' not found in module '{}'", name, path),
+                        );
                     }
                 }
             }
@@ -264,7 +279,7 @@ impl Typechecker {
             Ok(())
         } else {
             Err(format!(
-                "Strict Type mismatch: Expected '{:?}', found '{:?}'",
+                "Strict Type mismatch: Expected '{}', found '{}'",
                 expected, actual
             ))
         }

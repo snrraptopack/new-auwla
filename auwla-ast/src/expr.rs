@@ -1,7 +1,11 @@
+use crate::Spanned;
+
+pub type Pattern = Spanned<PatternKind>;
+
 /// A match arm — either a single expression or a block with a final expression.
 /// For block arms the last expression (no semicolon) is the yielded value.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Pattern {
+pub enum PatternKind {
     /// E.g. "admin", 42, true
     Literal(Expr),
     /// E.g. Banned(reason)
@@ -32,8 +36,10 @@ pub struct MatchArm {
     pub result: Option<Box<Expr>>,
 }
 
+pub type Expr = Spanned<ExprKind>;
+
 #[derive(Debug, Clone, PartialEq)]
-pub enum Expr {
+pub enum ExprKind {
     /// Void / Unit value
     Void,
     /// A literal string (e.g., "hello")

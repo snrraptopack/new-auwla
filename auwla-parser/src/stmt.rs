@@ -1,6 +1,6 @@
 use crate::expr::expr_parser_with_stmt;
 use crate::types::type_parser;
-use auwla_ast::Stmt;
+use auwla_ast::{Stmt, StmtKind};
 use auwla_lexer::token::Token;
 use chumsky::prelude::*;
 
@@ -17,10 +17,15 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             .then_ignore(just(Token::Assign))
             .then(expr.clone())
             .then_ignore(just(Token::Semicolon))
-            .map(|((name, ty), initializer)| Stmt::Let {
-                name,
-                ty,
-                initializer,
+            .map_with_span(|((name, ty), initializer), span| {
+                auwla_ast::Spanned::new(
+                    StmtKind::Let {
+                        name,
+                        ty,
+                        initializer,
+                    },
+                    span,
+                )
             });
 
         let destructure_stmt = just(Token::Let)
@@ -32,9 +37,14 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             .then_ignore(just(Token::Assign))
             .then(expr.clone())
             .then_ignore(just(Token::Semicolon))
-            .map(|(bindings, initializer)| Stmt::DestructureLet {
-                bindings,
-                initializer,
+            .map_with_span(|(bindings, initializer), span| {
+                auwla_ast::Spanned::new(
+                    StmtKind::DestructureLet {
+                        bindings,
+                        initializer,
+                    },
+                    span,
+                )
             });
 
         let var_stmt = just(Token::Var)
@@ -43,16 +53,21 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             .then_ignore(just(Token::Assign))
             .then(expr.clone())
             .then_ignore(just(Token::Semicolon))
-            .map(|((name, ty), initializer)| Stmt::Var {
-                name,
-                ty,
-                initializer,
+            .map_with_span(|((name, ty), initializer), span| {
+                auwla_ast::Spanned::new(
+                    StmtKind::Var {
+                        name,
+                        ty,
+                        initializer,
+                    },
+                    span,
+                )
             });
 
         let return_stmt = just(Token::Return)
             .ignore_then(expr.clone().or_not())
             .then_ignore(just(Token::Semicolon))
-            .map(Stmt::Return);
+            .map_with_span(|inner, span| auwla_ast::Spanned::new(StmtKind::Return(inner), span));
 
         let param = select! { Token::Ident(name) => name }
             .then_ignore(just(Token::Colon))
@@ -78,13 +93,21 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                     .repeated()
                     .then(expr.clone().or_not())
                     .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                    .map(|(mut body, trailing_expr)| {
+                    .map_with_span(|(mut body, trailing_expr), _span| {
                         if let Some(e) = trailing_expr {
-                            body.push(Stmt::Return(Some(e)));
-                        } else if let Some(Stmt::Expr(auwla_ast::Expr::Match { .. })) = body.last()
-                        {
-                            if let Stmt::Expr(e) = body.pop().unwrap() {
-                                body.push(Stmt::Return(Some(e)));
+                            let e_span = e.span.clone();
+                            body.push(auwla_ast::Spanned::new(StmtKind::Return(Some(e)), e_span));
+                        } else if let Some(stmt) = body.last() {
+                            if let StmtKind::Expr(ref e) = stmt.node {
+                                if let auwla_ast::ExprKind::Match { .. } = e.node {
+                                    let last = body.pop().unwrap();
+                                    if let StmtKind::Expr(e) = last.node {
+                                        body.push(auwla_ast::Spanned::new(
+                                            StmtKind::Return(Some(e)),
+                                            last.span,
+                                        ));
+                                    }
+                                }
                             }
                         }
                         body
@@ -93,17 +116,22 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                     .or(just(Token::FatArrow)
                         .ignore_then(expr.clone())
                         .then_ignore(just(Token::Semicolon))
-                        .map(|e| vec![Stmt::Return(Some(e))])),
+                        .map_with_span(|e, span| {
+                            vec![auwla_ast::Spanned::new(StmtKind::Return(Some(e)), span)]
+                        })),
             )
-            .map(
-                |((((name, type_params), params), return_ty), body)| Stmt::Fn {
-                    name,
-                    type_params,
-                    params,
-                    return_ty,
-                    body,
-                },
-            );
+            .map_with_span(|((((name, type_params), params), return_ty), body), span| {
+                auwla_ast::Spanned::new(
+                    StmtKind::Fn {
+                        name,
+                        type_params,
+                        params,
+                        return_ty,
+                        body,
+                    },
+                    span,
+                )
+            });
 
         let if_stmt = just(Token::If)
             .ignore_then(expr.clone())
@@ -121,10 +149,15 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                     )
                     .or_not(),
             )
-            .map(|((condition, then_branch), else_branch)| Stmt::If {
-                condition,
-                then_branch,
-                else_branch,
+            .map_with_span(|((condition, then_branch), else_branch), span| {
+                auwla_ast::Spanned::new(
+                    auwla_ast::StmtKind::If {
+                        condition,
+                        then_branch,
+                        else_branch,
+                    },
+                    span,
+                )
             });
 
         let while_stmt = just(Token::While)
@@ -134,7 +167,9 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                     .repeated()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace)),
             )
-            .map(|(condition, body)| Stmt::While { condition, body });
+            .map_with_span(|(condition, body), span| {
+                auwla_ast::Spanned::new(auwla_ast::StmtKind::While { condition, body }, span)
+            });
 
         let for_stmt = just(Token::For)
             .ignore_then(select! { Token::Ident(name) => name })
@@ -145,10 +180,15 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                     .repeated()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace)),
             )
-            .map(|((binding, iterable), body)| Stmt::For {
-                binding,
-                iterable,
-                body,
+            .map_with_span(|((binding, iterable), body), span| {
+                auwla_ast::Spanned::new(
+                    auwla_ast::StmtKind::For {
+                        binding,
+                        iterable,
+                        body,
+                    },
+                    span,
+                )
             });
 
         // Assignment: `target = value;`
@@ -157,7 +197,9 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             .then_ignore(just(Token::Assign))
             .then(expr.clone())
             .then_ignore(just(Token::Semicolon))
-            .map(|(target, value)| Stmt::Assign { target, value });
+            .map_with_span(|(target, value), span| {
+                auwla_ast::Spanned::new(auwla_ast::StmtKind::Assign { target, value }, span)
+            });
 
         let struct_decl = just(Token::Struct)
             .ignore_then(select! { Token::Ident(name) => name })
@@ -170,10 +212,15 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                     .allow_trailing()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace)),
             )
-            .map(|((name, type_params), fields)| Stmt::StructDecl {
-                name,
-                type_params,
-                fields,
+            .map_with_span(|((name, type_params), fields), span| {
+                auwla_ast::Spanned::new(
+                    StmtKind::StructDecl {
+                        name,
+                        type_params,
+                        fields,
+                    },
+                    span,
+                )
             });
 
         // enum Name { Variant1, Variant2(type) }
@@ -193,10 +240,15 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                     .allow_trailing()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace)),
             )
-            .map(|((name, type_params), variants)| Stmt::EnumDecl {
-                name,
-                type_params,
-                variants,
+            .map_with_span(|((name, type_params), variants), span| {
+                auwla_ast::Spanned::new(
+                    StmtKind::EnumDecl {
+                        name,
+                        type_params,
+                        variants,
+                    },
+                    span,
+                )
             });
 
         // import { a, b } from './math';
@@ -210,12 +262,16 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             .then_ignore(just(Token::From))
             .then(select! { Token::StringLit(path) => path })
             .then_ignore(just(Token::Semicolon))
-            .map(|(names, path)| Stmt::Import { names, path });
+            .map_with_span(|(names, path), span| {
+                auwla_ast::Spanned::new(StmtKind::Import { names, path }, span)
+            });
 
         // export fn / export let / export var / export struct / export enum
         let export_stmt = just(Token::Export)
             .ignore_then(stmt.clone())
-            .map(|s| Stmt::Export { stmt: Box::new(s) });
+            .map_with_span(|s, span| {
+                auwla_ast::Spanned::new(StmtKind::Export { stmt: Box::new(s) }, span)
+            });
 
         // extend TypeName { fn method(self, ...) => expr; }
         let extend_decl = just(Token::Extend)
@@ -242,16 +298,27 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                         method_body
                             .map(|(mut body, trailing)| {
                                 if let Some(e) = trailing {
-                                    body.push(Stmt::Return(Some(e)));
+                                    let span = e.span.clone();
+                                    body.push(auwla_ast::Spanned::new(
+                                        auwla_ast::StmtKind::Return(Some(e)),
+                                        span,
+                                    ));
                                 }
                                 body
                             })
                             .or(just(Token::FatArrow)
                                 .ignore_then(expr.clone())
                                 .then_ignore(just(Token::Semicolon))
-                                .map(|e| vec![Stmt::Return(Some(e))])),
+                                .map(|e| {
+                                    let span = e.span.clone();
+                                    vec![auwla_ast::Spanned::new(
+                                        auwla_ast::StmtKind::Return(Some(e)),
+                                        span,
+                                    )]
+                                })),
                     )
-                    .map(|((((name, type_params), params), return_ty), body)| {
+                    .map_with_span(|args, span: std::ops::Range<usize>| {
+                        let ((((name, type_params), params), return_ty), body) = args;
                         let is_static = params.first().map(|(n, _)| n != "self").unwrap_or(true);
                         auwla_ast::stmt::Method {
                             name,
@@ -260,6 +327,7 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                             body,
                             is_static,
                             type_params,
+                            span,
                         }
                     });
 
@@ -267,10 +335,15 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                     .repeated()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace))
             })
-            .map(|((type_name, type_params), methods)| Stmt::Extend {
-                type_params,
-                type_name,
-                methods,
+            .map_with_span(|((type_name, type_params), methods), span| {
+                auwla_ast::Spanned::new(
+                    StmtKind::Extend {
+                        type_params,
+                        type_name,
+                        methods,
+                    },
+                    span,
+                )
             });
 
         // type Name = Result<string, string>;
@@ -280,23 +353,31 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             .then_ignore(just(Token::Assign))
             .then(ty.clone())
             .then_ignore(just(Token::Semicolon))
-            .map(|((name, type_params), aliased_type)| Stmt::TypeAlias {
-                name,
-                type_params,
-                aliased_type,
+            .map_with_span(|((name, type_params), aliased_type), span| {
+                auwla_ast::Spanned::new(
+                    StmtKind::TypeAlias {
+                        name,
+                        type_params,
+                        aliased_type,
+                    },
+                    span,
+                )
             });
 
-        // Expression as statement \u2014 with semicolon for most expressions,
+        // Expression as statement — with semicolon for most expressions,
         // but match expressions don't need a trailing semicolon
-        let match_stmt = expr.clone().try_map(|e, span| match &e {
-            auwla_ast::Expr::Match { .. } => Ok(Stmt::Expr(e)),
-            _ => Err(Simple::custom(span, "expected match expression")),
+        let match_stmt = expr.clone().try_map(|e, span| {
+            if let auwla_ast::ExprKind::Match { .. } = e.node {
+                Ok(auwla_ast::Spanned::new(StmtKind::Expr(e), span))
+            } else {
+                Err(Simple::custom(span, "expected match expression"))
+            }
         });
 
         let expr_stmt = expr
             .clone()
             .then_ignore(just(Token::Semicolon))
-            .map(Stmt::Expr);
+            .map_with_span(|inner, span| auwla_ast::Spanned::new(StmtKind::Expr(inner), span));
 
         choice((
             import_stmt,

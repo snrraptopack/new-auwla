@@ -23,7 +23,7 @@ pub fn collect_exports(program: &Program) -> ExportMap {
     let mut map = ExportMap::default();
 
     for stmt in &program.statements {
-        if let Stmt::Export { stmt: inner } = stmt {
+        if let auwla_ast::StmtKind::Export { stmt: inner } = &stmt.node {
             register_export(&mut map, inner);
         }
     }
@@ -32,8 +32,8 @@ pub fn collect_exports(program: &Program) -> ExportMap {
 }
 
 fn register_export(map: &mut ExportMap, stmt: &Stmt) {
-    match stmt {
-        Stmt::Fn {
+    match &stmt.node {
+        auwla_ast::StmtKind::Fn {
             name,
             type_params,
             params,
@@ -46,12 +46,12 @@ fn register_export(map: &mut ExportMap, stmt: &Stmt) {
                 (type_params.clone(), param_types, return_ty.clone()),
             );
         }
-        Stmt::Let {
+        auwla_ast::StmtKind::Let {
             name,
             ty,
             initializer,
         }
-        | Stmt::Var {
+        | auwla_ast::StmtKind::Var {
             name,
             ty,
             initializer,
@@ -59,12 +59,12 @@ fn register_export(map: &mut ExportMap, stmt: &Stmt) {
             if let Some(t) = ty {
                 // Explicit type annotation — register as a typed variable
                 map.variables.insert(name.clone(), t.clone());
-            } else if let auwla_ast::Expr::Closure {
+            } else if let auwla_ast::ExprKind::Closure {
                 type_params,
                 params,
                 return_ty,
                 ..
-            } = initializer
+            } = &initializer.node
             {
                 // No annotation, but initializer is a closure — register as a function
                 let param_types: Vec<Type> = params
@@ -77,14 +77,14 @@ fn register_export(map: &mut ExportMap, stmt: &Stmt) {
                 );
             }
         }
-        Stmt::StructDecl { name, fields, .. } => {
+        auwla_ast::StmtKind::StructDecl { name, fields, .. } => {
             map.structs.insert(name.clone(), fields.clone());
         }
-        Stmt::EnumDecl { name, variants, .. } => {
+        auwla_ast::StmtKind::EnumDecl { name, variants, .. } => {
             map.enums.insert(name.clone(), variants.clone());
         }
         // nested export (shouldn't occur but handle gracefully)
-        Stmt::Export { stmt: inner } => register_export(map, inner),
+        auwla_ast::StmtKind::Export { stmt: inner } => register_export(map, inner),
         _ => {}
     }
 }

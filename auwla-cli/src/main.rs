@@ -1,5 +1,6 @@
-use auwla_ast::{Program, Stmt};
+use auwla_ast::Program;
 use auwla_codegen::emit_js;
+use auwla_error::{Diagnostic, Level};
 use auwla_lexer::lex;
 use auwla_parser::parse;
 use auwla_typechecker::{ExportMap, Typechecker, collect_exports};
@@ -125,6 +126,8 @@ fn compile_directory_as_module(dir: &Path, output_dir: &Path) -> Result<(), ()> 
     // 1. Parse all .aw files
     let mut file_asts: HashMap<String, Program> = HashMap::new(); // canonical_key -> ast
     let mut file_paths: HashMap<String, PathBuf> = HashMap::new(); // canonical_key -> path
+    let mut file_sources: HashMap<String, String> = HashMap::new(); // canonical_key -> source
+    let mut file_token_spans: HashMap<String, Vec<std::ops::Range<usize>>> = HashMap::new();
 
     let entries: Vec<PathBuf> = fs::read_dir(dir)
         .expect("Failed to read dir")
@@ -142,12 +145,14 @@ fn compile_directory_as_module(dir: &Path, output_dir: &Path) -> Result<(), ()> 
                 return Err(());
             }
         };
-        let ast = match parse_source(&source, file_path) {
-            Ok(ast) => ast,
+        let (ast, token_byte_spans) = match parse_source(&source, file_path) {
+            Ok(res) => res,
             Err(_) => return Err(()),
         };
         file_asts.insert(key.clone(), ast);
-        file_paths.insert(key, file_path.clone());
+        file_paths.insert(key.clone(), file_path.clone());
+        file_sources.insert(key.clone(), source);
+        file_token_spans.insert(key, token_byte_spans);
     }
 
     // 2. Build import graph: key -> [keys it depends on]
@@ -155,7 +160,7 @@ fn compile_directory_as_module(dir: &Path, output_dir: &Path) -> Result<(), ()> 
     for (key, ast) in &file_asts {
         let mut file_deps = Vec::new();
         for stmt in &ast.statements {
-            if let Stmt::Import { path, .. } = stmt {
+            if let auwla_ast::StmtKind::Import { path, .. } = &stmt.node {
                 // Resolve path relative to the file's directory
                 let dep_key = resolve_import_key(dir, path);
                 file_deps.push(dep_key);
@@ -198,7 +203,7 @@ fn compile_directory_as_module(dir: &Path, output_dir: &Path) -> Result<(), ()> 
             // Build import context: raw_import_path -> ExportMap
             let mut import_ctx: HashMap<String, ExportMap> = HashMap::new();
             for stmt in &ast.statements {
-                if let Stmt::Import { path: raw_path, .. } = stmt {
+                if let auwla_ast::StmtKind::Import { path: raw_path, .. } = &stmt.node {
                     let dep_key = resolve_import_key(dir, raw_path);
                     if let Some(map) = export_maps.get(&dep_key) {
                         import_ctx.insert(raw_path.clone(), map.clone());
@@ -234,10 +239,21 @@ fn compile_directory_as_module(dir: &Path, output_dir: &Path) -> Result<(), ()> 
                     success_count += 1;
                 }
                 Err(e) => {
-                    eprintln!("╔═══════════════════════════════════╗");
-                    eprintln!("║       Auwla  ─  Type Error         ║");
-                    eprintln!("╚═══════════════════════════════════╝");
-                    eprintln!("→  {}", e);
+                    let source = file_sources.get(key).unwrap();
+                    let token_byte_spans = file_token_spans.get(key).unwrap();
+
+                    let byte_start = token_byte_spans
+                        .get(e.span.start)
+                        .map(|r| r.start)
+                        .unwrap_or(0);
+                    let byte_end = token_byte_spans
+                        .get(e.span.end.saturating_sub(1))
+                        .map(|r| r.end)
+                        .unwrap_or(source.len());
+
+                    Diagnostic::new(Level::Error, "Type Error", file_path.to_string_lossy())
+                        .with_label(byte_start..byte_end, e.message.clone())
+                        .emit(source);
                     fail_count += 1;
                 }
             }
@@ -359,7 +375,7 @@ fn compile_file_standalone(path: &Path, output_file: &Path) -> Result<(), ()> {
         }
     };
 
-    let ast = parse_source(&source, path)?;
+    let (ast, token_byte_spans) = parse_source(&source, path)?;
 
     if std::env::var("AUWLA_DEBUG").is_ok() {
         println!("--- Parsed AST ---\n{:#?}\n---\n", ast);
@@ -398,26 +414,31 @@ fn compile_file_standalone(path: &Path, output_file: &Path) -> Result<(), ()> {
             Ok(())
         }
         Err(e) => {
-            eprintln!("╔═══════════════════════════════════╗");
-            eprintln!("║       Auwla  ─  Type Error         ║");
-            eprintln!("╚═══════════════════════════════════╝");
-            eprintln!("→  {}", e);
+            let byte_start = token_byte_spans
+                .get(e.span.start)
+                .map(|r| r.start)
+                .unwrap_or(0);
+            let byte_end = token_byte_spans
+                .get(e.span.end.saturating_sub(1))
+                .map(|r| r.end)
+                .unwrap_or(source.len());
+
+            Diagnostic::new(Level::Error, "Type Error", path.to_string_lossy())
+                .with_label(byte_start..byte_end, e.message)
+                .emit(&source);
             Err(())
         }
     }
 }
 
-fn parse_source(source: &str, path: &Path) -> Result<Program, ()> {
+fn parse_source(source: &str, path: &Path) -> Result<(Program, Vec<std::ops::Range<usize>>), ()> {
     let lexed = lex(source);
     let spans: Vec<std::ops::Range<usize>> = lexed.iter().map(|(_, s)| s.clone()).collect();
     let tokens: Vec<_> = lexed.into_iter().map(|(t, _)| t).collect();
 
     match parse(tokens) {
-        Ok(program) => Ok(program),
+        Ok(program) => Ok((program, spans)),
         Err(errs) => {
-            eprintln!("╔═══════════════════════════════════╗");
-            eprintln!("║       Auwla  ─  Syntax Error       ║");
-            eprintln!("╚═══════════════════════════════════╝");
             for e in errs {
                 let span = e.span();
                 let byte_start = spans.get(span.start).map(|r| r.start).unwrap_or(0);
@@ -426,40 +447,42 @@ fn parse_source(source: &str, path: &Path) -> Result<Program, ()> {
                     .map(|r| r.end)
                     .unwrap_or(source.len());
 
-                let (line, col) = byte_to_line_col(source, byte_start);
-                let snippet = source[byte_start..byte_end.min(source.len())].trim();
-
-                eprintln!(
-                    "→  [{}] Line {}, Col {}: Unexpected token '{}'.",
-                    path.display(),
-                    line,
-                    col,
-                    snippet
-                );
+                let mut diag =
+                    Diagnostic::new(Level::Error, "Syntax Error", path.to_string_lossy());
 
                 let expected: Vec<_> = e.expected().filter_map(|t| t.as_ref()).cloned().collect();
 
+                let message = if let Some(found) = e.found() {
+                    format!("Unexpected token '{}'", found)
+                } else {
+                    "Unexpected end of input".to_string()
+                };
+
                 use auwla_lexer::token::Token;
                 if expected.contains(&Token::Semicolon) {
-                    let prev_byte = spans
-                        .get(span.start.saturating_sub(1))
-                        .map(|r| r.end.saturating_sub(1))
-                        .unwrap_or(0);
-                    let (prev_line, _) = byte_to_line_col(source, prev_byte);
-                    let prev_line_src = source
-                        .lines()
-                        .nth(prev_line.saturating_sub(1))
-                        .unwrap_or("")
-                        .trim();
-                    eprintln!(
-                        "   Hint: Did you forget a semicolon `;` at the end of line {}?",
-                        prev_line
-                    );
-                    eprintln!("         `{}`", prev_line_src);
-                } else if !expected.is_empty() {
-                    let names: Vec<_> = expected.iter().map(|t| format!("{:?}", t)).collect();
-                    eprintln!("   Expected one of: {}", names.join(", "));
+                    let prev_idx = span.start.saturating_sub(1);
+                    if let Some(prev_span) = spans.get(prev_idx) {
+                        diag = diag.with_label(
+                            prev_span.end..prev_span.end,
+                            "Expected ';' after this token",
+                        );
+
+                        let (prev_line, _) = byte_to_line_col(source, prev_span.start);
+                        diag = diag.with_help(format!(
+                            "Did you forget a semicolon ';' at the end of line {}?",
+                            prev_line
+                        ));
+                    }
                 }
+
+                diag = diag.with_label(byte_start..byte_end, message);
+
+                if !expected.is_empty() && !expected.contains(&Token::Semicolon) {
+                    let names: Vec<_> = expected.iter().map(|t| format!("{}", t)).collect();
+                    diag = diag.with_help(format!("Expected one of: {}", names.join(", ")));
+                }
+
+                diag.emit(&source);
             }
             Err(())
         }

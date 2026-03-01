@@ -5,6 +5,6 @@ members = [
     "auwla-parser",
     "auwla-typechecker",
     "auwla-codegen",
-    "auwla-cli",
+    "auwla-cli", "auwla-error",
 ]
 resolver = "2"

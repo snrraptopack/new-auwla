@@ -3,10 +3,10 @@ use auwla_ast::{BinaryOp, Expr, UnaryOp};
 
 impl JsEmitter {
     pub(crate) fn emit_expr(&mut self, expr: &Expr) {
-        match expr {
-            Expr::Void => self.write("undefined"),
-            Expr::StringLit(s) => self.write(&format!("\"{}\"", s)),
-            Expr::NumberLit(n) => {
+        match &expr.node {
+            auwla_ast::ExprKind::Void => self.write("undefined"),
+            auwla_ast::ExprKind::StringLit(s) => self.write(&format!("\"{}\"", s)),
+            auwla_ast::ExprKind::NumberLit(n) => {
                 // Emit integers without decimal point
                 if *n == (*n as i64) as f64 {
                     self.write(&format!("{}", *n as i64));
@@ -14,16 +14,16 @@ impl JsEmitter {
                     self.write(&format!("{}", n));
                 }
             }
-            Expr::BoolLit(b) => self.write(if *b { "true" } else { "false" }),
-            Expr::CharLit(c) => self.write(&format!("\"{}\"", c)),
-            Expr::Identifier(name) => {
+            auwla_ast::ExprKind::BoolLit(b) => self.write(if *b { "true" } else { "false" }),
+            auwla_ast::ExprKind::CharLit(c) => self.write(&format!("\"{}\"", c)),
+            auwla_ast::ExprKind::Identifier(name) => {
                 if self.in_extension_method && name == "self" {
                     self.write("__self");
                 } else {
                     self.write(name);
                 }
             }
-            Expr::Binary { op, left, right } => {
+            auwla_ast::ExprKind::Binary { op, left, right } => {
                 self.write("(");
                 self.emit_expr(left);
                 let op_str = match op {
@@ -44,19 +44,19 @@ impl JsEmitter {
                 self.emit_expr(right);
                 self.write(")");
             }
-            Expr::Unary { op, expr: inner } => {
+            auwla_ast::ExprKind::Unary { op, expr: inner } => {
                 match op {
                     UnaryOp::Not => self.write("!"),
                     UnaryOp::Neg => self.write("-"),
                 }
                 self.emit_expr(inner);
             }
-            Expr::Some(inner) => {
+            auwla_ast::ExprKind::Some(inner) => {
                 self.write("({ ok: true, value: ");
                 self.emit_expr(inner);
                 self.write(" })");
             }
-            Expr::None(inner_opt) => {
+            auwla_ast::ExprKind::None(inner_opt) => {
                 if let Some(inner) = inner_opt {
                     self.write("({ ok: false, value: ");
                     self.emit_expr(inner);
@@ -65,7 +65,7 @@ impl JsEmitter {
                     self.write("({ ok: false })");
                 }
             }
-            Expr::Call { name, args, .. } => {
+            auwla_ast::ExprKind::Call { name, args, .. } => {
                 // Map built-in functions
                 let js_name = if name == "print" {
                     "__print"
@@ -82,7 +82,7 @@ impl JsEmitter {
                 }
                 self.write(")");
             }
-            Expr::Match {
+            auwla_ast::ExprKind::Match {
                 expr: matched,
                 arms,
             } => {
@@ -128,7 +128,7 @@ impl JsEmitter {
                 self.indent -= 1;
                 self.write("})()");
             }
-            Expr::Array(elements) => {
+            auwla_ast::ExprKind::Array(elements) => {
                 self.write("[");
                 for (i, elem) in elements.iter().enumerate() {
                     if i > 0 {
@@ -138,13 +138,13 @@ impl JsEmitter {
                 }
                 self.write("]");
             }
-            Expr::Index { expr, index } => {
+            auwla_ast::ExprKind::Index { expr, index } => {
                 self.emit_expr(expr);
                 self.write("[");
                 self.emit_expr(index);
                 self.write("]");
             }
-            Expr::Range {
+            auwla_ast::ExprKind::Range {
                 start,
                 end,
                 inclusive,
@@ -171,22 +171,22 @@ impl JsEmitter {
                 self.emit_expr(end);
                 self.write(")");
             }
-            Expr::Interpolation(parts) => {
+            auwla_ast::ExprKind::Interpolation(parts) => {
                 // Emit JS template literal: `Hello ${name}!`
                 self.write("`");
                 for part in parts {
-                    match part {
-                        Expr::StringLit(s) => self.write(s),
-                        other => {
+                    match &part.node {
+                        auwla_ast::ExprKind::StringLit(s) => self.write(s),
+                        _ => {
                             self.write("${");
-                            self.emit_expr(other);
+                            self.emit_expr(part);
                             self.write("}");
                         }
                     }
                 }
                 self.write("`");
             }
-            Expr::Try { expr, error_expr } => {
+            auwla_ast::ExprKind::Try { expr, error_expr } => {
                 // Nested Try expression - using an IIFE.
                 // Note: This won't early-return from the parent function if nested.
                 // Parent-return only works for top-level stmt try (handled in emit_stmt).
@@ -204,7 +204,7 @@ impl JsEmitter {
                 self.write(&temp);
                 self.write(".value; })()");
             }
-            Expr::StructInit { fields, .. } => {
+            auwla_ast::ExprKind::StructInit { fields, .. } => {
                 self.write("{ ");
                 for (i, (field_name, field_expr)) in fields.iter().enumerate() {
                     if i > 0 {
@@ -215,16 +215,16 @@ impl JsEmitter {
                 }
                 self.write(" }");
             }
-            Expr::PropertyAccess { expr, property } => {
+            auwla_ast::ExprKind::PropertyAccess { expr, property } => {
                 self.emit_expr(expr);
                 self.write(&format!(".{}", property));
             }
-            Expr::MethodCall {
+            auwla_ast::ExprKind::MethodCall {
                 expr, method, args, ..
             } => {
                 // Resolve whether this is an extension call by looking up the receiver type.
-                let receiver_type_key: Option<String> = match expr.as_ref() {
-                    Expr::Identifier(name) => self.var_types.get(name).cloned(),
+                let receiver_type_key: Option<String> = match &expr.node {
+                    auwla_ast::ExprKind::Identifier(name) => self.var_types.get(name).cloned(),
                     _ => None,
                 };
                 let is_extension = receiver_type_key
@@ -255,7 +255,7 @@ impl JsEmitter {
                     self.write(")");
                 }
             }
-            Expr::EnumInit {
+            auwla_ast::ExprKind::EnumInit {
                 enum_name: _,
                 variant_name,
                 args,
@@ -272,7 +272,7 @@ impl JsEmitter {
                 }
                 self.write("] }");
             }
-            Expr::Closure { params, body, .. } => {
+            auwla_ast::ExprKind::Closure { params, body, .. } => {
                 self.write("(");
                 for (i, (name, _)) in params.iter().enumerate() {
                     if i > 0 {
@@ -283,7 +283,7 @@ impl JsEmitter {
                 self.write(") => ");
                 self.emit_expr(body);
             }
-            Expr::Block(stmts, result) => {
+            auwla_ast::ExprKind::Block(stmts, result) => {
                 // If this is a block expression, we might need a different emitting strategy
                 // depending on context. For now, we emit as a block.
                 // If it's used as a closure body, it works perfectly.

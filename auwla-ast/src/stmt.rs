@@ -1,8 +1,11 @@
+use crate::Spanned;
 use crate::expr::Expr;
 use crate::types::Type;
 
+pub type Stmt = Spanned<StmtKind>;
+
 #[derive(Debug, Clone, PartialEq)]
-pub enum Stmt {
+pub enum StmtKind {
     /// let x: string?string = "hello";
     Let {
         name: String,
@@ -96,4 +99,5 @@ pub struct Method {
     /// true when the first param is NOT `self` (static method)
     pub is_static: bool,
     pub type_params: Option<Vec<String>>,
+    pub span: crate::Span,
 }

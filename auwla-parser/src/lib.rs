@@ -20,7 +20,7 @@ pub fn parse(tokens: Vec<Token>) -> Result<Program, Vec<Simple<Token>>> {
 
 #[cfg(test)]
 mod tests {
-    use auwla_ast::{BinaryOp, Expr, Stmt, Type};
+    use auwla_ast::{BinaryOp, Type};
     use auwla_lexer::lex;
     use auwla_lexer::token::Token;
 
@@ -33,15 +33,19 @@ mod tests {
         let ast = parse(tokens).expect("Failed to parse");
 
         assert_eq!(ast.statements.len(), 1);
-        if let Stmt::Let {
+        if let auwla_ast::StmtKind::Let {
             name,
             ty,
             initializer,
-        } = &ast.statements[0]
+        } = &ast.statements[0].node
         {
             assert_eq!(name, "x");
             assert_eq!(ty, &None);
-            assert_eq!(initializer, &Expr::NumberLit(5.0));
+            if let auwla_ast::ExprKind::NumberLit(val) = initializer.node {
+                assert_eq!(val, 5.0);
+            } else {
+                panic!("Expected NumberLit");
+            }
         } else {
             panic!("Expected Let statement");
         }
@@ -54,11 +58,11 @@ mod tests {
         let ast = parse(tokens).expect("Failed to parse");
 
         assert_eq!(ast.statements.len(), 1);
-        if let Stmt::Let {
+        if let auwla_ast::StmtKind::Let {
             name,
             ty,
             initializer,
-        } = &ast.statements[0]
+        } = &ast.statements[0].node
         {
             assert_eq!(name, "msg");
             if let Some(Type::Result { ok_type, err_type }) = ty {
@@ -67,10 +71,15 @@ mod tests {
             } else {
                 panic!("Expected Result type");
             }
-            assert_eq!(
-                initializer,
-                &Expr::Some(Box::new(Expr::StringLit("error".to_string())))
-            );
+            if let auwla_ast::ExprKind::Some(inner) = &initializer.node {
+                if let auwla_ast::ExprKind::StringLit(s) = &inner.node {
+                    assert_eq!(s, "error");
+                } else {
+                    panic!("Expected StringLit inner");
+                }
+            } else {
+                panic!("Expected Some expr");
+            }
         } else {
             panic!("Expected Let statement");
         }
@@ -83,18 +92,22 @@ mod tests {
         let ast = parse(tokens).expect("Failed to parse");
 
         assert_eq!(ast.statements.len(), 1);
-        if let Stmt::Var {
+        if let auwla_ast::StmtKind::Var {
             name,
             ty,
             initializer,
-        } = &ast.statements[0]
+        } = &ast.statements[0].node
         {
             assert_eq!(name, "y");
             assert_eq!(ty, &None);
-            if let Expr::Binary { op, left, right } = initializer {
+            if let auwla_ast::ExprKind::Binary { op, left, right } = &initializer.node {
                 assert_eq!(op, &BinaryOp::Add);
-                assert_eq!(&**left, &Expr::NumberLit(10.0));
-                assert_eq!(&**right, &Expr::NumberLit(20.0));
+                if let auwla_ast::ExprKind::NumberLit(l) = left.node {
+                    assert_eq!(l, 10.0);
+                }
+                if let auwla_ast::ExprKind::NumberLit(r) = right.node {
+                    assert_eq!(r, 20.0);
+                }
             } else {
                 panic!("Expected Binary Expr");
             }
@@ -114,13 +127,13 @@ mod tests {
         let ast = parse(tokens).expect("Failed to parse");
 
         assert_eq!(ast.statements.len(), 1);
-        if let Stmt::Fn {
+        if let auwla_ast::StmtKind::Fn {
             name,
             params,
             return_ty,
             body,
             ..
-        } = &ast.statements[0]
+        } = &ast.statements[0].node
         {
             assert_eq!(name, "add");
             assert_eq!(params.len(), 2);
@@ -129,10 +142,14 @@ mod tests {
 
             assert_eq!(return_ty, &Some(Type::Basic("number".to_string())));
             assert_eq!(body.len(), 1);
-            if let Stmt::Return(Some(Expr::Binary { op, .. })) = &body[0] {
-                assert_eq!(op, &BinaryOp::Add);
+            if let auwla_ast::StmtKind::Return(Some(e)) = &body[0].node {
+                if let auwla_ast::ExprKind::Binary { op, .. } = &e.node {
+                    assert_eq!(op, &BinaryOp::Add);
+                } else {
+                    panic!("Expected Return binary expression");
+                }
             } else {
-                panic!("Expected Return binary expression");
+                panic!("Expected Return statement");
             }
         } else {
             panic!("Expected Fn statement");
@@ -152,31 +169,39 @@ mod tests {
         let ast = parse(tokens).expect("Failed to parse");
 
         assert_eq!(ast.statements.len(), 1);
-        if let Stmt::If {
+        if let auwla_ast::StmtKind::If {
             condition,
             then_branch,
             else_branch,
-        } = &ast.statements[0]
+        } = &ast.statements[0].node
         {
-            if let Expr::Binary { op, .. } = condition {
+            if let auwla_ast::ExprKind::Binary { op, .. } = &condition.node {
                 assert_eq!(op, &BinaryOp::Gt);
             } else {
                 panic!("Expected > condition");
             }
 
             assert_eq!(then_branch.len(), 1);
-            if let Stmt::Return(Some(Expr::Some(_))) = &then_branch[0] {
-                // Return Some
+            if let auwla_ast::StmtKind::Return(Some(e)) = &then_branch[0].node {
+                if let auwla_ast::ExprKind::Some(_) = e.node {
+                    // Return Some
+                } else {
+                    panic!("Expected return some(...)");
+                }
             } else {
-                panic!("Expected return some(...)");
+                panic!("Expected Return statement");
             }
 
             let els = else_branch.as_ref().expect("Expected else branch");
             assert_eq!(els.len(), 1);
-            if let Stmt::Return(Some(Expr::None(_))) = &els[0] {
-                // Return None
+            if let auwla_ast::StmtKind::Return(Some(e)) = &els[0].node {
+                if let auwla_ast::ExprKind::None(_) = e.node {
+                    // Return None
+                } else {
+                    panic!("Expected return none(...)");
+                }
             } else {
-                panic!("Expected return none(...)");
+                panic!("Expected Return statement");
             }
         } else {
             panic!("Expected If statement");

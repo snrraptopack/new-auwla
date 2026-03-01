@@ -61,15 +61,15 @@ impl JsEmitter {
     }
 
     pub(crate) fn emit_pattern_shape(&mut self, temp: &str, pattern: &auwla_ast::Pattern) {
-        match pattern {
-            auwla_ast::Pattern::Wildcard | auwla_ast::Pattern::Variable(_) => {
+        match &pattern.node {
+            auwla_ast::PatternKind::Wildcard | auwla_ast::PatternKind::Variable(_) => {
                 self.write("true");
             }
-            auwla_ast::Pattern::Literal(expr) => {
+            auwla_ast::PatternKind::Literal(expr) => {
                 self.write(&format!("{} === ", temp));
                 self.emit_expr(expr);
             }
-            auwla_ast::Pattern::Variant { name, bindings: _ } => {
+            auwla_ast::PatternKind::Variant { name, bindings: _ } => {
                 if name == "some" {
                     self.write(&format!("{}.ok", temp));
                 } else if name == "none" {
@@ -78,7 +78,7 @@ impl JsEmitter {
                     self.write(&format!("{}.$variant === \"{}\"", temp, name));
                 }
             }
-            auwla_ast::Pattern::Range {
+            auwla_ast::PatternKind::Range {
                 start,
                 end,
                 inclusive,
@@ -90,7 +90,7 @@ impl JsEmitter {
                 self.emit_expr(end);
                 self.write(")");
             }
-            auwla_ast::Pattern::Or(patterns) => {
+            auwla_ast::PatternKind::Or(patterns) => {
                 self.write("(");
                 for (i, p) in patterns.iter().enumerate() {
                     if i > 0 {
@@ -100,7 +100,7 @@ impl JsEmitter {
                 }
                 self.write(")");
             }
-            auwla_ast::Pattern::Struct(_name, fields) => {
+            auwla_ast::PatternKind::Struct(_name, fields) => {
                 self.write("(");
                 for (i, (fname, sub_pattern_opt)) in fields.iter().enumerate() {
                     if i > 0 {
@@ -196,12 +196,12 @@ impl JsEmitter {
     }
 
     pub(crate) fn emit_bound_variables(&mut self, temp: &str, pattern: &auwla_ast::Pattern) {
-        match pattern {
-            auwla_ast::Pattern::Variable(name) => {
+        match &pattern.node {
+            auwla_ast::PatternKind::Variable(name) => {
                 self.write_indent();
                 self.write(&format!("const {} = {};\n", name, temp));
             }
-            auwla_ast::Pattern::Variant { name, bindings } => {
+            auwla_ast::PatternKind::Variant { name, bindings } => {
                 if name == "some" || name == "none" {
                     if let Some(binding) = bindings.first() {
                         self.write_indent();
@@ -214,12 +214,12 @@ impl JsEmitter {
                     }
                 }
             }
-            auwla_ast::Pattern::Or(patterns) => {
+            auwla_ast::PatternKind::Or(patterns) => {
                 if let Some(first) = patterns.first() {
                     self.emit_bound_variables(temp, first);
                 }
             }
-            auwla_ast::Pattern::Struct(_name, fields) => {
+            auwla_ast::PatternKind::Struct(_name, fields) => {
                 for (fname, sub_pattern_opt) in fields {
                     if let Some(sub_pattern) = sub_pattern_opt {
                         let inner_temp = format!("{}.{}", temp, fname);
