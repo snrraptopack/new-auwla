@@ -17,3 +17,5 @@ for item in items {
 for num in 5..7 {
     print("For Loop range: {num}");
 }
+
+let one = 10

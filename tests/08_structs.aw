@@ -22,6 +22,7 @@ var bob = User { name: "Bob", age: 25, is_active: false };
 bob.age = 26;
 print(bob.age);
 
+
 // Nested Structs
 struct Account {
     user: User,
