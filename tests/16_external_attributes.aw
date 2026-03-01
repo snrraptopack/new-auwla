@@ -65,6 +65,6 @@ main();
 print("hello".repeat(10));
 
 let nums = 1 .. 100;
-for i in 1 .. 100{
+for i in nums.low() .. nums.high(){
     print("the current number is : {i}");
 }

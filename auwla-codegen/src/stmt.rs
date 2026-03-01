@@ -29,6 +29,10 @@ impl JsEmitter {
                 } else if let auwla_ast::ExprKind::Try { expr, error_expr } = &initializer.node {
                     self.emit_try_assign("const", name, expr, error_expr);
                 } else {
+                    if let auwla_ast::ExprKind::Range { .. } = &initializer.node {
+                        self.var_types
+                            .insert(name.clone(), "array<number>".to_string());
+                    }
                     self.write_indent();
                     self.write(&format!("const {} = ", name));
                     self.emit_expr(initializer);
@@ -60,6 +64,10 @@ impl JsEmitter {
                 } else if let auwla_ast::ExprKind::Try { expr, error_expr } = &initializer.node {
                     self.emit_try_assign("let", name, expr, error_expr);
                 } else {
+                    if let auwla_ast::ExprKind::Range { .. } = &initializer.node {
+                        self.var_types
+                            .insert(name.clone(), "array<number>".to_string());
+                    }
                     self.write_indent();
                     self.write(&format!("let {} = ", name));
                     self.emit_expr(initializer);
@@ -173,10 +181,27 @@ impl JsEmitter {
                 iterable,
                 body,
             } => {
-                self.write_indent();
-                self.write(&format!("for (const {} of ", binding));
-                self.emit_expr(iterable);
-                self.write(") {\n");
+                if let auwla_ast::ExprKind::Range {
+                    start,
+                    end,
+                    inclusive,
+                } = &iterable.node
+                {
+                    // Optimized number range loop
+                    self.write_indent();
+                    let start_str = self.emit_expr_to_string(start);
+                    let end_str = self.emit_expr_to_string(end);
+                    let op = if *inclusive { "<=" } else { "<" };
+                    self.write(&format!(
+                        "for (let {} = {}; {} {} {}; {}++) {{\n",
+                        binding, start_str, binding, op, end_str, binding
+                    ));
+                } else {
+                    self.write_indent();
+                    self.write(&format!("for (const {} of ", binding));
+                    self.emit_expr(iterable);
+                    self.write(") {\n");
+                }
                 self.indent += 1;
                 for s in body {
                     self.emit_stmt(s);
@@ -271,15 +296,14 @@ impl JsEmitter {
             } => {
                 let type_key = self.extend_key(type_name, type_args);
                 let safe_type_key = self.type_key_ident(&type_key);
-                // Emit each method as a standalone function: __ext_TypeName_methodName
+                // Emit each method as a standalone function: _ext_TypeName_methodName
                 for method in methods {
                     // Register method parameters in var_types
                     for (param_name, ty_opt) in &method.params {
                         if param_name == "self" {
                             self.var_types
                                 .insert("__self".to_string(), type_key.clone());
-                            self.var_types
-                                .insert("self".to_string(), type_key.clone());
+                            self.var_types.insert("self".to_string(), type_key.clone());
                         } else if let Some(ty) = ty_opt {
                             let t_name = self.type_to_key(ty);
                             self.var_types.insert(param_name.clone(), t_name);
@@ -290,7 +314,7 @@ impl JsEmitter {
                         // Static methods don't have a receiver — emit as plain function
                         self.write_indent_ext();
                         self.write_ext(&format!(
-                            "export function __ext_{}_{}(",
+                            "export function _ext_{}_{}(",
                             safe_type_key, method.name
                         ));
                         let params: Vec<_> = method.params.iter().collect();
@@ -305,7 +329,7 @@ impl JsEmitter {
                         // Instance methods: first param is `self` → rename to `__self`
                         self.write_indent_ext();
                         self.write_ext(&format!(
-                            "export function __ext_{}_{}(__self",
+                            "export function _ext_{}_{}(__self",
                             safe_type_key, method.name
                         ));
                         for (pname, _) in method.params.iter().filter(|(n, _)| n != "self") {
@@ -351,21 +375,14 @@ impl JsEmitter {
                                     args.join(", ")
                                 ));
                             } else if mapping_type == Some("static") {
-                                let obj = attr
-                                    .args
-                                    .get(2)
-                                    .map(|s| s.as_str())
-                                    .unwrap_or(type_name);
+                                let obj = attr.args.get(2).map(|s| s.as_str()).unwrap_or(type_name);
                                 let target = attr
                                     .args
                                     .get(3)
                                     .map(|s| s.as_str())
                                     .unwrap_or(method.name.as_str());
-                                let args: Vec<&str> = method
-                                    .params
-                                    .iter()
-                                    .map(|(n, _)| n.as_str())
-                                    .collect();
+                                let args: Vec<&str> =
+                                    method.params.iter().map(|(n, _)| n.as_str()).collect();
                                 self.write_indent_ext();
                                 self.write_ext(&format!(
                                     "return {}.{}({});\n",

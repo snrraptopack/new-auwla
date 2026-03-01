@@ -1,12 +1,12 @@
-import { __print } from './__util.js';
-for (const x of ((__s, __e) => {if (typeof __s === 'number') return Array.from({length: __e - __s + 1}, (_, i) => i + __s); else { const sc = __s.charCodeAt(0), ec = __e.charCodeAt(0); return Array.from({length: ec - sc + 1}, (_, i) => String.fromCharCode(i + sc)); }})(1, 5)) {
+import { __print, __range } from './__util.js';
+for (let x = 1; x <= 5; x++) {
   __print(`Inclusive: ${x}`);
 }
-for (const y of ((__s, __e) => {if (typeof __s === 'number') return Array.from({length: __e - __s}, (_, i) => i + __s); else { const sc = __s.charCodeAt(0), ec = __e.charCodeAt(0); return Array.from({length: ec - sc}, (_, i) => String.fromCharCode(i + sc)); }})(1, 5)) {
+for (let y = 1; y < 5; y++) {
   __print(`Exclusive: ${y}`);
 }
-for (const c of ((__s, __e) => {if (typeof __s === 'number') return Array.from({length: __e - __s + 1}, (_, i) => i + __s); else { const sc = __s.charCodeAt(0), ec = __e.charCodeAt(0); return Array.from({length: ec - sc + 1}, (_, i) => String.fromCharCode(i + sc)); }})("a", "d")) {
+for (let c = "a"; c <= "d"; c++) {
   __print(`Char: ${c}`);
 }
-const a = ((__s, __e) => {if (typeof __s === 'number') return Array.from({length: __e - __s + 1}, (_, i) => i + __s); else { const sc = __s.charCodeAt(0), ec = __e.charCodeAt(0); return Array.from({length: ec - sc + 1}, (_, i) => String.fromCharCode(i + sc)); }})("a", "z");
+const a = __range("a", "z", true);
 __print(`Array from range: ${a}`);

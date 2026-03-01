@@ -104,7 +104,11 @@ impl JsEmitter {
             Type::Array(inner) => format!("array<{}>", self.type_to_key(inner)),
             Type::Optional(inner) => format!("{}?", self.type_to_key(inner)),
             Type::Result { ok_type, err_type } => {
-                format!("{}?{}", self.type_to_key(ok_type), self.type_to_key(err_type))
+                format!(
+                    "{}?{}",
+                    self.type_to_key(ok_type),
+                    self.type_to_key(err_type)
+                )
             }
             Type::Generic(name, args) => {
                 let parts: Vec<String> = args.iter().map(|a| self.type_to_key(a)).collect();
@@ -126,9 +130,26 @@ impl JsEmitter {
     }
 
     pub(crate) fn type_key_ident(&self, key: &str) -> String {
-        key.chars()
-            .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
-            .collect()
+        let mut result = String::new();
+        let mut last_was_underscore = false;
+
+        for c in key.chars() {
+            if c.is_ascii_alphanumeric() {
+                result.push(c);
+                last_was_underscore = false;
+            } else {
+                if !last_was_underscore && !result.is_empty() {
+                    result.push('_');
+                    last_was_underscore = true;
+                }
+            }
+        }
+
+        // Trim trailing underscore
+        if result.ends_with('_') {
+            result.pop();
+        }
+        result
     }
 
     pub(crate) fn array_literal_type_key(&self, elems: &[Expr]) -> Option<String> {

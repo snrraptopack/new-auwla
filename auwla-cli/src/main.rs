@@ -220,13 +220,24 @@ fn compile_directory_as_module(dir: &Path, output_dir: &Path) -> Result<(), ()> 
                     all_extensions.push_str(&ext_output);
 
                     let mut import_prefix = String::new();
+                    let mut util_imports = Vec::new();
                     if js_output.contains("__print(") {
                         util_needed = true;
-                        import_prefix.push_str("import { __print } from './__util.js';\n");
+                        util_imports.push("__print");
                     }
-                    if js_output.contains("__ext_") {
+                    if js_output.contains("__range(") {
+                        util_needed = true;
+                        util_imports.push("__range");
+                    }
+                    if !util_imports.is_empty() {
+                        import_prefix.push_str(&format!(
+                            "import {{ {} }} from './__util.js';\n",
+                            util_imports.join(", ")
+                        ));
+                    }
+                    if js_output.contains("_ext_") {
                         import_prefix.push_str("import * as __auwla from './__runtime.js';\n");
-                        js_output = js_output.replace("__ext_", "__auwla.__ext_");
+                        js_output = js_output.replace("_ext_", "__auwla._ext_");
                     }
                     if !import_prefix.is_empty() {
                         js_output = format!("{}{}", import_prefix, js_output);
@@ -411,7 +422,24 @@ fn compile_file_standalone(path: &Path, output_file: &Path) -> Result<(), ()> {
             }
 
             let mut import_prefix = String::new();
+            let mut util_needed = false;
+            let mut util_imports = Vec::new();
             if js_output.contains("__print(") {
+                util_needed = true;
+                util_imports.push("__print");
+            }
+            if js_output.contains("__range(") {
+                util_needed = true;
+                util_imports.push("__range");
+            }
+            if !util_imports.is_empty() {
+                import_prefix.push_str(&format!(
+                    "import {{ {} }} from './__util.js';\n",
+                    util_imports.join(", ")
+                ));
+            }
+
+            if util_needed {
                 let out_dir = output_file.parent().unwrap_or(Path::new("."));
                 let util_path = out_dir.join("__util.js");
                 let contents = util_js_source();
@@ -419,11 +447,11 @@ fn compile_file_standalone(path: &Path, output_file: &Path) -> Result<(), ()> {
                     eprintln!("[Error] Failed to write '__util.js': {}", e);
                 });
                 println!("✓  Generated '__util.js' ({} bytes)", contents.len());
-                import_prefix.push_str("import { __print } from './__util.js';\n");
             }
-            if js_output.contains("__ext_") {
+
+            if js_output.contains("_ext_") {
                 import_prefix.push_str("import * as __auwla from './__runtime.js';\n");
-                js_output = js_output.replace("__ext_", "__auwla.__ext_");
+                js_output = js_output.replace("_ext_", "__auwla._ext_");
             }
             if !import_prefix.is_empty() {
                 js_output = format!("{}{}", import_prefix, js_output);
@@ -458,7 +486,7 @@ fn compile_file_standalone(path: &Path, output_file: &Path) -> Result<(), ()> {
 }
 
 fn util_js_source() -> &'static str {
-    "export function __print(...args) {\n  const format = (val, top = false) => {\n    if (val && typeof val === 'object' && 'ok' in val) {\n      if (val.ok) return `some(${format(val.value)})`;\n      if ('value' in val) return `none(${format(val.value)})`;\n      return 'none';\n    }\n    if (Array.isArray(val)) return `[${val.map(v => format(v)).join(', ')}]`;\n    if (typeof val === 'string' && !top) return `\"${val}\"`;\n    if (typeof val === 'object' && val !== null) {\n      const props = Object.entries(val).map(([k, v]) => `${k}: ${format(v)}`).join(', ');\n      return `{ ${props} }`;\n    }\n    return val;\n  };\n  console.log(...args.map(a => format(a, true)));\n}\n"
+    "export function __print(...args) {\n  const format = (val, top = false) => {\n    if (val && typeof val === 'object' && 'ok' in val) {\n      if (val.ok) return `some(${format(val.value)})`;\n      if ('value' in val) return `none(${format(val.value)})`;\n      return 'none';\n    }\n    if (Array.isArray(val)) return `[${val.map(v => format(v)).join(', ')}]`;\n    if (typeof val === 'string' && !top) return `\"${val}\"`;\n    if (typeof val === 'object' && val !== null) {\n      const props = Object.entries(val).map(([k, v]) => `${k}: ${format(v)}`).join(', ');\n      return `{ ${props} }`;\n    }\n    return val;\n  };\n  console.log(...args.map(a => format(a, true)));\n}\n\nexport function __range(s, e, inclusive) {\n  if (typeof s === 'number') {\n    return Array.from({length: e - s + (inclusive ? 1 : 0)}, (_, i) => i + s);\n  } else {\n    const sc = s.charCodeAt(0), ec = e.charCodeAt(0);\n    return Array.from({length: ec - sc + (inclusive ? 1 : 0)}, (_, i) => String.fromCharCode(i + sc));\n  }\n}\n"
 }
 
 fn parse_source(source: &str, path: &Path) -> Result<(Program, Vec<std::ops::Range<usize>>), ()> {

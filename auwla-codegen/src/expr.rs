@@ -150,25 +150,12 @@ impl JsEmitter {
                 inclusive,
             } => {
                 // Emit a helper that generates the range array
-                // For numbers: Array.from({length: end - start + (inclusive ? 1 : 0)}, (_, i) => i + start)
-                // For chars: same but with String.fromCharCode
-                self.write("((__s, __e) => {");
-                self.write("if (typeof __s === 'number') ");
-                if *inclusive {
-                    self.write("return Array.from({length: __e - __s + 1}, (_, i) => i + __s); ");
-                } else {
-                    self.write("return Array.from({length: __e - __s}, (_, i) => i + __s); ");
-                }
-                self.write("else { const sc = __s.charCodeAt(0), ec = __e.charCodeAt(0); ");
-                if *inclusive {
-                    self.write("return Array.from({length: ec - sc + 1}, (_, i) => String.fromCharCode(i + sc)); ");
-                } else {
-                    self.write("return Array.from({length: ec - sc}, (_, i) => String.fromCharCode(i + sc)); ");
-                }
-                self.write("}})(");
+                self.write("__range(");
                 self.emit_expr(start);
                 self.write(", ");
                 self.emit_expr(end);
+                self.write(", ");
+                self.write(if *inclusive { "true" } else { "false" });
                 self.write(")");
             }
             auwla_ast::ExprKind::Interpolation(parts) => {
@@ -246,7 +233,7 @@ impl JsEmitter {
 
                 if let Some(type_name) = resolved_key {
                     let safe_type = self.type_key_ident(&type_name);
-                    self.write(&format!("__ext_{}_{}(", safe_type, method));
+                    self.write(&format!("_ext_{}_{}(", safe_type, method));
                     self.emit_expr(expr);
                     for arg in args {
                         self.write(", ");
@@ -286,7 +273,7 @@ impl JsEmitter {
                 if is_extension {
                     let type_key = self.extend_key(type_name, type_args);
                     let safe_type = self.type_key_ident(&type_key);
-                    self.write(&format!("__ext_{}_{}(", safe_type, method));
+                    self.write(&format!("_ext_{}_{}(", safe_type, method));
                     for (i, arg) in args.iter().enumerate() {
                         if i > 0 {
                             self.write(", ");

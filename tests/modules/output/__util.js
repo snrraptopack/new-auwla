@@ -15,3 +15,12 @@ export function __print(...args) {
   };
   console.log(...args.map(a => format(a, true)));
 }
+
+export function __range(s, e, inclusive) {
+  if (typeof s === 'number') {
+    return Array.from({length: e - s + (inclusive ? 1 : 0)}, (_, i) => i + s);
+  } else {
+    const sc = s.charCodeAt(0), ec = e.charCodeAt(0);
+    return Array.from({length: ec - sc + (inclusive ? 1 : 0)}, (_, i) => String.fromCharCode(i + sc));
+  }
+}
