@@ -19,12 +19,33 @@ fn main() {
         std::process::exit(1);
     }
 
+    let global_output_root = if path.is_dir() {
+        path.join("output")
+    } else {
+        path.parent().unwrap_or(Path::new(".")).to_path_buf()
+    };
+
+    let mut global_extensions_js = String::new();
+    let mut global_util_needed = false;
+
     if path.is_file() {
-        // Single-file mode — no import resolution needed
-        if let Err(_) = compile_file_standalone(path, Path::new("output.js")) {
+        // Single-file mode — still scan the parent directory for "magic" extensions
+        let parent = path.parent().unwrap_or(Path::new("."));
+        let global_extensions = discover_all_extensions(parent);
+
+        let output_file = Path::new("output.js");
+        if let Ok((ext_js, util_needed)) =
+            compile_file_standalone(path, output_file, &global_extensions, &global_output_root)
+        {
+            global_extensions_js.push_str(&ext_js);
+            global_util_needed |= util_needed;
+        } else {
             std::process::exit(1);
         }
     } else if path.is_dir() {
+        // Project-wide extension discovery BEFORE compiling anything
+        let global_extensions = discover_all_extensions(path);
+
         let is_module_dir = has_module_structure(path);
 
         if is_module_dir {
@@ -32,7 +53,15 @@ fn main() {
             println!("Compiling module project: {}", target);
             let output_dir = path.join("output");
             fs::create_dir_all(&output_dir).expect("Failed to create output directory");
-            if let Err(_) = compile_directory_as_module(path, &output_dir) {
+            if let Ok((ext_js, util_needed)) = compile_directory_as_module(
+                path,
+                &output_dir,
+                &global_extensions,
+                &global_output_root,
+            ) {
+                global_extensions_js.push_str(&ext_js);
+                global_util_needed |= util_needed;
+            } else {
                 std::process::exit(1);
             }
         } else {
@@ -58,10 +87,20 @@ fn main() {
                 println!("\nTesting: {}", file_path.display());
                 let file_stem = file_path.file_stem().unwrap();
                 let output_file_path = output_dir.join(file_stem).with_extension("js");
-                if compile_file_standalone(file_path, &output_file_path).is_ok() {
-                    passed += 1;
-                } else {
-                    failed += 1;
+                match compile_file_standalone(
+                    file_path,
+                    &output_file_path,
+                    &global_extensions,
+                    &global_output_root,
+                ) {
+                    Ok((ext_js, util_needed)) => {
+                        global_extensions_js.push_str(&ext_js);
+                        global_util_needed |= util_needed;
+                        passed += 1;
+                    }
+                    Err(_) => {
+                        failed += 1;
+                    }
                 }
             }
 
@@ -78,10 +117,20 @@ fn main() {
                     println!("\n--- Module project: {} ---", subdir.display());
                     let sub_output = subdir.join("output");
                     fs::create_dir_all(&sub_output).expect("Failed to create subdir output");
-                    if compile_directory_as_module(subdir, &sub_output).is_ok() {
-                        passed += 1;
-                    } else {
-                        failed += 1;
+                    match compile_directory_as_module(
+                        subdir,
+                        &sub_output,
+                        &global_extensions,
+                        &global_output_root,
+                    ) {
+                        Ok((ext_js, util_needed)) => {
+                            global_extensions_js.push_str(&ext_js);
+                            global_util_needed |= util_needed;
+                            passed += 1;
+                        }
+                        Err(_) => {
+                            failed += 1;
+                        }
                     }
                 }
             }
@@ -92,6 +141,26 @@ fn main() {
                 std::process::exit(1);
             }
         }
+    }
+
+    // Emit global shared files once at the end
+    if !global_extensions_js.is_empty() {
+        let runtime_path = global_output_root.join("__runtime.js");
+        fs::write(&runtime_path, &global_extensions_js).unwrap_or_else(|e| {
+            eprintln!("[Error] Failed to write '__runtime.js': {}", e);
+        });
+        println!(
+            "✓  Generated global '__runtime.js' ({} bytes)",
+            global_extensions_js.len()
+        );
+    }
+    if global_util_needed {
+        let util_path = global_output_root.join("__util.js");
+        let contents = util_js_source();
+        fs::write(&util_path, contents).unwrap_or_else(|e| {
+            eprintln!("[Error] Failed to write '__util.js': {}", e);
+        });
+        println!("✓  Generated global '__util.js' ({} bytes)", contents.len());
     }
 }
 
@@ -122,7 +191,12 @@ fn has_module_structure(dir: &Path) -> bool {
 // Multi-file module pipeline
 // ─────────────────────────────────────────────────────────────
 
-fn compile_directory_as_module(dir: &Path, output_dir: &Path) -> Result<(), ()> {
+fn compile_directory_as_module(
+    dir: &Path,
+    output_dir: &Path,
+    global_extensions: &HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
+    global_output_root: &Path,
+) -> Result<(String, bool), ()> {
     // 1. Parse all .aw files
     let mut file_asts: HashMap<String, Program> = HashMap::new(); // canonical_key -> ast
     let mut file_paths: HashMap<String, PathBuf> = HashMap::new(); // canonical_key -> path
@@ -186,6 +260,17 @@ fn compile_directory_as_module(dir: &Path, output_dir: &Path) -> Result<(), ()> 
         }
     }
 
+    // 5. Merge module-specific extensions into the global registry
+    let mut merged_extensions = global_extensions.clone();
+    for map in export_maps.values() {
+        for (type_key, methods) in &map.extensions {
+            merged_extensions
+                .entry(type_key.clone())
+                .or_insert_with(Vec::new)
+                .extend(methods.clone());
+        }
+    }
+
     // 5. Build the import context each file needs: path -> ExportMap
     //    For file F importing './math', the import context key is './math' (its raw import string)
     //    We need to map those raw strings to their ExportMaps.
@@ -194,8 +279,10 @@ fn compile_directory_as_module(dir: &Path, output_dir: &Path) -> Result<(), ()> 
     // 6. Second pass: typecheck + codegen each file
     let mut success_count = 0;
     let mut fail_count = 0;
-    let mut all_extensions = String::new();
-    let mut util_needed = false;
+    let mut module_extensions = String::new();
+    let mut module_util_needed = false;
+
+    let rel_prefix = get_relative_import_path(output_dir, global_output_root);
 
     for key in &sorted_keys {
         if let (Some(ast), Some(file_path)) = (file_asts.get(key), file_paths.get(key)) {
@@ -213,30 +300,37 @@ fn compile_directory_as_module(dir: &Path, output_dir: &Path) -> Result<(), ()> 
             }
 
             let mut typechecker = Typechecker::new();
+            // Inject all discovered extensions into the typechecker
+            typechecker.extensions = merged_extensions.clone();
+
             match typechecker.check_program_with_imports(ast, &import_ctx) {
                 Ok(_) => {
                     println!("✓  Typechecking passed — no errors found.");
                     let (mut js_output, ext_output) = emit_js(ast, typechecker.get_extensions());
-                    all_extensions.push_str(&ext_output);
+                    module_extensions.push_str(&ext_output);
 
                     let mut import_prefix = String::new();
                     let mut util_imports = Vec::new();
                     if js_output.contains("__print(") {
-                        util_needed = true;
+                        module_util_needed = true;
                         util_imports.push("__print");
                     }
                     if js_output.contains("__range(") {
-                        util_needed = true;
+                        module_util_needed = true;
                         util_imports.push("__range");
                     }
                     if !util_imports.is_empty() {
                         import_prefix.push_str(&format!(
-                            "import {{ {} }} from './__util.js';\n",
-                            util_imports.join(", ")
+                            "import {{ {} }} from '{}/__util.js';\n",
+                            util_imports.join(", "),
+                            rel_prefix
                         ));
                     }
                     if js_output.contains("_ext_") {
-                        import_prefix.push_str("import * as __auwla from './__runtime.js';\n");
+                        import_prefix.push_str(&format!(
+                            "import * as __auwla from '{}/__runtime.js';\n",
+                            rel_prefix
+                        ));
                         js_output = js_output.replace("_ext_", "__auwla._ext_");
                     }
                     if !import_prefix.is_empty() {
@@ -277,28 +371,13 @@ fn compile_directory_as_module(dir: &Path, output_dir: &Path) -> Result<(), ()> 
         }
     }
 
-    if !all_extensions.is_empty() {
-        let runtime_path = output_dir.join("__runtime.js");
-        fs::write(&runtime_path, &all_extensions).unwrap_or_else(|e| {
-            eprintln!("[Error] Failed to write '__runtime.js': {}", e);
-        });
-        println!(
-            "✓  Generated '__runtime.js' ({} bytes)",
-            all_extensions.len()
-        );
-    }
-    if util_needed {
-        let util_path = output_dir.join("__util.js");
-        let contents = util_js_source();
-        fs::write(&util_path, contents).unwrap_or_else(|e| {
-            eprintln!("[Error] Failed to write '__util.js': {}", e);
-        });
-        println!("✓  Generated '__util.js' ({} bytes)", contents.len());
-    }
-
     println!("\n=============================");
     println!("Results: {} compiled, {} failed", success_count, fail_count);
-    if fail_count > 0 { Err(()) } else { Ok(()) }
+    if fail_count > 0 {
+        Err(())
+    } else {
+        Ok((module_extensions, module_util_needed))
+    }
 }
 
 /// Canonical key for a file relative to the project directory.
@@ -391,7 +470,12 @@ fn topological_sort(deps: &HashMap<String, Vec<String>>) -> Result<Vec<String>, 
 // Single-file helpers (unchanged from before)
 // ─────────────────────────────────────────────────────────────
 
-fn compile_file_standalone(path: &Path, output_file: &Path) -> Result<(), ()> {
+fn compile_file_standalone(
+    path: &Path,
+    output_file: &Path,
+    global_extensions: &HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
+    global_output_root: &Path,
+) -> Result<(String, bool), ()> {
     let source = match fs::read_to_string(path) {
         Ok(src) => src,
         Err(e) => {
@@ -407,19 +491,15 @@ fn compile_file_standalone(path: &Path, output_file: &Path) -> Result<(), ()> {
     }
 
     let mut typechecker = Typechecker::new();
+    typechecker.extensions = global_extensions.clone();
     match typechecker.check_program(&ast) {
         Ok(_) => {
-            println!("✓  Typechecking passed — no errors found.");
             let (mut js_output, ext_output) = emit_js(&ast, typechecker.get_extensions());
 
-            if !ext_output.is_empty() {
-                let out_dir = output_file.parent().unwrap_or(Path::new("."));
-                let runtime_path = out_dir.join("__runtime.js");
-                fs::write(&runtime_path, &ext_output).unwrap_or_else(|e| {
-                    eprintln!("[Error] Failed to write '__runtime.js': {}", e);
-                });
-                println!("✓  Generated '__runtime.js' ({} bytes)", ext_output.len());
-            }
+            let rel_prefix = get_relative_import_path(
+                output_file.parent().unwrap_or(Path::new(".")),
+                global_output_root,
+            );
 
             let mut import_prefix = String::new();
             let mut util_needed = false;
@@ -434,23 +514,17 @@ fn compile_file_standalone(path: &Path, output_file: &Path) -> Result<(), ()> {
             }
             if !util_imports.is_empty() {
                 import_prefix.push_str(&format!(
-                    "import {{ {} }} from './__util.js';\n",
-                    util_imports.join(", ")
+                    "import {{ {} }} from '{}/__util.js';\n",
+                    util_imports.join(", "),
+                    rel_prefix
                 ));
             }
 
-            if util_needed {
-                let out_dir = output_file.parent().unwrap_or(Path::new("."));
-                let util_path = out_dir.join("__util.js");
-                let contents = util_js_source();
-                fs::write(&util_path, contents).unwrap_or_else(|e| {
-                    eprintln!("[Error] Failed to write '__util.js': {}", e);
-                });
-                println!("✓  Generated '__util.js' ({} bytes)", contents.len());
-            }
-
             if js_output.contains("_ext_") {
-                import_prefix.push_str("import * as __auwla from './__runtime.js';\n");
+                import_prefix.push_str(&format!(
+                    "import * as __auwla from '{}/__runtime.js';\n",
+                    rel_prefix
+                ));
                 js_output = js_output.replace("_ext_", "__auwla._ext_");
             }
             if !import_prefix.is_empty() {
@@ -465,7 +539,7 @@ fn compile_file_standalone(path: &Path, output_file: &Path) -> Result<(), ()> {
                 output_file.display(),
                 js_output.len()
             );
-            Ok(())
+            Ok((ext_output, util_needed))
         }
         Err(e) => {
             let byte_start = token_byte_spans
@@ -554,4 +628,80 @@ fn byte_to_line_col(source: &str, byte: usize) -> (usize, usize) {
     let line = prefix.lines().count().max(1);
     let col = prefix.rfind('\n').map(|i| safe - i).unwrap_or(safe + 1);
     (line, col)
+}
+/// Recursively finds all .aw files and collects their extensions.
+fn discover_all_extensions(root: &Path) -> HashMap<String, Vec<auwla_ast::ExtensionMethod>> {
+    let mut extensions = HashMap::new();
+    let mut walk = VecDeque::new();
+    walk.push_back(root.to_path_buf());
+
+    while let Some(current) = walk.pop_front() {
+        if let Ok(entries) = fs::read_dir(current) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    // Skip output directories
+                    if p.file_name().and_then(|n| n.to_str()) != Some("output") {
+                        walk.push_back(p);
+                    }
+                } else if p.is_file() && p.extension().and_then(|s| s.to_str()) == Some("aw") {
+                    if let Ok(source) = fs::read_to_string(&p) {
+                        if let Ok((ast, _)) = parse_source(&source, &p) {
+                            let map = collect_exports(&ast);
+                            for (type_key, methods) in map.extensions {
+                                extensions
+                                    .entry(type_key)
+                                    .or_insert_with(Vec::new)
+                                    .extend(methods);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    extensions
+}
+
+/// Simple relative path calculator from `from` directory to `to` directory.
+/// Returns a string like "." or ".." or "../../".
+fn get_relative_import_path(from: &Path, to: &Path) -> String {
+    let from_abs = from.canonicalize().unwrap_or_else(|_| from.to_path_buf());
+    let to_abs = to.canonicalize().unwrap_or_else(|_| to.to_path_buf());
+
+    let from_components: Vec<_> = from_abs.components().collect();
+    let to_components: Vec<_> = to_abs.components().collect();
+
+    let mut common_prefix_len = 0;
+    for (f, t) in from_components.iter().zip(to_components.iter()) {
+        if f == t {
+            common_prefix_len += 1;
+        } else {
+            break;
+        }
+    }
+
+    let up_count = from_components.len() - common_prefix_len;
+    let mut rel = if up_count == 0 {
+        ".".to_string()
+    } else {
+        let mut parts = Vec::new();
+        for _ in 0..up_count {
+            parts.push("..");
+        }
+        parts.join("/")
+    };
+
+    // Append the remaining path from 'to'
+    for i in common_prefix_len..to_components.len() {
+        if let std::path::Component::Normal(p) = to_components[i] {
+            rel.push_str("/");
+            rel.push_str(&p.to_string_lossy());
+        }
+    }
+
+    if rel.is_empty() {
+        rel = ".".to_string();
+    }
+    rel
 }

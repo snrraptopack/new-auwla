@@ -14,6 +14,8 @@ pub struct ExportMap {
     pub structs: HashMap<String, Vec<(String, Type)>>,
     /// Exported enum declarations: name -> variant list
     pub enums: HashMap<String, Vec<(String, Vec<Type>)>>,
+    /// Exported extension methods: type_key -> [ExtensionMethod]
+    pub extensions: HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
 }
 
 /// First-pass scan: collect every exported name and its type signature
@@ -23,8 +25,15 @@ pub fn collect_exports(program: &Program) -> ExportMap {
     let mut map = ExportMap::default();
 
     for stmt in &program.statements {
-        if let auwla_ast::StmtKind::Export { stmt: inner } = &stmt.node {
-            register_export(&mut map, inner);
+        match &stmt.node {
+            auwla_ast::StmtKind::Export { stmt: inner } => {
+                register_export(&mut map, inner);
+            }
+            auwla_ast::StmtKind::Extend { .. } => {
+                // Extensions are globally visible in Auwla if the file is part of the project
+                register_export(&mut map, stmt);
+            }
+            _ => {}
         }
     }
 
@@ -85,6 +94,99 @@ fn register_export(map: &mut ExportMap, stmt: &Stmt) {
         }
         // nested export (shouldn't occur but handle gracefully)
         auwla_ast::StmtKind::Export { stmt: inner } => register_export(map, inner),
+        auwla_ast::StmtKind::Extend {
+            type_name,
+            type_params,
+            type_args,
+            methods,
+        } => {
+            // In Auwla, extensions are currently public/global by default if the file is imported.
+            // (Similar to how we bundle all extensions into __runtime.js)
+            // We'll collect them into the ExportMap so the typechecker can see them.
+            let type_key = extend_key_simple(type_name, type_args);
+            let mut method_sigs = Vec::new();
+
+            let mut base_tps = Vec::new();
+            if let Some(tps) = type_params.as_ref() {
+                base_tps.extend(tps.clone());
+            }
+
+            // We need a way to determine the 'self' type for the signature
+            let self_type = if let Some(args) = type_args {
+                if type_name == "array" {
+                    if let Some(first) = args.first() {
+                        Type::Array(Box::new(first.clone()))
+                    } else {
+                        Type::Array(Box::new(Type::Basic("unknown".to_string())))
+                    }
+                } else {
+                    Type::Generic(type_name.clone(), args.clone())
+                }
+            } else if type_name == "array" {
+                if let Some(tps) = type_params {
+                    if let Some(tp) = tps.first() {
+                        Type::Array(Box::new(Type::TypeVar(tp.clone())))
+                    } else {
+                        Type::Array(Box::new(Type::Basic("unknown".to_string())))
+                    }
+                } else {
+                    Type::Array(Box::new(Type::Basic("unknown".to_string())))
+                }
+            } else {
+                match type_name.as_str() {
+                    "number" | "string" | "boolean" | "bool" => Type::Basic(type_name.clone()),
+                    _ => Type::Custom(type_name.clone()),
+                }
+            };
+
+            for method in methods {
+                let mut method_tps = base_tps.clone();
+                if let Some(mtps) = method.type_params.as_ref() {
+                    method_tps.extend(mtps.clone());
+                }
+
+                let full_params: Vec<(String, Type)> = method
+                    .params
+                    .iter()
+                    .map(|(n, ty_opt)| {
+                        if n == "self" {
+                            (n.clone(), self_type.clone())
+                        } else {
+                            (
+                                n.clone(),
+                                ty_opt.clone().unwrap_or(Type::Basic("unknown".to_string())),
+                            )
+                        }
+                    })
+                    .collect();
+
+                method_sigs.push(auwla_ast::ExtensionMethod {
+                    type_params: if method_tps.is_empty() {
+                        None
+                    } else {
+                        Some(method_tps)
+                    },
+                    name: method.name.clone(),
+                    is_static: method.is_static,
+                    params: full_params,
+                    return_ty: method.return_ty.clone(),
+                    attributes: method.attributes.clone(),
+                });
+            }
+            map.extensions
+                .entry(type_key)
+                .or_default()
+                .extend(method_sigs);
+        }
         _ => {}
+    }
+}
+
+fn extend_key_simple(type_name: &str, type_args: &Option<Vec<Type>>) -> String {
+    if let Some(args) = type_args {
+        let parts: Vec<String> = args.iter().map(|a| format!("{}", a)).collect();
+        format!("{}<{}>", type_name, parts.join(", "))
+    } else {
+        type_name.to_string()
     }
 }

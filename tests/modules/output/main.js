@@ -1,4 +1,4 @@
-import { __print } from './__util.js';
+import { __print } from '../../output/__util.js';
 import { add, multiply, greet, another } from './math.js';
 const sum = add(10, 32);
 __print(sum);

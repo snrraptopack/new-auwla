@@ -3,7 +3,6 @@ fn identity<T>(x: T) : T {
 }
 
 
-
 type StringList = string[];
 
 fn main() {

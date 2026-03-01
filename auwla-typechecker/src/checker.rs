@@ -51,7 +51,11 @@ impl Typechecker {
             Type::Array(inner) => format!("array<{}>", self.type_to_key(inner)),
             Type::Optional(inner) => format!("{}?", self.type_to_key(inner)),
             Type::Result { ok_type, err_type } => {
-                format!("{}?{}", self.type_to_key(ok_type), self.type_to_key(err_type))
+                format!(
+                    "{}?{}",
+                    self.type_to_key(ok_type),
+                    self.type_to_key(err_type)
+                )
             }
             Type::Generic(name, args) => {
                 let parts: Vec<String> = args.iter().map(|a| self.type_to_key(a)).collect();
@@ -71,7 +75,6 @@ impl Typechecker {
             type_name.to_string()
         }
     }
-
 
     pub(crate) fn exit_scope(&mut self) {
         self.scopes.pop().expect("Cannot pop the global scope");
@@ -195,8 +198,18 @@ impl Typechecker {
                         );
                     }
                 }
+                // Automatically import ALL extensions from the module
+                // Because extensions are 'global' survivors in Auwla
+                for (type_key, methods) in &export_map.extensions {
+                    self.extensions
+                        .entry(type_key.clone())
+                        .or_default()
+                        .extend(methods.clone());
+                }
             }
         }
+        // Actually, we've already injected all extensions globally in the CLI,
+        // so we don't need to re-import them here. The CLI approach is more "magical".
         // Now typecheck all statements normally
         for stmt in &program.statements {
             self.check_stmt(stmt)?;
