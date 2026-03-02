@@ -562,11 +562,15 @@ impl Typechecker {
                         .iter()
                         .map(|(n, ty_opt)| {
                             let ty = ty_opt.clone().unwrap_or(Type::Basic("unknown".to_string()));
-                            (n.clone(), ty)
+                            let resolved = self.resolve_self_type(&ty, name);
+                            (n.clone(), resolved)
                         })
                         .collect();
 
-                    let ret = method.return_ty.clone();
+                    let ret = method
+                        .return_ty
+                        .as_ref()
+                        .map(|t| self.resolve_self_type(t, name));
                     method_sigs.push(auwla_ast::ExtensionMethod {
                         type_params: method.type_params.clone(),
                         name: method.name.clone(),

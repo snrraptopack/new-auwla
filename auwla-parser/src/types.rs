@@ -28,6 +28,7 @@ pub fn type_parser() -> impl Parser<Token, Type, Error = Simple<Token>> + Clone 
                 } else {
                     match name.as_str() {
                         "number" | "string" | "bool" | "void" | "char" => Type::Basic(name),
+                        "Self" => Type::SelfType,
                         _ => Type::Custom(name),
                     }
                 }

@@ -21,7 +21,7 @@ function main() {
   }
   const version = "v1.0.0";
   __print("Checking version prefix...");
-  const __match_2 = __auwla._ext_string_get(version, 0);
+  const __match_2 = ((_r = version.at(0)) != null ? { ok: true, value: _r } : { ok: false });
   if (__match_2.ok) {
     const c = __match_2.value;
     if ((c === "v")) {

@@ -1,5 +1,5 @@
 use crate::emitter::JsEmitter;
-use auwla_ast::{BinaryOp, Expr, UnaryOp};
+use auwla_ast::{BinaryOp, Expr, Type, UnaryOp};
 
 impl JsEmitter {
     pub(crate) fn emit_expr(&mut self, expr: &Expr) {
@@ -181,14 +181,90 @@ impl JsEmitter {
                 }
 
                 if let Some(type_name) = resolved_key {
-                    let safe_type = self.type_key_ident(&type_name);
-                    self.write(&format!("_ext_{}_{}(", safe_type, method));
-                    self.emit_expr(expr);
-                    for arg in args {
-                        self.write(", ");
-                        self.emit_expr(arg);
+                    // Check if this method has an @external attribute — if so, inline it
+                    if let Some((attr, return_ty)) = self.find_external_attr(&type_name, method) {
+                        let needs_optional_wrap = matches!(&return_ty, Some(Type::Optional(_)));
+
+                        if attr.args.first().map(|s| s.as_str()) == Some("js") {
+                            let mapping = attr.args.get(1).map(|s| s.as_str());
+                            match mapping {
+                                Some("property") => {
+                                    let js_name =
+                                        attr.args.get(2).map(|s| s.as_str()).unwrap_or(method);
+                                    if needs_optional_wrap {
+                                        self.write("((_r = ");
+                                        self.emit_expr(expr);
+                                        self.write(&format!(".{}", js_name));
+                                        self.write(
+                                            ") != null ? { ok: true, value: _r } : { ok: false })",
+                                        );
+                                    } else {
+                                        self.emit_expr(expr);
+                                        self.write(&format!(".{}", js_name));
+                                    }
+                                }
+                                Some("method") => {
+                                    let js_name =
+                                        attr.args.get(2).map(|s| s.as_str()).unwrap_or(method);
+                                    if needs_optional_wrap {
+                                        self.write("((_r = ");
+                                        self.emit_expr(expr);
+                                        self.write(&format!(".{}(", js_name));
+                                        for (i, arg) in args.iter().enumerate() {
+                                            if i > 0 {
+                                                self.write(", ");
+                                            }
+                                            self.emit_expr(arg);
+                                        }
+                                        self.write(
+                                            ")) != null ? { ok: true, value: _r } : { ok: false })",
+                                        );
+                                    } else {
+                                        self.emit_expr(expr);
+                                        self.write(&format!(".{}(", js_name));
+                                        for (i, arg) in args.iter().enumerate() {
+                                            if i > 0 {
+                                                self.write(", ");
+                                            }
+                                            self.emit_expr(arg);
+                                        }
+                                        self.write(")");
+                                    }
+                                }
+                                _ => {
+                                    // Unknown @external mapping — fall through to _ext_ wrapper
+                                    let safe_type = self.type_key_ident(&type_name);
+                                    self.write(&format!("_ext_{}_{}(", safe_type, method));
+                                    self.emit_expr(expr);
+                                    for arg in args {
+                                        self.write(", ");
+                                        self.emit_expr(arg);
+                                    }
+                                    self.write(")");
+                                }
+                            }
+                        } else {
+                            // Non-JS @external — use _ext_ wrapper
+                            let safe_type = self.type_key_ident(&type_name);
+                            self.write(&format!("_ext_{}_{}(", safe_type, method));
+                            self.emit_expr(expr);
+                            for arg in args {
+                                self.write(", ");
+                                self.emit_expr(arg);
+                            }
+                            self.write(")");
+                        }
+                    } else {
+                        // Pure Auwla extension method — use _ext_ wrapper
+                        let safe_type = self.type_key_ident(&type_name);
+                        self.write(&format!("_ext_{}_{}(", safe_type, method));
+                        self.emit_expr(expr);
+                        for arg in args {
+                            self.write(", ");
+                            self.emit_expr(arg);
+                        }
+                        self.write(")");
                     }
-                    self.write(")");
                 } else {
                     // Regular JS method call (closure field, interop, etc.)
                     self.emit_expr(expr);
@@ -229,49 +305,121 @@ impl JsEmitter {
                 }
 
                 let type_key = self.extend_key(type_name, type_args);
-                let (is_extension, is_constructor) = self
+
+                // Look up the method and its @external attribute
+                let method_info = self
                     .extensions
                     .get(&type_key)
-                    .map(|methods| {
-                        let mut ext = false;
-                        let mut cons = false;
-                        for m in methods {
-                            if m.name == method.as_str() && m.is_static {
-                                ext = true;
-                                if self.has_attribute(
-                                    &m.attributes,
-                                    "external",
-                                    Some("constructor"),
-                                ) {
-                                    cons = true;
-                                }
-                                break;
-                            }
-                        }
-                        (ext, cons)
-                    })
-                    .unwrap_or((false, false));
+                    .or_else(|| self.extensions.get(type_name))
+                    .and_then(|methods| {
+                        methods
+                            .iter()
+                            .find(|m| m.name == method.as_str() && m.is_static)
+                    });
 
-                if is_constructor {
-                    self.write(&format!("new {}(", type_name));
-                    for (i, arg) in args.iter().enumerate() {
-                        if i > 0 {
-                            self.write(", ");
+                if let Some(method_sig) = method_info {
+                    let ext_attr = method_sig.attributes.iter().find(|a| a.name == "external");
+
+                    if let Some(attr) = ext_attr {
+                        // Check for @external("js", "constructor")
+                        let is_js_constructor = attr.args.first().map(|s| s.as_str()) == Some("js")
+                            && attr.args.get(1).map(|s| s.as_str()) == Some("constructor");
+                        // Backwards compat: @external("constructor")
+                        let is_old_constructor =
+                            attr.args.first().map(|s| s.as_str()) == Some("constructor");
+
+                        if is_js_constructor || is_old_constructor {
+                            self.write(&format!("new {}(", type_name));
+                            for (i, arg) in args.iter().enumerate() {
+                                if i > 0 {
+                                    self.write(", ");
+                                }
+                                self.emit_expr(arg);
+                            }
+                            self.write(")");
+                        } else if attr.args.first().map(|s| s.as_str()) == Some("js") {
+                            // Namespace / class static inline:
+                            // @external("js", "method", "floor") on Math → Math.floor(args)
+                            let mapping = attr.args.get(1).map(|s| s.as_str());
+                            match mapping {
+                                Some("method") | Some("static") => {
+                                    // Infer JS object name from type_name, JS method from 3rd arg or fallback
+                                    let js_method =
+                                        attr.args.get(2).map(|s| s.as_str()).unwrap_or(method);
+                                    // For @external("js","static","Obj","method") (old 4-arg pattern)
+                                    let (js_obj, js_fn) = if attr.args.len() >= 4 {
+                                        (attr.args[2].as_str(), attr.args[3].as_str())
+                                    } else {
+                                        (type_name.as_str(), js_method)
+                                    };
+                                    self.write(&format!("{}.{}(", js_obj, js_fn));
+                                    for (i, arg) in args.iter().enumerate() {
+                                        if i > 0 {
+                                            self.write(", ");
+                                        }
+                                        self.emit_expr(arg);
+                                    }
+                                    self.write(")");
+                                }
+                                Some("property") => {
+                                    let js_prop =
+                                        attr.args.get(2).map(|s| s.as_str()).unwrap_or(method);
+                                    let (js_obj, js_fn) = if attr.args.len() >= 4 {
+                                        (attr.args[2].as_str(), attr.args[3].as_str())
+                                    } else {
+                                        (type_name.as_str(), js_prop)
+                                    };
+                                    self.write(&format!("{}.{}", js_obj, js_fn));
+                                }
+                                Some("const") => {
+                                    let js_name =
+                                        attr.args.get(2).map(|s| s.as_str()).unwrap_or(method);
+                                    let (js_obj, js_fn) = if attr.args.len() >= 4 {
+                                        (attr.args[2].as_str(), attr.args[3].as_str())
+                                    } else {
+                                        (type_name.as_str(), js_name)
+                                    };
+                                    self.write(&format!("{}.{}", js_obj, js_fn));
+                                }
+                                _ => {
+                                    // Fallback to _ext_ wrapper
+                                    let safe_type = self.type_key_ident(&type_key);
+                                    self.write(&format!("_ext_{}_{}(", safe_type, method));
+                                    for (i, arg) in args.iter().enumerate() {
+                                        if i > 0 {
+                                            self.write(", ");
+                                        }
+                                        self.emit_expr(arg);
+                                    }
+                                    self.write(")");
+                                }
+                            }
+                        } else {
+                            // Unknown @external target — use _ext_ wrapper
+                            let safe_type = self.type_key_ident(&type_key);
+                            self.write(&format!("_ext_{}_{}(", safe_type, method));
+                            for (i, arg) in args.iter().enumerate() {
+                                if i > 0 {
+                                    self.write(", ");
+                                }
+                                self.emit_expr(arg);
+                            }
+                            self.write(")");
                         }
-                        self.emit_expr(arg);
-                    }
-                    self.write(")");
-                } else if is_extension {
-                    let safe_type = self.type_key_ident(&type_key);
-                    self.write(&format!("_ext_{}_{}(", safe_type, method));
-                    for (i, arg) in args.iter().enumerate() {
-                        if i > 0 {
-                            self.write(", ");
+                    } else {
+                        // No @external — pure Auwla static, use _ext_ wrapper
+                        let safe_type = self.type_key_ident(&type_key);
+                        self.write(&format!("_ext_{}_{}(", safe_type, method));
+                        for (i, arg) in args.iter().enumerate() {
+                            if i > 0 {
+                                self.write(", ");
+                            }
+                            self.emit_expr(arg);
                         }
-                        self.emit_expr(arg);
+                        self.write(")");
                     }
-                    self.write(")");
                 } else {
+                    // Not a known extension — emit as plain static call (e.g., JS interop)
                     self.write(&format!("{}.{}(", type_name, method));
                     for (i, arg) in args.iter().enumerate() {
                         if i > 0 {

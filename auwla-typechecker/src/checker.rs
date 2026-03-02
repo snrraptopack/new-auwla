@@ -71,6 +71,7 @@ impl Typechecker {
             Type::Function(_, _) => "fn".to_string(),
             Type::TypeVar(name) => name.clone(),
             Type::InferenceVar(id) => format!("_{}", id),
+            Type::SelfType => "Self".to_string(),
         }
     }
 
@@ -297,6 +298,29 @@ impl Typechecker {
                     .map(|p| self.genericize_type(p, type_params))
                     .collect();
                 Type::Function(gen_params, Box::new(self.genericize_type(ret, type_params)))
+            }
+            _ => ty.clone(),
+        }
+    }
+
+    /// Resolve `Self` within a type to the given concrete type name.
+    pub(crate) fn resolve_self_type(&self, ty: &Type, self_name: &str) -> Type {
+        match ty {
+            Type::SelfType => Type::Custom(self_name.to_string()),
+            Type::Array(inner) => Type::Array(Box::new(self.resolve_self_type(inner, self_name))),
+            Type::Optional(inner) => {
+                Type::Optional(Box::new(self.resolve_self_type(inner, self_name)))
+            }
+            Type::Result { ok_type, err_type } => Type::Result {
+                ok_type: Box::new(self.resolve_self_type(ok_type, self_name)),
+                err_type: Box::new(self.resolve_self_type(err_type, self_name)),
+            },
+            Type::Function(params, ret) => {
+                let p = params
+                    .iter()
+                    .map(|t| self.resolve_self_type(t, self_name))
+                    .collect();
+                Type::Function(p, Box::new(self.resolve_self_type(ret, self_name)))
             }
             _ => ty.clone(),
         }

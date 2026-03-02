@@ -25,6 +25,8 @@ pub enum Type {
     TypeVar(String),
     /// An internal unification variable used during type inference
     InferenceVar(usize),
+    /// The `Self` type — resolves to the enclosing type name during typechecking
+    SelfType,
 }
 
 impl fmt::Display for Type {
@@ -57,6 +59,7 @@ impl fmt::Display for Type {
                 }
                 write!(f, ">")
             }
+            Type::SelfType => write!(f, "Self"),
         }
     }
 }

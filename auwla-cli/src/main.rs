@@ -47,7 +47,7 @@ fn main() {
         }
         if let Ok(source) = fs::read_to_string(p) {
             if let Ok((ast, _)) = parse_source(&source, p) {
-                let (_, ext_js) = emit_js(&ast, &global_extensions, &global_enums);
+                let (_, ext_js) = emit_js(&ast, &global_extensions, &global_enums, &HashMap::new());
                 if !ext_js.is_empty() {
                     global_extensions_js.push_str(&ext_js);
                     if ext_js.contains("__print(") || ext_js.contains("__range(") {
@@ -351,8 +351,12 @@ fn compile_directory_as_module(
             match typechecker.check_program_with_imports(ast, &import_ctx) {
                 Ok(_) => {
                     println!("✓  Typechecking passed — no errors found.");
-                    let (mut js_output, ext_output) =
-                        emit_js(ast, typechecker.get_extensions(), &merged_enums);
+                    let (mut js_output, ext_output) = emit_js(
+                        ast,
+                        typechecker.get_extensions(),
+                        &merged_enums,
+                        &typechecker.type_attributes,
+                    );
                     module_extensions.push_str(&ext_output);
 
                     let util_needed = postprocess::add_runtime_imports(&mut js_output, &rel_prefix);
@@ -518,8 +522,12 @@ fn compile_file_standalone(
         Ok(_) => {
             let mut all_enums = global_enums.clone();
             all_enums.extend(typechecker.get_enum_names());
-            let (mut js_output, ext_output) =
-                emit_js(&ast, typechecker.get_extensions(), &all_enums);
+            let (mut js_output, ext_output) = emit_js(
+                &ast,
+                typechecker.get_extensions(),
+                &all_enums,
+                &typechecker.type_attributes,
+            );
 
             let rel_prefix = get_relative_import_path(
                 output_file.parent().unwrap_or(Path::new(".")),

@@ -294,6 +294,21 @@ impl JsEmitter {
         let safe_type_key = self.type_key_ident(type_key);
 
         for method in methods {
+            // Skip @external("js",...) methods — they are inlined at call sites
+            let external_attr = method
+                .attributes
+                .iter()
+                .find(|a| a.name == "external")
+                .cloned();
+
+            if let Some(ref attr) = external_attr {
+                let first_arg = attr.args.first().map(|s| s.as_str());
+                // Skip if it's a JS bridge (property, method, static, constructor, const)
+                if first_arg == Some("js") || first_arg == Some("constructor") {
+                    continue;
+                }
+            }
+
             // Register method parameters in var_types
             for (param_name, ty_opt) in &method.params {
                 if param_name == "self" {
@@ -336,13 +351,6 @@ impl JsEmitter {
             }
 
             self.ext.indent();
-
-            // Check for @external attribute
-            let external_attr = method
-                .attributes
-                .iter()
-                .find(|a| a.name == "external")
-                .cloned();
 
             if let Some(attr) = external_attr {
                 self.emit_external_body(&attr, method, wrap_optional);

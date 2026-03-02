@@ -3,10 +3,10 @@ import * as __auwla from './__runtime.js';
 function main() {
   const arr = [1, 2, 3];
   __print(`the max value : ${__auwla._ext_array_number_max(arr)}`);
-  __print(`Length: ${__auwla._ext_array_len(arr)}`);
-  __auwla._ext_array_push_val(arr, 4);
-  __print(`New length: ${__auwla._ext_array_len(arr)}`);
-  const check = __auwla._ext_array_is_arr(arr);
+  __print(`Length: ${arr.length}`);
+  arr.push(4);
+  __print(`New length: ${arr.length}`);
+  const check = Array.isArray(arr);
   __print(`Is array: ${check}`);
   const __match_0 = __auwla._ext_array_last(arr);
   if (__match_0.ok) {
@@ -17,7 +17,7 @@ function main() {
     __print("Empty");
   }
 }
-const aaa = __auwla._ext_string_get("ama", 1);
+const aaa = ((_r = "ama".at(1)) != null ? { ok: true, value: _r } : { ok: false });
 const __match_1 = aaa;
 if (__match_1.ok) {
   const v = __match_1.value;
@@ -27,7 +27,7 @@ else if (!__match_1.ok) {
   __print("none");
 }
 main();
-__print(__auwla._ext_string_repeat("hello", 10));
+__print("hello".repeat(10));
 const nums = __range(1, 100, true);
 for (let i = __auwla._ext_array_low(nums); i <= __auwla._ext_array_high(nums); i++) {
   __print(`the current number is : ${i}`);

@@ -1,0 +1,11 @@
+import { __print } from './__util.js';
+import * as __auwla from './__runtime.js';
+const greeting = "Hello World";
+const ch = greeting.charAt(0);
+__print(`First char: ${ch}`);
+const pos = greeting.indexOf("World");
+__print(`Position of World: ${pos}`);
+__print(`Length of greeting: ${greeting.length}`);
+__print(__auwla._ext_string_shout(greeting));
+__print(__auwla._ext_string_whisper(greeting));
+__print(`First 5: ${__auwla._ext_string_first_n(greeting, 5)}`);

@@ -1,6 +1,6 @@
 use crate::writer::CodeWriter;
 use auwla_ast::expr::Expr;
-use auwla_ast::{ExprKind, Program, Type};
+use auwla_ast::{Attribute, ExprKind, Program, Type};
 use std::collections::{HashMap, HashSet};
 
 /// Emits JavaScript source code from a type-checked Auwla AST.
@@ -10,8 +10,9 @@ pub fn emit_js(
     program: &Program,
     extensions: &HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
     enums: &HashSet<String>,
+    type_attributes: &HashMap<String, Vec<Attribute>>,
 ) -> (String, String) {
-    let mut emitter = JsEmitter::new(extensions.clone(), enums.clone());
+    let mut emitter = JsEmitter::new(extensions.clone(), enums.clone(), type_attributes.clone());
     emitter.emit_program(program);
     (emitter.out.into_string(), emitter.ext.into_string())
 }
@@ -35,12 +36,16 @@ pub(crate) struct JsEmitter {
     pub(crate) is_statement_context: bool,
     /// Known enums (to distinguish static methods from variants)
     pub(crate) enums: HashSet<String>,
+    /// Type-level attributes (e.g., @external("namespace"), @external("class"))
+    #[allow(dead_code)]
+    pub(crate) type_attributes: HashMap<String, Vec<Attribute>>,
 }
 
 impl JsEmitter {
     fn new(
         extensions: HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
         enums: HashSet<String>,
+        type_attributes: HashMap<String, Vec<Attribute>>,
     ) -> Self {
         let ext_methods = extensions
             .iter()
@@ -59,6 +64,7 @@ impl JsEmitter {
             extensions,
             is_statement_context: false,
             enums,
+            type_attributes,
         }
     }
 
@@ -148,6 +154,7 @@ impl JsEmitter {
             Type::Function(_, _) => "fn".to_string(),
             Type::TypeVar(name) => name.clone(),
             Type::InferenceVar(id) => format!("_{}", id),
+            Type::SelfType => "Self".to_string(),
         }
     }
 
@@ -183,6 +190,7 @@ impl JsEmitter {
         result
     }
 
+    #[allow(dead_code)]
     pub(crate) fn has_attribute(
         &self,
         attributes: &[auwla_ast::Attribute],
@@ -199,6 +207,47 @@ impl JsEmitter {
                 true
             }
         })
+    }
+
+    /// Check if a type is declared as `@external("namespace")`.
+    #[allow(dead_code)]
+    pub(crate) fn is_namespace(&self, type_name: &str) -> bool {
+        self.type_attributes
+            .get(type_name)
+            .map(|attrs| self.has_attribute(attrs, "external", Some("namespace")))
+            .unwrap_or(false)
+    }
+
+    /// Check if a type is declared as `@external("class")`.
+    #[allow(dead_code)]
+    pub(crate) fn is_external_class(&self, type_name: &str) -> bool {
+        self.type_attributes
+            .get(type_name)
+            .map(|attrs| self.has_attribute(attrs, "external", Some("class")))
+            .unwrap_or(false)
+    }
+
+    /// Find the @external attribute on an extension method for a given type+method.
+    /// Returns the attribute and the method's return type (for Optional wrapping).
+    pub(crate) fn find_external_attr(
+        &self,
+        type_key: &str,
+        method_name: &str,
+    ) -> Option<(auwla_ast::Attribute, Option<Type>)> {
+        // Check the exact key first, then try the base type name
+        let keys_to_try = [type_key.to_string()];
+        for key in &keys_to_try {
+            if let Some(methods) = self.extensions.get(key) {
+                for m in methods {
+                    if m.name == method_name {
+                        if let Some(attr) = m.attributes.iter().find(|a| a.name == "external") {
+                            return Some((attr.clone(), m.return_ty.clone()));
+                        }
+                    }
+                }
+            }
+        }
+        None
     }
 
     pub(crate) fn array_literal_type_key(&self, elems: &[Expr]) -> Option<String> {
