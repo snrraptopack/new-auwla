@@ -1,3 +1,4 @@
+use crate::writer::CodeWriter;
 use auwla_ast::expr::Expr;
 use auwla_ast::{ExprKind, Program, Type};
 use std::collections::{HashMap, HashSet};
@@ -12,13 +13,14 @@ pub fn emit_js(
 ) -> (String, String) {
     let mut emitter = JsEmitter::new(extensions.clone(), enums.clone());
     emitter.emit_program(program);
-    (emitter.output, emitter.extensions_output)
+    (emitter.out.into_string(), emitter.ext.into_string())
 }
 
 pub(crate) struct JsEmitter {
-    pub(crate) output: String,
-    pub(crate) extensions_output: String,
-    pub(crate) indent: usize,
+    /// Main output buffer for JS source code.
+    pub(crate) out: CodeWriter,
+    /// Extensions output buffer (separate file).
+    pub(crate) ext: CodeWriter,
     /// Counter for generating unique temp variable names (e.g. __match_0, __match_1)
     pub(crate) temp_counter: usize,
     /// variable name -> type name, for resolving extension call sites
@@ -48,9 +50,8 @@ impl JsEmitter {
             })
             .collect();
         Self {
-            output: String::new(),
-            extensions_output: String::new(),
-            indent: 0,
+            out: CodeWriter::new(),
+            ext: CodeWriter::new(),
             temp_counter: 0,
             var_types: HashMap::new(),
             ext_methods,
@@ -67,44 +68,64 @@ impl JsEmitter {
         name
     }
 
+    // ── Convenience delegations to `self.out` ────────────────────
+    // These keep call-site code concise for the main output buffer.
+
     pub(crate) fn write(&mut self, s: &str) {
-        self.output.push_str(s);
+        self.out.write(s);
     }
 
     pub(crate) fn write_indent(&mut self) {
-        for _ in 0..self.indent {
-            self.output.push_str("  ");
-        }
+        self.out.write_indent();
     }
 
     pub(crate) fn writeln(&mut self, s: &str) {
-        self.write_indent();
-        self.output.push_str(s);
-        self.output.push('\n');
+        self.out.writeln(s);
     }
 
+    // ── Convenience delegations to `self.ext` ────────────────────
+
     pub(crate) fn write_ext(&mut self, s: &str) {
-        self.extensions_output.push_str(s);
+        self.ext.write(s);
     }
 
     pub(crate) fn write_indent_ext(&mut self) {
-        for _ in 0..self.indent {
-            self.extensions_output.push_str("  ");
-        }
+        self.ext.write_indent();
     }
 
     pub(crate) fn writeln_ext(&mut self, s: &str) {
-        self.write_indent_ext();
-        self.extensions_output.push_str(s);
-        self.extensions_output.push('\n');
+        self.ext.writeln(s);
     }
 
+    // ── Shared indent helpers (synchronized across both buffers) ──
+
+    /// Increase indent on both main and ext buffers.
+    #[allow(dead_code)]
+    pub(crate) fn indent_both(&mut self) {
+        self.out.indent();
+        self.ext.indent();
+    }
+
+    /// Decrease indent on both main and ext buffers.
+    #[allow(dead_code)]
+    pub(crate) fn dedent_both(&mut self) {
+        self.out.dedent();
+        self.ext.dedent();
+    }
+
+    // ── Utilities ────────────────────────────────────────────────
+
     pub(crate) fn emit_expr_to_string(&mut self, expr: &Expr) -> String {
-        let old = std::mem::take(&mut self.output);
+        self.out.capture(|w| {
+            // We need to temporarly work with just the writer, but emit_expr
+            // needs &mut self. So we swap the writer out, call emit_expr, swap back.
+            let _ = w; // unused — we do the swap trick at the JsEmitter level instead
+        });
+        // Use the traditional swap approach since emit_expr needs &mut self:
+        let old = std::mem::replace(&mut self.out, CodeWriter::new());
         self.emit_expr(expr);
-        let result = std::mem::take(&mut self.output);
-        self.output = old;
-        result
+        let result_writer = std::mem::replace(&mut self.out, old);
+        result_writer.into_string()
     }
 
     pub(crate) fn type_to_key(&self, ty: &Type) -> String {
@@ -203,6 +224,42 @@ impl JsEmitter {
             }
         }
         kind.map(|k| format!("array<{}>", k))
+    }
+
+    /// Infer a type key string from an expression's AST shape.
+    ///
+    /// Used to register variable types in `var_types` so extension method
+    /// calls can be resolved. Centralizes the repeated initializer-sniffing
+    /// logic that was duplicated across Let/Var handlers.
+    pub(crate) fn infer_type_key_from_expr(&self, expr: &auwla_ast::expr::Expr) -> Option<String> {
+        match &expr.node {
+            ExprKind::Array(elems) => Some(
+                self.array_literal_type_key(elems)
+                    .unwrap_or_else(|| "array".to_string()),
+            ),
+            ExprKind::StringLit(_) => Some("string".to_string()),
+            ExprKind::NumberLit(_) => Some("number".to_string()),
+            ExprKind::BoolLit(_) => Some("bool".to_string()),
+            ExprKind::CharLit(_) => Some("char".to_string()),
+            ExprKind::StructInit { name, .. } => Some(name.clone()),
+            ExprKind::Range { .. } => Some("array<number>".to_string()),
+            _ => None,
+        }
+    }
+
+    /// Register a variable's type from an explicit annotation or by
+    /// inferring from the initializer expression.
+    pub(crate) fn register_var_type(
+        &mut self,
+        name: &str,
+        ty: &Option<Type>,
+        initializer: &auwla_ast::expr::Expr,
+    ) {
+        if let Some(t) = ty {
+            self.var_types.insert(name.to_string(), self.type_to_key(t));
+        } else if let Some(key) = self.infer_type_key_from_expr(initializer) {
+            self.var_types.insert(name.to_string(), key);
+        }
     }
 
     // ──────────────────────────── Program ────────────────────────────

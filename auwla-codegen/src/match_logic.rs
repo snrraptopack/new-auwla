@@ -5,7 +5,7 @@ impl JsEmitter {
     /// Emit a match expression as an IIFE or inline block.
     pub(crate) fn emit_match_expr(&mut self, matched: &Expr, arms: &[MatchArm]) {
         self.write("(() => {\n");
-        self.indent += 1;
+        self.out.indent();
         let temp = self.fresh_temp();
         self.write_indent();
         self.write(&format!("const {} = ", temp));
@@ -14,7 +14,7 @@ impl JsEmitter {
 
         self.emit_match_arms(&temp, arms, None);
 
-        self.indent -= 1;
+        self.out.dedent();
         self.write_indent();
         self.write("})()");
     }
@@ -41,7 +41,7 @@ impl JsEmitter {
 
             self.emit_pattern_condition(temp, arm);
             self.write(" {\n");
-            self.indent += 1;
+            self.out.indent();
 
             self.emit_bound_variables(temp, &arm.pattern);
 
@@ -92,7 +92,7 @@ impl JsEmitter {
                 }
             }
 
-            self.indent -= 1;
+            self.out.dedent();
             self.writeln("}");
         }
     }
@@ -180,7 +180,7 @@ impl JsEmitter {
             _ => temp.to_string(),
         };
         self.write(&format!("switch ({}) {{\n", switch_on));
-        self.indent += 1;
+        self.out.indent();
 
         for arm in arms {
             self.write_indent();
@@ -198,7 +198,7 @@ impl JsEmitter {
                 }
                 _ => unreachable!(),
             }
-            self.indent += 1;
+            self.out.indent();
 
             self.emit_bound_variables(temp, &arm.pattern);
 
@@ -242,10 +242,10 @@ impl JsEmitter {
                 self.write(";\n");
             }
 
-            self.indent -= 1;
+            self.out.dedent();
         }
 
-        self.indent -= 1;
+        self.out.dedent();
         self.writeln("}");
     }
 }

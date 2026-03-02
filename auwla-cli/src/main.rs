@@ -1,5 +1,6 @@
 use auwla_ast::Program;
 use auwla_codegen::emit_js;
+use auwla_codegen::postprocess;
 use auwla_error::{Diagnostic, Level};
 use auwla_lexer::lex;
 use auwla_parser::parse;
@@ -354,33 +355,8 @@ fn compile_directory_as_module(
                         emit_js(ast, typechecker.get_extensions(), &merged_enums);
                     module_extensions.push_str(&ext_output);
 
-                    let mut import_prefix = String::new();
-                    let mut util_imports = Vec::new();
-                    if js_output.contains("__print(") {
-                        module_util_needed = true;
-                        util_imports.push("__print");
-                    }
-                    if js_output.contains("__range(") {
-                        module_util_needed = true;
-                        util_imports.push("__range");
-                    }
-                    if !util_imports.is_empty() {
-                        import_prefix.push_str(&format!(
-                            "import {{ {} }} from '{}/__util.js';\n",
-                            util_imports.join(", "),
-                            rel_prefix
-                        ));
-                    }
-                    if js_output.contains("_ext_") {
-                        import_prefix.push_str(&format!(
-                            "import * as __auwla from '{}/__runtime.js';\n",
-                            rel_prefix
-                        ));
-                        js_output = js_output.replace("_ext_", "__auwla._ext_");
-                    }
-                    if !import_prefix.is_empty() {
-                        js_output = format!("{}{}", import_prefix, js_output);
-                    }
+                    let util_needed = postprocess::add_runtime_imports(&mut js_output, &rel_prefix);
+                    module_util_needed |= util_needed;
 
                     let stem = file_path.file_stem().unwrap();
                     let out_path = output_dir.join(stem).with_extension("js");
@@ -550,35 +526,7 @@ fn compile_file_standalone(
                 global_output_root,
             );
 
-            let mut import_prefix = String::new();
-            let mut util_needed = false;
-            let mut util_imports = Vec::new();
-            if js_output.contains("__print(") {
-                util_needed = true;
-                util_imports.push("__print");
-            }
-            if js_output.contains("__range(") {
-                util_needed = true;
-                util_imports.push("__range");
-            }
-            if !util_imports.is_empty() {
-                import_prefix.push_str(&format!(
-                    "import {{ {} }} from '{}/__util.js';\n",
-                    util_imports.join(", "),
-                    rel_prefix
-                ));
-            }
-
-            if js_output.contains("_ext_") {
-                import_prefix.push_str(&format!(
-                    "import * as __auwla from '{}/__runtime.js';\n",
-                    rel_prefix
-                ));
-                js_output = js_output.replace("_ext_", "__auwla._ext_");
-            }
-            if !import_prefix.is_empty() {
-                js_output = format!("{}{}", import_prefix, js_output);
-            }
+            let util_needed = postprocess::add_runtime_imports(&mut js_output, &rel_prefix);
 
             fs::write(output_file, &js_output).unwrap_or_else(|e| {
                 eprintln!("[Error] Failed to write '{}': {}", output_file.display(), e);

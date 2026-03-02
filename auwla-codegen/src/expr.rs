@@ -316,7 +316,7 @@ impl JsEmitter {
                 // depending on context. For now, we emit as a block.
                 // If it's used as a closure body, it works perfectly.
                 self.write("{\n");
-                self.indent += 1;
+                self.out.indent();
                 for stmt in stmts {
                     self.write_indent();
                     self.emit_stmt(stmt);
@@ -330,7 +330,7 @@ impl JsEmitter {
                     self.write_indent();
                     self.write("return undefined;\n");
                 }
-                self.indent -= 1;
+                self.out.dedent();
                 self.write_indent();
                 self.write("}");
             }

@@ -1,0 +1,42 @@
+{
+    "name": "vscode-auwla",
+    "displayName": "Auwla Language Support",
+    "description": "Rich language support for the Auwla programming language.",
+    "version": "0.1.0",
+    "publisher": "auwla",
+    "engines": {
+        "vscode": "^1.75.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "main": "./extension.js",
+    "contributes": {
+        "languages": [
+            {
+                "id": "auwla",
+                "aliases": [
+                    "Auwla",
+                    "auwla"
+                ],
+                "extensions": [
+                    ".aw"
+                ],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "auwla",
+                "scopeName": "source.auwla",
+                "path": "./syntaxes/auwla.tmLanguage.json"
+            }
+        ]
+    },
+    "scripts": {
+        "postinstall": "npm install vscode-languageclient"
+    },
+    "dependencies": {
+        "vscode-languageclient": "^8.1.0"
+    }
+}

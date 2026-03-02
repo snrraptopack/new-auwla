@@ -1,100 +1,37 @@
 use crate::emitter::JsEmitter;
-use auwla_ast::Stmt;
+use auwla_ast::{Method, Stmt};
 
 impl JsEmitter {
     pub(crate) fn emit_stmt(&mut self, stmt: &Stmt) {
+        self.emit_stmt_inner(stmt, false);
+    }
+
+    /// Core statement emitter. When `export` is true, the appropriate
+    /// `export` keyword is prepended — no string-replace hacks needed.
+    fn emit_stmt_inner(&mut self, stmt: &Stmt, export: bool) {
         match &stmt.node {
             auwla_ast::StmtKind::Let {
                 name,
                 ty,
                 initializer,
                 ..
-            } => {
-                if let Some(t) = ty {
-                    let type_name = self.type_to_key(t);
-                    self.var_types.insert(name.clone(), type_name);
-                } else if let auwla_ast::ExprKind::Array(elems) = &initializer.node {
-                    if let Some(key) = self.array_literal_type_key(elems) {
-                        self.var_types.insert(name.clone(), key);
-                    } else {
-                        self.var_types.insert(name.clone(), "array".to_string());
-                    }
-                } else if let auwla_ast::ExprKind::StringLit(_) = &initializer.node {
-                    self.var_types.insert(name.clone(), "string".to_string());
-                } else if let auwla_ast::ExprKind::NumberLit(_) = &initializer.node {
-                    self.var_types.insert(name.clone(), "number".to_string());
-                } else if let auwla_ast::ExprKind::BoolLit(_) = &initializer.node {
-                    self.var_types.insert(name.clone(), "bool".to_string());
-                } else if let auwla_ast::ExprKind::CharLit(_) = &initializer.node {
-                    self.var_types.insert(name.clone(), "char".to_string());
-                } else if let auwla_ast::ExprKind::StructInit { name: tname, .. } =
-                    &initializer.node
-                {
-                    self.var_types.insert(name.clone(), tname.clone());
-                }
-                if let auwla_ast::ExprKind::Match { expr, arms } = &initializer.node {
-                    self.emit_match_assign("const", name, expr, arms);
-                } else if let auwla_ast::ExprKind::Try { expr, error_expr } = &initializer.node {
-                    self.emit_try_assign("const", name, expr, error_expr);
-                } else {
-                    if let auwla_ast::ExprKind::Range { .. } = &initializer.node {
-                        self.var_types
-                            .insert(name.clone(), "array<number>".to_string());
-                    }
-                    self.write_indent();
-                    self.write(&format!("const {} = ", name));
-                    self.emit_expr(initializer);
-                    self.write(";\n");
-                }
-            }
+            } => self.emit_binding_decl("const", name, ty, initializer, export),
+
             auwla_ast::StmtKind::Var {
                 name,
                 ty,
                 initializer,
                 ..
-            } => {
-                if let Some(t) = ty {
-                    let type_name = self.type_to_key(t);
-                    self.var_types.insert(name.clone(), type_name);
-                } else if let auwla_ast::ExprKind::Array(elems) = &initializer.node {
-                    if let Some(key) = self.array_literal_type_key(elems) {
-                        self.var_types.insert(name.clone(), key);
-                    } else {
-                        self.var_types.insert(name.clone(), "array".to_string());
-                    }
-                } else if let auwla_ast::ExprKind::StringLit(_) = &initializer.node {
-                    self.var_types.insert(name.clone(), "string".to_string());
-                } else if let auwla_ast::ExprKind::NumberLit(_) = &initializer.node {
-                    self.var_types.insert(name.clone(), "number".to_string());
-                } else if let auwla_ast::ExprKind::BoolLit(_) = &initializer.node {
-                    self.var_types.insert(name.clone(), "bool".to_string());
-                } else if let auwla_ast::ExprKind::CharLit(_) = &initializer.node {
-                    self.var_types.insert(name.clone(), "char".to_string());
-                } else if let auwla_ast::ExprKind::StructInit { name: tname, .. } =
-                    &initializer.node
-                {
-                    self.var_types.insert(name.clone(), tname.clone());
-                }
-                if let auwla_ast::ExprKind::Match { expr, arms } = &initializer.node {
-                    self.emit_match_assign("let", name, expr, arms);
-                } else if let auwla_ast::ExprKind::Try { expr, error_expr } = &initializer.node {
-                    self.emit_try_assign("let", name, expr, error_expr);
-                } else {
-                    if let auwla_ast::ExprKind::Range { .. } = &initializer.node {
-                        self.var_types
-                            .insert(name.clone(), "array<number>".to_string());
-                    }
-                    self.write_indent();
-                    self.write(&format!("let {} = ", name));
-                    self.emit_expr(initializer);
-                    self.write(";\n");
-                }
-            }
+            } => self.emit_binding_decl("let", name, ty, initializer, export),
+
             auwla_ast::StmtKind::DestructureLet {
                 bindings,
                 initializer,
             } => {
                 self.write_indent();
+                if export {
+                    self.write("export ");
+                }
                 self.write("const { ");
                 for (i, b) in bindings.iter().enumerate() {
                     if i > 0 {
@@ -133,17 +70,20 @@ impl JsEmitter {
                     self.var_types.insert(param_name.clone(), type_name);
                 }
                 self.write_indent();
+                if export {
+                    self.write("export ");
+                }
                 let param_names: Vec<&str> = params.iter().map(|(n, _)| n.as_str()).collect();
                 self.write(&format!(
                     "function {}({}) {{\n",
                     name,
                     param_names.join(", ")
                 ));
-                self.indent += 1;
+                self.out.indent();
                 for s in body {
                     self.emit_stmt(s);
                 }
-                self.indent -= 1;
+                self.out.dedent();
                 self.writeln("}");
             }
             auwla_ast::StmtKind::Return(expr_opt) => {
@@ -159,9 +99,7 @@ impl JsEmitter {
                         error_expr,
                     } = &expr.node
                     {
-                        self.emit_try_standalone(tried, error_expr); // Wait, Try as return is tricky
-                                                                     // For Try return, we actually want to return the result of the IIFE.
-                                                                     // Actually, emit_try_expr works fine since it returns the value.
+                        self.emit_try_standalone(tried, error_expr);
                         self.write_indent();
                         self.write("return ");
                         self.emit_expr(expr);
@@ -186,18 +124,18 @@ impl JsEmitter {
                 self.write("if (");
                 self.emit_expr(condition);
                 self.write(") {\n");
-                self.indent += 1;
+                self.out.indent();
                 for s in then_branch {
                     self.emit_stmt(s);
                 }
-                self.indent -= 1;
+                self.out.dedent();
                 if let Some(els) = else_branch {
                     self.writeln("} else {");
-                    self.indent += 1;
+                    self.out.indent();
                     for s in els {
                         self.emit_stmt(s);
                     }
-                    self.indent -= 1;
+                    self.out.dedent();
                 }
                 self.writeln("}");
             }
@@ -206,11 +144,11 @@ impl JsEmitter {
                 self.write("while (");
                 self.emit_expr(condition);
                 self.write(") {\n");
-                self.indent += 1;
+                self.out.indent();
                 for s in body {
                     self.emit_stmt(s);
                 }
-                self.indent -= 1;
+                self.out.dedent();
                 self.writeln("}");
             }
             auwla_ast::StmtKind::For {
@@ -239,11 +177,11 @@ impl JsEmitter {
                     self.emit_expr(iterable);
                     self.write(") {\n");
                 }
-                self.indent += 1;
+                self.out.indent();
                 for s in body {
                     self.emit_stmt(s);
                 }
-                self.indent -= 1;
+                self.out.dedent();
                 self.writeln("}");
             }
             auwla_ast::StmtKind::Expr(expr) => {
@@ -260,8 +198,7 @@ impl JsEmitter {
             auwla_ast::StmtKind::StructDecl { .. }
             | auwla_ast::StmtKind::EnumDecl { .. }
             | auwla_ast::StmtKind::TypeAlias { .. } => {
-                // Struct/Enum declarations vanish in JS, they are purely for compile-time typechecking
-                // We emit nothing to keep it zero-cost.
+                // Struct/Enum declarations vanish in JS, they are purely for compile-time typechecking.
             }
             auwla_ast::StmtKind::Import { names, path } => {
                 // Rewrite Auwla relative path to .js extension
@@ -282,37 +219,14 @@ impl JsEmitter {
             }
             auwla_ast::StmtKind::Export { stmt: inner } => {
                 match &inner.node {
-                    auwla_ast::StmtKind::Fn { name: _, .. } => {
-                        // Temporarily emit the fn, then prefix with `export `
-                        let saved_len = self.output.len();
-                        self.emit_stmt(inner);
-                        // Find where `function` keyword starts and insert `export `
-                        let emitted = &self.output[saved_len..];
-                        let new_emitted = emitted.replacen("function ", "export function ", 1);
-                        self.output.truncate(saved_len);
-                        self.output.push_str(&new_emitted);
-                    }
-                    auwla_ast::StmtKind::Let { .. } | auwla_ast::StmtKind::Var { .. } => {
-                        let saved_len = self.output.len();
-                        self.emit_stmt(inner);
-                        let emitted = &self.output[saved_len..];
-                        // prefix `const ` or `let ` with `export `
-                        let new_emitted = if emitted.trim_start().starts_with("const ") {
-                            emitted.replacen("const ", "export const ", 1)
-                        } else {
-                            emitted.replacen("let ", "export let ", 1)
-                        };
-                        self.output.truncate(saved_len);
-                        self.output.push_str(&new_emitted);
-                    }
                     auwla_ast::StmtKind::StructDecl { .. }
                     | auwla_ast::StmtKind::EnumDecl { .. }
                     | auwla_ast::StmtKind::TypeAlias { .. } => {
                         // types vanish in JS output — no-op
                     }
                     _ => {
-                        // For anything else (e.g., exported block expressions), emit as-is
-                        self.emit_stmt(inner);
+                        // Re-enter emit_stmt_inner with export=true
+                        self.emit_stmt_inner(inner, true);
                     }
                 }
             }
@@ -323,246 +237,131 @@ impl JsEmitter {
                 ..
             } => {
                 let type_key = self.extend_key(type_name, type_args);
-                let safe_type_key = self.type_key_ident(&type_key);
-                // Emit each method as a standalone function: _ext_TypeName_methodName
-                for method in methods {
-                    // Register method parameters in var_types
-                    for (param_name, ty_opt) in &method.params {
-                        if param_name == "self" {
-                            self.var_types
-                                .insert("__self".to_string(), type_key.clone());
-                            self.var_types.insert("self".to_string(), type_key.clone());
-                        } else if let Some(ty) = ty_opt {
-                            let t_name = self.type_to_key(ty);
-                            self.var_types.insert(param_name.clone(), t_name);
-                        }
-                    }
-
-                    if method.is_static {
-                        // Static methods don't have a receiver — emit as plain function
-                        self.write_indent_ext();
-                        self.write_ext(&format!(
-                            "export function _ext_{}_{}(",
-                            safe_type_key, method.name
-                        ));
-                        let params: Vec<_> = method.params.iter().collect();
-                        for (i, (pname, _)) in params.iter().enumerate() {
-                            if i > 0 {
-                                self.write_ext(", ");
-                            }
-                            self.write_ext(pname);
-                        }
-                        self.write_ext(") {\n");
-                    } else {
-                        // Instance methods: first param is `self` → rename to `__self`
-                        self.write_indent_ext();
-                        self.write_ext(&format!(
-                            "export function _ext_{}_{}(__self",
-                            safe_type_key, method.name
-                        ));
-                        for (pname, _) in method.params.iter().filter(|(n, _)| n != "self") {
-                            self.write_ext(", ");
-                            self.write_ext(pname);
-                        }
-                        self.write_ext(") {\n");
-                    }
-                    self.indent += 1;
-                    let external_attr = method
-                        .attributes
-                        .iter()
-                        .find(|a| a.name == "external")
-                        .cloned();
-
-                    if let Some(attr) = external_attr {
-                        if attr.args.get(0).map(|s| s.as_str()) == Some("js") {
-                            let mapping_type = attr.args.get(1).map(|s| s.as_str());
-                            if mapping_type == Some("property") {
-                                let target = attr
-                                    .args
-                                    .get(2)
-                                    .map(|s| s.as_str())
-                                    .expect("Missing JS property name in @external attribute");
-                                let call = format!("__self.{}", target);
-                                if let Some(auwla_ast::Type::Optional(_)) = &method.return_ty {
-                                    self.write_indent_ext();
-                                    self.write_ext(&format!("const _res = {};\n", call));
-                                    self.write_indent_ext();
-                                    self.write_ext("return (_res != null) ? { ok: true, value: _res } : { ok: false };\n");
-                                } else {
-                                    self.write_indent_ext();
-                                    self.write_ext(&format!("return {};\n", call));
-                                }
-                            } else if mapping_type == Some("method") {
-                                let target = attr
-                                    .args
-                                    .get(2)
-                                    .map(|s| s.as_str())
-                                    .expect("Missing JS method name in @external attribute");
-                                let args: Vec<&str> = method
-                                    .params
-                                    .iter()
-                                    .filter(|(n, _)| n != "self")
-                                    .map(|(n, _)| n.as_str())
-                                    .collect();
-                                let call = format!("__self.{}({})", target, args.join(", "));
-                                if let Some(auwla_ast::Type::Optional(_)) = &method.return_ty {
-                                    self.write_indent_ext();
-                                    self.write_ext(&format!("const _res = {};\n", call));
-                                    self.write_indent_ext();
-                                    self.write_ext("return (_res != null) ? { ok: true, value: _res } : { ok: false };\n");
-                                } else {
-                                    self.write_indent_ext();
-                                    self.write_ext(&format!("return {};\n", call));
-                                }
-                            } else if mapping_type == Some("static") {
-                                let obj =
-                                    attr.args.get(2).map(|s| s.as_str()).expect(
-                                        "Missing JS object name in @external static attribute",
-                                    );
-                                let target =
-                                    attr.args.get(3).map(|s| s.as_str()).expect(
-                                        "Missing JS static member name in @external attribute",
-                                    );
-                                let args: Vec<&str> =
-                                    method.params.iter().map(|(n, _)| n.as_str()).collect();
-                                let call = format!("{}.{}({})", obj, target, args.join(", "));
-                                if let Some(auwla_ast::Type::Optional(_)) = &method.return_ty {
-                                    self.write_indent_ext();
-                                    self.write_ext(&format!("const _res = {};\n", call));
-                                    self.write_indent_ext();
-                                    self.write_ext("return (_res != null) ? { ok: true, value: _res } : { ok: false };\n");
-                                } else {
-                                    self.write_indent_ext();
-                                    self.write_ext(&format!("return {};\n", call));
-                                }
-                            }
-                        }
-                    } else {
-                        let old_output = std::mem::take(&mut self.output);
-
-                        for s in &method.body {
-                            self.emit_stmt_with_self_rename(s);
-                        }
-
-                        let body_output = std::mem::take(&mut self.output);
-                        self.output = old_output;
-                        self.write_ext(&body_output);
-                    }
-
-                    self.indent -= 1;
-                    self.writeln_ext("}\n");
-                }
+                self.emit_method_block(&type_key, methods, true);
             }
             auwla_ast::StmtKind::TypeDecl { name, methods, .. } => {
-                // TypeDecl behaves like an Extend block for the type it declares
-                let type_key = name.clone();
-                let safe_type_key = self.type_key_ident(&type_key);
-                for method in methods {
-                    for (param_name, ty_opt) in &method.params {
-                        if let Some(ty) = ty_opt {
-                            let t_name = self.type_to_key(ty);
-                            self.var_types.insert(param_name.clone(), t_name);
-                        }
-                    }
+                self.emit_method_block(name, methods, false);
+            }
+        }
+    }
 
-                    if method.is_static {
-                        self.write_indent_ext();
-                        self.write_ext(&format!(
-                            "export function _ext_{}_{}(",
-                            safe_type_key, method.name
-                        ));
-                        let params: Vec<_> = method.params.iter().collect();
-                        for (i, (pname, _)) in params.iter().enumerate() {
-                            if i > 0 {
-                                self.write_ext(", ");
-                            }
-                            self.write_ext(pname);
-                        }
-                        self.write_ext(") {\n");
-                    } else {
-                        self.write_indent_ext();
-                        self.write_ext(&format!(
-                            "export function _ext_{}_{}(__self",
-                            safe_type_key, method.name
-                        ));
-                        for (pname, _) in method.params.iter().filter(|(n, _)| n != "self") {
-                            self.write_ext(", ");
-                            self.write_ext(pname);
-                        }
-                        self.write_ext(") {\n");
-                    }
-                    self.indent += 1;
+    // ── Unified binding declaration (replaces duplicated Let/Var) ──
 
-                    let external_attr = method
-                        .attributes
-                        .iter()
-                        .find(|a| a.name == "external")
-                        .cloned();
+    /// Emit a `const`/`let` binding, handling Match/Try initializers,
+    /// type inference, and range detection in one place.
+    fn emit_binding_decl(
+        &mut self,
+        kw: &str,
+        name: &str,
+        ty: &Option<auwla_ast::Type>,
+        initializer: &auwla_ast::expr::Expr,
+        export: bool,
+    ) {
+        // Register the variable's type for extension method resolution.
+        self.register_var_type(name, ty, initializer);
 
-                    if let Some(attr) = external_attr {
-                        if attr.args.get(0).map(|s| s.as_str()) == Some("js") {
-                            let mapping_type = attr.args.get(1).map(|s| s.as_str());
-                            if mapping_type == Some("property") {
-                                let target = attr
-                                    .args
-                                    .get(2)
-                                    .map(|s| s.as_str())
-                                    .expect("Missing JS property name in @external attribute");
-                                self.write_indent_ext();
-                                self.write_ext(&format!("return __self.{};\n", target));
-                            } else if mapping_type == Some("method") {
-                                let target = attr
-                                    .args
-                                    .get(2)
-                                    .map(|s| s.as_str())
-                                    .expect("Missing JS method name in @external attribute");
-                                let args: Vec<&str> = method
-                                    .params
-                                    .iter()
-                                    .filter(|(n, _)| n != "self")
-                                    .map(|(n, _)| n.as_str())
-                                    .collect();
-                                self.write_indent_ext();
-                                self.write_ext(&format!(
-                                    "return __self.{}({});\n",
-                                    target,
-                                    args.join(", ")
-                                ));
-                            } else if mapping_type == Some("static") {
-                                let obj =
-                                    attr.args.get(2).map(|s| s.as_str()).expect(
-                                        "Missing JS object name in @external static attribute",
-                                    );
-                                let target = attr
-                                    .args
-                                    .get(3)
-                                    .map(|s| s.as_str())
-                                    .expect("Missing JS static name in @external attribute");
-                                let args: Vec<&str> =
-                                    method.params.iter().map(|(n, _)| n.as_str()).collect();
-                                self.write_indent_ext();
-                                self.write_ext(&format!(
-                                    "return {}.{}({});\n",
-                                    obj,
-                                    target,
-                                    args.join(", ")
-                                ));
-                            }
-                        }
-                    } else {
-                        let old_output = std::mem::take(&mut self.output);
-                        for s in &method.body {
-                            self.emit_stmt_with_self_rename(s);
-                        }
-                        let body_output = std::mem::take(&mut self.output);
-                        self.output = old_output;
-                        self.write_ext(&body_output);
-                    }
+        // Special-case: match-as-initializer
+        if let auwla_ast::ExprKind::Match { expr, arms } = &initializer.node {
+            // For exported match-init we still need the decl prefix from emit_match_assign
+            self.emit_match_assign(kw, name, expr, arms);
+            return;
+        }
 
-                    self.indent -= 1;
-                    self.writeln_ext("}\n");
+        // Special-case: try-as-initializer
+        if let auwla_ast::ExprKind::Try { expr, error_expr } = &initializer.node {
+            self.emit_try_assign(kw, name, expr, error_expr);
+            return;
+        }
+
+        self.write_indent();
+        if export {
+            self.write("export ");
+        }
+        self.write(&format!("{} {} = ", kw, name));
+        self.emit_expr(initializer);
+        self.write(";\n");
+    }
+
+    // ── Unified method-block emission (replaces duplicated Extend/TypeDecl) ──
+
+    /// Emit all methods for a type as standalone `_ext_TypeKey_method(...)` functions
+    /// into the extensions output buffer.
+    ///
+    /// `wrap_optional` controls whether external-attribute property/method returns
+    /// are wrapped in `{ ok, value }` for `Optional<T>` return types (Extend does
+    /// this; TypeDecl does not).
+    fn emit_method_block(&mut self, type_key: &str, methods: &[Method], wrap_optional: bool) {
+        let safe_type_key = self.type_key_ident(type_key);
+
+        for method in methods {
+            // Register method parameters in var_types
+            for (param_name, ty_opt) in &method.params {
+                if param_name == "self" {
+                    self.var_types
+                        .insert("__self".to_string(), type_key.to_string());
+                    self.var_types
+                        .insert("self".to_string(), type_key.to_string());
+                } else if let Some(ty) = ty_opt {
+                    let t_name = self.type_to_key(ty);
+                    self.var_types.insert(param_name.clone(), t_name);
                 }
             }
+
+            // Emit function signature
+            if method.is_static {
+                self.write_indent_ext();
+                self.write_ext(&format!(
+                    "export function _ext_{}_{}(",
+                    safe_type_key, method.name
+                ));
+                let params: Vec<_> = method.params.iter().collect();
+                for (i, (pname, _)) in params.iter().enumerate() {
+                    if i > 0 {
+                        self.write_ext(", ");
+                    }
+                    self.write_ext(pname);
+                }
+                self.write_ext(") {\n");
+            } else {
+                self.write_indent_ext();
+                self.write_ext(&format!(
+                    "export function _ext_{}_{}(__self",
+                    safe_type_key, method.name
+                ));
+                for (pname, _) in method.params.iter().filter(|(n, _)| n != "self") {
+                    self.write_ext(", ");
+                    self.write_ext(pname);
+                }
+                self.write_ext(") {\n");
+            }
+
+            self.ext.indent();
+
+            // Check for @external attribute
+            let external_attr = method
+                .attributes
+                .iter()
+                .find(|a| a.name == "external")
+                .cloned();
+
+            if let Some(attr) = external_attr {
+                self.emit_external_body(&attr, method, wrap_optional);
+            } else {
+                // Emit user-defined method body with self→__self renaming
+                let old_output = std::mem::replace(&mut self.out, crate::writer::CodeWriter::new());
+                // Synchronize indent level
+                self.out.set_indent(self.ext.indent_level());
+
+                for s in &method.body {
+                    self.emit_stmt_with_self_rename(s);
+                }
+
+                let body_writer = std::mem::replace(&mut self.out, old_output);
+                self.write_ext(&body_writer.into_string());
+            }
+
+            self.ext.dedent();
+            self.writeln_ext("}\n");
         }
     }
 

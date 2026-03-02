@@ -11,13 +11,13 @@ impl JsEmitter {
         // 2. Check guard condition in IIFE
         if let Some(ref guard) = arm.guard {
             self.write(" && (() => {\n");
-            self.indent += 1;
+            self.out.indent();
             self.emit_bound_variables(temp, &arm.pattern);
             self.write_indent();
             self.write("return ");
             self.emit_expr(guard);
             self.write(";\n");
-            self.indent -= 1;
+            self.out.dedent();
             self.write_indent();
             self.write("})()");
         }
