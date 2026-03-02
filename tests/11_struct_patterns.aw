@@ -6,6 +6,8 @@ struct User {
     role: string
 }
 
+
+
 let alice = User { name: "Alice", age: 30, role: "admin" };
 let bob = User { name: "Bob", age: 25, role: "user" };
 let charlie = User { name: "Charlie", age: 16, role: "user" };

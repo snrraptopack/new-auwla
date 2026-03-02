@@ -28,6 +28,8 @@ pub(crate) struct JsEmitter {
     pub(crate) in_extension_method: bool,
     /// Full extension signatures for attribute lookup
     pub(crate) extensions: HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
+    /// Flag to prevent `return` injection in standalone blocks/matches
+    pub(crate) is_statement_context: bool,
 }
 
 impl JsEmitter {
@@ -48,6 +50,7 @@ impl JsEmitter {
             ext_methods,
             in_extension_method: false,
             extensions,
+            is_statement_context: false,
         }
     }
 
@@ -156,17 +159,18 @@ impl JsEmitter {
         if elems.is_empty() {
             return None;
         }
-        let mut kind: Option<&'static str> = None;
+        let mut kind: Option<String> = None;
         for e in elems {
             let k = match &e.node {
-                ExprKind::NumberLit(_) => "number",
-                ExprKind::StringLit(_) => "string",
-                ExprKind::BoolLit(_) => "bool",
-                ExprKind::CharLit(_) => "char",
+                ExprKind::NumberLit(_) => "number".to_string(),
+                ExprKind::StringLit(_) => "string".to_string(),
+                ExprKind::BoolLit(_) => "bool".to_string(),
+                ExprKind::CharLit(_) => "char".to_string(),
+                ExprKind::StructInit { name, .. } => name.clone(),
                 _ => return None,
             };
-            if let Some(prev) = kind {
-                if prev != k {
+            if let Some(prev) = kind.as_ref() {
+                if prev != &k {
                     return None;
                 }
             } else {

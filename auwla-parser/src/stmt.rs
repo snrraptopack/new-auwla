@@ -112,18 +112,6 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                         if let Some(e) = trailing_expr {
                             let e_span = e.span.clone();
                             body.push(auwla_ast::Spanned::new(StmtKind::Return(Some(e)), e_span));
-                        } else if let Some(stmt) = body.last() {
-                            if let StmtKind::Expr(ref e) = stmt.node {
-                                if let auwla_ast::ExprKind::Match { .. } = e.node {
-                                    let last = body.pop().unwrap();
-                                    if let StmtKind::Expr(e) = last.node {
-                                        body.push(auwla_ast::Spanned::new(
-                                            StmtKind::Return(Some(e)),
-                                            last.span,
-                                        ));
-                                    }
-                                }
-                            }
                         }
                         body
                     })

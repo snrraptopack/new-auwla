@@ -4,6 +4,7 @@ __print(`Double 21: ${double(21)}`);
 const multiply = (x, y) => {
     const result = (x * y);
     return result;
+  return undefined;
 };
 __print(`Multiply 6 * 7: ${multiply(6, 7)}`);
 function apply_twice(val, f) {
@@ -16,9 +17,11 @@ function run_callback(f) {
 }
 run_callback(() => {
     __print("Callback executed successfully!");
+  return undefined;
 });
 const greeting = "Hello";
 const greet = (name) => {
     __print(`${greeting}, ${name}!`);
+  return undefined;
 };
 greet("Auwla");

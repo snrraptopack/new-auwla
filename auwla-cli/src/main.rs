@@ -22,30 +22,53 @@ fn main() {
     let global_output_root = if path.is_dir() {
         path.join("output")
     } else {
-        path.parent().unwrap_or(Path::new(".")).to_path_buf()
+        path.parent().unwrap_or(Path::new(".")).join("output")
     };
+    if !global_output_root.exists() {
+        fs::create_dir_all(&global_output_root).ok();
+    }
 
     let mut global_extensions_js = String::new();
     let mut global_util_needed = false;
 
-    if path.is_file() {
-        // Single-file mode — still scan the parent directory for "magic" extensions
-        let parent = path.parent().unwrap_or(Path::new("."));
-        let global_extensions = discover_all_extensions(parent);
+    // 1. Centralized Discovery and Extension Emission
+    let (global_extensions, discovered_paths) = discover_all_extensions(if path.is_dir() {
+        path
+    } else {
+        path.parent().unwrap_or(Path::new("."))
+    });
 
-        let output_file = Path::new("output.js");
-        if let Ok((ext_js, util_needed)) =
-            compile_file_standalone(path, output_file, &global_extensions, &global_output_root)
+    let mut emitted_paths = HashSet::new();
+    for p in &discovered_paths {
+        if emitted_paths.contains(p) {
+            continue;
+        }
+        if let Ok(source) = fs::read_to_string(p) {
+            if let Ok((ast, _)) = parse_source(&source, p) {
+                let (_, ext_js) = emit_js(&ast, &global_extensions);
+                if !ext_js.is_empty() {
+                    global_extensions_js.push_str(&ext_js);
+                    if ext_js.contains("__print(") || ext_js.contains("__range(") {
+                        global_util_needed = true;
+                    }
+                    emitted_paths.insert(p.clone());
+                }
+            }
+        }
+    }
+
+    if path.is_file() {
+        let output_file = global_output_root
+            .join(path.file_name().unwrap())
+            .with_extension("js");
+        if let Ok((_, util_needed)) =
+            compile_file_standalone(path, &output_file, &global_extensions, &global_output_root)
         {
-            global_extensions_js.push_str(&ext_js);
             global_util_needed |= util_needed;
         } else {
             std::process::exit(1);
         }
     } else if path.is_dir() {
-        // Project-wide extension discovery BEFORE compiling anything
-        let global_extensions = discover_all_extensions(path);
-
         let is_module_dir = has_module_structure(path);
 
         if is_module_dir {
@@ -53,13 +76,12 @@ fn main() {
             println!("Compiling module project: {}", target);
             let output_dir = path.join("output");
             fs::create_dir_all(&output_dir).expect("Failed to create output directory");
-            if let Ok((ext_js, util_needed)) = compile_directory_as_module(
+            if let Ok((_, util_needed)) = compile_directory_as_module(
                 path,
                 &output_dir,
                 &global_extensions,
                 &global_output_root,
             ) {
-                global_extensions_js.push_str(&ext_js);
                 global_util_needed |= util_needed;
             } else {
                 std::process::exit(1);
@@ -70,10 +92,7 @@ fn main() {
             let mut passed = 0;
             let mut failed = 0;
 
-            let output_dir = path.join("output");
-            if !output_dir.exists() {
-                fs::create_dir_all(&output_dir).expect("Failed to create output directory");
-            }
+            let output_dir = &global_output_root;
 
             let mut entries: Vec<PathBuf> = fs::read_dir(path)
                 .expect("Failed to read directory")
@@ -93,8 +112,7 @@ fn main() {
                     &global_extensions,
                     &global_output_root,
                 ) {
-                    Ok((ext_js, util_needed)) => {
-                        global_extensions_js.push_str(&ext_js);
+                    Ok((_, util_needed)) => {
                         global_util_needed |= util_needed;
                         passed += 1;
                     }
@@ -117,20 +135,16 @@ fn main() {
                     println!("\n--- Module project: {} ---", subdir.display());
                     let sub_output = subdir.join("output");
                     fs::create_dir_all(&sub_output).expect("Failed to create subdir output");
-                    match compile_directory_as_module(
+                    if let Ok((_, util_needed)) = compile_directory_as_module(
                         subdir,
                         &sub_output,
                         &global_extensions,
                         &global_output_root,
                     ) {
-                        Ok((ext_js, util_needed)) => {
-                            global_extensions_js.push_str(&ext_js);
-                            global_util_needed |= util_needed;
-                            passed += 1;
-                        }
-                        Err(_) => {
-                            failed += 1;
-                        }
+                        global_util_needed |= util_needed;
+                        passed += 1;
+                    } else {
+                        failed += 1;
                     }
                 }
             }
@@ -145,8 +159,25 @@ fn main() {
 
     // Emit global shared files once at the end
     if !global_extensions_js.is_empty() {
+        let mut final_runtime_js = String::new();
+        let mut util_imports = Vec::new();
+        if global_extensions_js.contains("__print(") {
+            util_imports.push("__print");
+        }
+        if global_extensions_js.contains("__range(") {
+            util_imports.push("__range");
+        }
+
+        if !util_imports.is_empty() {
+            final_runtime_js.push_str(&format!(
+                "import {{ {} }} from './__util.js';\n\n",
+                util_imports.join(", ")
+            ));
+        }
+        final_runtime_js.push_str(&global_extensions_js);
+
         let runtime_path = global_output_root.join("__runtime.js");
-        fs::write(&runtime_path, &global_extensions_js).unwrap_or_else(|e| {
+        fs::write(&runtime_path, &final_runtime_js).unwrap_or_else(|e| {
             eprintln!("[Error] Failed to write '__runtime.js': {}", e);
         });
         println!(
@@ -630,8 +661,14 @@ fn byte_to_line_col(source: &str, byte: usize) -> (usize, usize) {
     (line, col)
 }
 /// Recursively finds all .aw files and collects their extensions.
-fn discover_all_extensions(root: &Path) -> HashMap<String, Vec<auwla_ast::ExtensionMethod>> {
+fn discover_all_extensions(
+    root: &Path,
+) -> (
+    HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
+    Vec<PathBuf>,
+) {
     let mut extensions = HashMap::new();
+    let mut paths = Vec::new();
     let mut walk = VecDeque::new();
     walk.push_back(root.to_path_buf());
 
@@ -648,11 +685,14 @@ fn discover_all_extensions(root: &Path) -> HashMap<String, Vec<auwla_ast::Extens
                     if let Ok(source) = fs::read_to_string(&p) {
                         if let Ok((ast, _)) = parse_source(&source, &p) {
                             let map = collect_exports(&ast);
-                            for (type_key, methods) in map.extensions {
-                                extensions
-                                    .entry(type_key)
-                                    .or_insert_with(Vec::new)
-                                    .extend(methods);
+                            if !map.extensions.is_empty() {
+                                paths.push(p.clone());
+                                for (type_key, methods) in map.extensions {
+                                    extensions
+                                        .entry(type_key)
+                                        .or_insert_with(Vec::new)
+                                        .extend(methods);
+                                }
                             }
                         }
                     }
@@ -660,7 +700,7 @@ fn discover_all_extensions(root: &Path) -> HashMap<String, Vec<auwla_ast::Extens
             }
         }
     }
-    extensions
+    (extensions, paths)
 }
 
 /// Simple relative path calculator from `from` directory to `to` directory.

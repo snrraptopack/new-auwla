@@ -11,14 +11,23 @@ function main() {
   const __match_0 = __auwla._ext_array_last(arr);
   if (__match_0.ok) {
     const v = __match_0.value;
-    return __print(`Last: ${v}`);
+    __print(`Last: ${v}`);
   }
   else if (!__match_0.ok) {
-    return __print("Empty");
+    __print("Empty");
   }
 }
+const aaa = __auwla._ext_string_get("ama", 1);
+const __match_1 = aaa;
+if (__match_1.ok) {
+  const v = __match_1.value;
+  __print(v);
+}
+else if (!__match_1.ok) {
+  __print("none");
+}
 main();
-__print("hello".repeat(10));
+__print(__auwla._ext_string_repeat("hello", 10));
 const nums = __range(1, 100, true);
 for (let i = __auwla._ext_array_low(nums); i <= __auwla._ext_array_high(nums); i++) {
   __print(`the current number is : ${i}`);

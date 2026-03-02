@@ -53,10 +53,17 @@ impl JsEmitter {
                 if let Some(result) = &arm.result {
                     self.write_indent();
                     if target == "return" {
-                        self.write("return ");
-                        self.emit_expr(result);
+                        if let auwla_ast::ExprKind::Block(_, _) = &result.node {
+                            self.emit_expr(result);
+                        } else {
+                            self.write("return ");
+                            self.emit_expr(result);
+                        }
                     } else if target.is_empty() {
+                        let old = self.is_statement_context;
+                        self.is_statement_context = true;
                         self.emit_expr(result);
+                        self.is_statement_context = old;
                     } else {
                         self.write(&format!("{} = ", target));
                         self.emit_expr(result);
@@ -68,14 +75,21 @@ impl JsEmitter {
                 }
             } else {
                 // Expr-style match (IIFE)
-                self.write_indent();
-                self.write("return ");
                 if let Some(result) = &arm.result {
-                    self.emit_expr(result);
+                    if let auwla_ast::ExprKind::Block(_, _) = &result.node {
+                        self.write_indent();
+                        self.emit_expr(result);
+                        self.write("\n");
+                    } else {
+                        self.write_indent();
+                        self.write("return ");
+                        self.emit_expr(result);
+                        self.write(";\n");
+                    }
                 } else {
-                    self.write("undefined");
+                    self.write_indent();
+                    self.write("return undefined;\n");
                 }
-                self.write(";\n");
             }
 
             self.indent -= 1;
@@ -199,7 +213,10 @@ impl JsEmitter {
                         self.write("return ");
                         self.emit_expr(result);
                     } else if target.is_empty() {
+                        let old = self.is_statement_context;
+                        self.is_statement_context = true;
                         self.emit_expr(result);
+                        self.is_statement_context = old;
                     } else {
                         self.write(&format!("{} = ", target));
                         self.emit_expr(result);

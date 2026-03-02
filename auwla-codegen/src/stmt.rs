@@ -19,6 +19,14 @@ impl JsEmitter {
                     } else {
                         self.var_types.insert(name.clone(), "array".to_string());
                     }
+                } else if let auwla_ast::ExprKind::StringLit(_) = &initializer.node {
+                    self.var_types.insert(name.clone(), "string".to_string());
+                } else if let auwla_ast::ExprKind::NumberLit(_) = &initializer.node {
+                    self.var_types.insert(name.clone(), "number".to_string());
+                } else if let auwla_ast::ExprKind::BoolLit(_) = &initializer.node {
+                    self.var_types.insert(name.clone(), "bool".to_string());
+                } else if let auwla_ast::ExprKind::CharLit(_) = &initializer.node {
+                    self.var_types.insert(name.clone(), "char".to_string());
                 } else if let auwla_ast::ExprKind::StructInit { name: tname, .. } =
                     &initializer.node
                 {
@@ -54,6 +62,14 @@ impl JsEmitter {
                     } else {
                         self.var_types.insert(name.clone(), "array".to_string());
                     }
+                } else if let auwla_ast::ExprKind::StringLit(_) = &initializer.node {
+                    self.var_types.insert(name.clone(), "string".to_string());
+                } else if let auwla_ast::ExprKind::NumberLit(_) = &initializer.node {
+                    self.var_types.insert(name.clone(), "number".to_string());
+                } else if let auwla_ast::ExprKind::BoolLit(_) = &initializer.node {
+                    self.var_types.insert(name.clone(), "bool".to_string());
+                } else if let auwla_ast::ExprKind::CharLit(_) = &initializer.node {
+                    self.var_types.insert(name.clone(), "char".to_string());
                 } else if let auwla_ast::ExprKind::StructInit { name: tname, .. } =
                     &initializer.node
                 {
@@ -366,8 +382,16 @@ impl JsEmitter {
                                     .get(2)
                                     .map(|s| s.as_str())
                                     .unwrap_or(method.name.as_str());
-                                self.write_indent_ext();
-                                self.write_ext(&format!("return __self.{};\n", target));
+                                let call = format!("__self.{}", target);
+                                if let Some(auwla_ast::Type::Optional(_)) = &method.return_ty {
+                                    self.write_indent_ext();
+                                    self.write_ext(&format!("const _res = {};\n", call));
+                                    self.write_indent_ext();
+                                    self.write_ext("return (_res != null) ? { ok: true, value: _res } : { ok: false };\n");
+                                } else {
+                                    self.write_indent_ext();
+                                    self.write_ext(&format!("return {};\n", call));
+                                }
                             } else if mapping_type == Some("method") {
                                 let target = attr
                                     .args
@@ -380,12 +404,16 @@ impl JsEmitter {
                                     .filter(|(n, _)| n != "self")
                                     .map(|(n, _)| n.as_str())
                                     .collect();
-                                self.write_indent_ext();
-                                self.write_ext(&format!(
-                                    "return __self.{}({});\n",
-                                    target,
-                                    args.join(", ")
-                                ));
+                                let call = format!("__self.{}({})", target, args.join(", "));
+                                if let Some(auwla_ast::Type::Optional(_)) = &method.return_ty {
+                                    self.write_indent_ext();
+                                    self.write_ext(&format!("const _res = {};\n", call));
+                                    self.write_indent_ext();
+                                    self.write_ext("return (_res != null) ? { ok: true, value: _res } : { ok: false };\n");
+                                } else {
+                                    self.write_indent_ext();
+                                    self.write_ext(&format!("return {};\n", call));
+                                }
                             } else if mapping_type == Some("static") {
                                 let obj = attr.args.get(2).map(|s| s.as_str()).unwrap_or(type_name);
                                 let target = attr
@@ -395,13 +423,16 @@ impl JsEmitter {
                                     .unwrap_or(method.name.as_str());
                                 let args: Vec<&str> =
                                     method.params.iter().map(|(n, _)| n.as_str()).collect();
-                                self.write_indent_ext();
-                                self.write_ext(&format!(
-                                    "return {}.{}({});\n",
-                                    obj,
-                                    target,
-                                    args.join(", ")
-                                ));
+                                let call = format!("{}.{}({})", obj, target, args.join(", "));
+                                if let Some(auwla_ast::Type::Optional(_)) = &method.return_ty {
+                                    self.write_indent_ext();
+                                    self.write_ext(&format!("const _res = {};\n", call));
+                                    self.write_indent_ext();
+                                    self.write_ext("return (_res != null) ? { ok: true, value: _res } : { ok: false };\n");
+                                } else {
+                                    self.write_indent_ext();
+                                    self.write_ext(&format!("return {};\n", call));
+                                }
                             }
                         }
                     } else {

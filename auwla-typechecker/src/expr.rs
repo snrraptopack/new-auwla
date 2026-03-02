@@ -833,10 +833,8 @@ impl Typechecker {
                         for key in keys {
                             if let Some(methods) = self.extensions.get(&key) {
                                 for method in methods {
-                                    if let Some(attr) = method
-                                        .attributes
-                                        .iter()
-                                        .find(|a| a.name == "external")
+                                    if let Some(attr) =
+                                        method.attributes.iter().find(|a| a.name == "external")
                                     {
                                         if attr.args.get(0).map(|s| s.as_str()) == Some("js")
                                             && attr.args.get(1).map(|s| s.as_str())
@@ -848,10 +846,9 @@ impl Typechecker {
                                                 .map(|s| s.as_str())
                                                 .unwrap_or(method.name.as_str());
                                             if target == property {
-                                                return Ok(method
-                                                    .return_ty
-                                                    .clone()
-                                                    .unwrap_or(Type::Basic("unknown".to_string())));
+                                                return Ok(method.return_ty.clone().unwrap_or(
+                                                    Type::Basic("unknown".to_string()),
+                                                ));
                                             }
                                         }
                                     }
@@ -957,7 +954,10 @@ impl Typechecker {
                         });
                     }
 
-                    fn instantiate(ty: &Type, env: &std::collections::HashMap<String, usize>) -> Type {
+                    fn instantiate(
+                        ty: &Type,
+                        env: &std::collections::HashMap<String, usize>,
+                    ) -> Type {
                         match ty {
                             Type::TypeVar(name) | Type::Custom(name) => {
                                 if let Some(&id) = env.get(name) {
@@ -967,7 +967,9 @@ impl Typechecker {
                                 }
                             }
                             Type::Array(inner) => Type::Array(Box::new(instantiate(inner, env))),
-                            Type::Optional(inner) => Type::Optional(Box::new(instantiate(inner, env))),
+                            Type::Optional(inner) => {
+                                Type::Optional(Box::new(instantiate(inner, env)))
+                            }
                             Type::Result { ok_type, err_type } => Type::Result {
                                 ok_type: Box::new(instantiate(ok_type, env)),
                                 err_type: Box::new(instantiate(err_type, env)),
@@ -1009,10 +1011,12 @@ impl Typechecker {
                     if let Some(first_param) = method_sig.params.first() {
                         if first_param.0 == "self" {
                             let inst_self = instantiate(&first_param.1, &type_env);
-                            unifier.unify(&inst_self, &expr_ty).map_err(|msg| TypeError {
-                                span: expr.span.clone(),
-                                message: msg,
-                            })?;
+                            unifier
+                                .unify(&inst_self, &expr_ty)
+                                .map_err(|msg| TypeError {
+                                    span: expr.span.clone(),
+                                    message: msg,
+                                })?;
                         }
                     }
 
@@ -1030,11 +1034,14 @@ impl Typechecker {
 
                     return Ok(resolved_return);
                 }
-                // Not found as extension — might be a closure field call; validate args permissively
-                for arg in args {
-                    self.check_expr(arg)?;
-                }
-                Ok(Type::Basic("unknown".to_string()))
+
+                return Err(TypeError {
+                    span: expr.span.clone(),
+                    message: format!(
+                        "Type error: method '{}' not found on type '{}' (if this is an extension, make sure it is defined and imported)",
+                        method, expr_ty
+                    ),
+                });
             }
             auwla_ast::ExprKind::StaticMethodCall {
                 type_name,

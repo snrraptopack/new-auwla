@@ -8,15 +8,15 @@ function check_status(status) {
   switch (__match_0.$variant) {
     case "Active":
       __print("Status is Active");
-      return;
+      break;
     case "Inactive":
       __print("Status is Inactive");
-      return;
+      break;
     case "Banned":
       const reason = __match_0.$data[0];
       __print("Status is Banned: ");
       __print(reason);
-      return;
+      break;
   }
 }
 check_status(ok_status);

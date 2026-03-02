@@ -1,10 +1,10 @@
 extend array<T> {
     @external("js", "property", "length")
-    fn length(self): number;
+    fn len(self): number;
 
     fn last(self): T? {
         if self.length > 0 {
-            return some(self[self.length - 1]);
+            return some(self[self.len() - 1]);
         }
         return none;
     }

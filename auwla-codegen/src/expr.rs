@@ -154,9 +154,13 @@ impl JsEmitter {
             auwla_ast::ExprKind::MethodCall {
                 expr, method, args, ..
             } => {
-                // Resolve whether this is an extension call by looking up the receiver type.
                 let receiver_type_key: Option<String> = match &expr.node {
                     auwla_ast::ExprKind::Identifier(name) => self.var_types.get(name).cloned(),
+                    auwla_ast::ExprKind::StringLit(_) => Some("string".to_string()),
+                    auwla_ast::ExprKind::NumberLit(_) => Some("number".to_string()),
+                    auwla_ast::ExprKind::BoolLit(_) => Some("bool".to_string()),
+                    auwla_ast::ExprKind::Array(elems) => self.array_literal_type_key(elems),
+                    auwla_ast::ExprKind::Range { .. } => Some("array<number>".to_string()),
                     _ => None,
                 };
 
@@ -281,6 +285,9 @@ impl JsEmitter {
                     self.write("return ");
                     self.emit_expr(res);
                     self.write(";\n");
+                } else if !stmts.is_empty() {
+                    self.write_indent();
+                    self.write("return undefined;\n");
                 }
                 self.indent -= 1;
                 self.write_indent();

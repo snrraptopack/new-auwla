@@ -27,7 +27,7 @@ pub fn type_parser() -> impl Parser<Token, Type, Error = Simple<Token>> + Clone 
                     Type::Generic(name, args)
                 } else {
                     match name.as_str() {
-                        "number" | "string" | "bool" | "void" => Type::Basic(name),
+                        "number" | "string" | "bool" | "void" | "char" => Type::Basic(name),
                         _ => Type::Custom(name),
                     }
                 }
