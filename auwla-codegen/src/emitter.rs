@@ -8,8 +8,9 @@ use std::collections::{HashMap, HashSet};
 pub fn emit_js(
     program: &Program,
     extensions: &HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
+    enums: &HashSet<String>,
 ) -> (String, String) {
-    let mut emitter = JsEmitter::new(extensions.clone());
+    let mut emitter = JsEmitter::new(extensions.clone(), enums.clone());
     emitter.emit_program(program);
     (emitter.output, emitter.extensions_output)
 }
@@ -30,10 +31,15 @@ pub(crate) struct JsEmitter {
     pub(crate) extensions: HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
     /// Flag to prevent `return` injection in standalone blocks/matches
     pub(crate) is_statement_context: bool,
+    /// Known enums (to distinguish static methods from variants)
+    pub(crate) enums: HashSet<String>,
 }
 
 impl JsEmitter {
-    fn new(extensions: HashMap<String, Vec<auwla_ast::ExtensionMethod>>) -> Self {
+    fn new(
+        extensions: HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
+        enums: HashSet<String>,
+    ) -> Self {
         let ext_methods = extensions
             .iter()
             .map(|(ty, methods)| {
@@ -51,6 +57,7 @@ impl JsEmitter {
             in_extension_method: false,
             extensions,
             is_statement_context: false,
+            enums,
         }
     }
 
@@ -153,6 +160,24 @@ impl JsEmitter {
             result.pop();
         }
         result
+    }
+
+    pub(crate) fn has_attribute(
+        &self,
+        attributes: &[auwla_ast::Attribute],
+        name: &str,
+        arg: Option<&str>,
+    ) -> bool {
+        attributes.iter().any(|attr| {
+            if attr.name != name {
+                return false;
+            }
+            if let Some(expected_arg) = arg {
+                attr.args.iter().any(|a| a == expected_arg)
+            } else {
+                true
+            }
+        })
     }
 
     pub(crate) fn array_literal_type_key(&self, elems: &[Expr]) -> Option<String> {

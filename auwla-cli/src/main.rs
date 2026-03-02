@@ -32,11 +32,12 @@ fn main() {
     let mut global_util_needed = false;
 
     // 1. Centralized Discovery and Extension Emission
-    let (global_extensions, discovered_paths) = discover_all_extensions(if path.is_dir() {
-        path
-    } else {
-        path.parent().unwrap_or(Path::new("."))
-    });
+    let (global_extensions, global_enums, discovered_paths) =
+        discover_all_extensions(if path.is_dir() {
+            path
+        } else {
+            path.parent().unwrap_or(Path::new("."))
+        });
 
     let mut emitted_paths = HashSet::new();
     for p in &discovered_paths {
@@ -45,7 +46,7 @@ fn main() {
         }
         if let Ok(source) = fs::read_to_string(p) {
             if let Ok((ast, _)) = parse_source(&source, p) {
-                let (_, ext_js) = emit_js(&ast, &global_extensions);
+                let (_, ext_js) = emit_js(&ast, &global_extensions, &global_enums);
                 if !ext_js.is_empty() {
                     global_extensions_js.push_str(&ext_js);
                     if ext_js.contains("__print(") || ext_js.contains("__range(") {
@@ -61,9 +62,13 @@ fn main() {
         let output_file = global_output_root
             .join(path.file_name().unwrap())
             .with_extension("js");
-        if let Ok((_, util_needed)) =
-            compile_file_standalone(path, &output_file, &global_extensions, &global_output_root)
-        {
+        if let Ok((_, util_needed)) = compile_file_standalone(
+            path,
+            &output_file,
+            &global_extensions,
+            &global_enums,
+            &global_output_root,
+        ) {
             global_util_needed |= util_needed;
         } else {
             std::process::exit(1);
@@ -80,6 +85,7 @@ fn main() {
                 path,
                 &output_dir,
                 &global_extensions,
+                &global_enums,
                 &global_output_root,
             ) {
                 global_util_needed |= util_needed;
@@ -110,6 +116,7 @@ fn main() {
                     file_path,
                     &output_file_path,
                     &global_extensions,
+                    &global_enums,
                     &global_output_root,
                 ) {
                     Ok((_, util_needed)) => {
@@ -139,6 +146,7 @@ fn main() {
                         subdir,
                         &sub_output,
                         &global_extensions,
+                        &global_enums,
                         &global_output_root,
                     ) {
                         global_util_needed |= util_needed;
@@ -226,6 +234,7 @@ fn compile_directory_as_module(
     dir: &Path,
     output_dir: &Path,
     global_extensions: &HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
+    global_enums: &HashSet<String>,
     global_output_root: &Path,
 ) -> Result<(String, bool), ()> {
     // 1. Parse all .aw files
@@ -291,14 +300,18 @@ fn compile_directory_as_module(
         }
     }
 
-    // 5. Merge module-specific extensions into the global registry
+    // 5. Merge module-specific extensions and enums into the global registry
     let mut merged_extensions = global_extensions.clone();
+    let mut merged_enums = global_enums.clone();
     for map in export_maps.values() {
         for (type_key, methods) in &map.extensions {
             merged_extensions
                 .entry(type_key.clone())
                 .or_insert_with(Vec::new)
                 .extend(methods.clone());
+        }
+        for enum_name in map.enums.keys() {
+            merged_enums.insert(enum_name.clone());
         }
     }
 
@@ -337,7 +350,8 @@ fn compile_directory_as_module(
             match typechecker.check_program_with_imports(ast, &import_ctx) {
                 Ok(_) => {
                     println!("✓  Typechecking passed — no errors found.");
-                    let (mut js_output, ext_output) = emit_js(ast, typechecker.get_extensions());
+                    let (mut js_output, ext_output) =
+                        emit_js(ast, typechecker.get_extensions(), &merged_enums);
                     module_extensions.push_str(&ext_output);
 
                     let mut import_prefix = String::new();
@@ -505,6 +519,7 @@ fn compile_file_standalone(
     path: &Path,
     output_file: &Path,
     global_extensions: &HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
+    global_enums: &HashSet<String>,
     global_output_root: &Path,
 ) -> Result<(String, bool), ()> {
     let source = match fs::read_to_string(path) {
@@ -525,7 +540,10 @@ fn compile_file_standalone(
     typechecker.extensions = global_extensions.clone();
     match typechecker.check_program(&ast) {
         Ok(_) => {
-            let (mut js_output, ext_output) = emit_js(&ast, typechecker.get_extensions());
+            let mut all_enums = global_enums.clone();
+            all_enums.extend(typechecker.get_enum_names());
+            let (mut js_output, ext_output) =
+                emit_js(&ast, typechecker.get_extensions(), &all_enums);
 
             let rel_prefix = get_relative_import_path(
                 output_file.parent().unwrap_or(Path::new(".")),
@@ -665,9 +683,11 @@ fn discover_all_extensions(
     root: &Path,
 ) -> (
     HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
+    HashSet<String>,
     Vec<PathBuf>,
 ) {
     let mut extensions = HashMap::new();
+    let mut enums = HashSet::new();
     let mut paths = Vec::new();
     let mut walk = VecDeque::new();
     walk.push_back(root.to_path_buf());
@@ -693,6 +713,9 @@ fn discover_all_extensions(
                                         .or_insert_with(Vec::new)
                                         .extend(methods);
                                 }
+                                for enum_name in map.enums.keys() {
+                                    enums.insert(enum_name.clone());
+                                }
                             }
                         }
                     }
@@ -700,7 +723,7 @@ fn discover_all_extensions(
             }
         }
     }
-    (extensions, paths)
+    (extensions, enums, paths)
 }
 
 /// Simple relative path calculator from `from` directory to `to` directory.

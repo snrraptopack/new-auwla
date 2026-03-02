@@ -74,12 +74,14 @@ pub enum StmtKind {
         name: String,
         type_params: Option<Vec<String>>,
         fields: Vec<(String, Type)>, // name, type
+        attributes: Vec<Attribute>,
     },
     /// enum Name<T> { Variant1, Variant2(T) }
     EnumDecl {
         name: String,
         type_params: Option<Vec<String>>,
         variants: Vec<(String, Vec<Type>)>,
+        attributes: Vec<Attribute>,
     },
     /// import { add, Vec2 } from './math';
     Import { names: Vec<String>, path: String },
@@ -98,6 +100,13 @@ pub enum StmtKind {
         name: String,
         type_params: Option<Vec<String>>,
         aliased_type: Type,
+    },
+    /// type Name { fn method() { ... } }
+    TypeDecl {
+        name: String,
+        type_params: Option<Vec<String>>,
+        attributes: Vec<Attribute>,
+        methods: Vec<Method>,
     },
 }
 

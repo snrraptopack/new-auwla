@@ -1,4 +1,4 @@
-import { __print } from './__util.js';
+import { __print, __range } from './__util.js';
 import * as __auwla from './__runtime.js';
 function main() {
   const my_tasks = [{ id: 101, title: "Refactor Codegen", status: { $variant: "Done" } }, { id: 102, title: "Secure JS Interop", status: { $variant: "Pending" } }, { id: 103, title: "Ship Auwla", status: { $variant: "Pending" } }];
@@ -34,4 +34,5 @@ function main() {
     __print("Empty version string detected.");
   }
 }
+const ama = __range(1, 10, true);
 main();

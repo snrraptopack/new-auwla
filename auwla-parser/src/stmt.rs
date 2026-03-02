@@ -207,8 +207,10 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                 auwla_ast::Spanned::new(auwla_ast::StmtKind::Assign { target, value }, span)
             });
 
-        let struct_decl = just(Token::Struct)
-            .ignore_then(select! { Token::Ident(name) => name })
+        let struct_decl = attributes
+            .clone()
+            .then_ignore(just(Token::Struct))
+            .then(select! { Token::Ident(name) => name })
             .then(generic_params.clone())
             .then(
                 select! { Token::Ident(name) => name }
@@ -218,20 +220,23 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                     .allow_trailing()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace)),
             )
-            .map_with_span(|((name, type_params), fields), span| {
+            .map_with_span(|(((attributes, name), type_params), fields), span| {
                 auwla_ast::Spanned::new(
                     StmtKind::StructDecl {
                         name,
                         type_params,
                         fields,
+                        attributes,
                     },
                     span,
                 )
             });
 
         // enum Name { Variant1, Variant2(type) }
-        let enum_decl = just(Token::Enum)
-            .ignore_then(select! { Token::Ident(name) => name })
+        let enum_decl = attributes
+            .clone()
+            .then_ignore(just(Token::Enum))
+            .then(select! { Token::Ident(name) => name })
             .then(generic_params.clone())
             .then(
                 select! { Token::Ident(variant_name) => variant_name }
@@ -246,12 +251,13 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                     .allow_trailing()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace)),
             )
-            .map_with_span(|((name, type_params), variants), span| {
+            .map_with_span(|(((attributes, name), type_params), variants), span| {
                 auwla_ast::Spanned::new(
                     StmtKind::EnumDecl {
                         name,
                         type_params,
                         variants,
+                        attributes,
                     },
                     span,
                 )
@@ -279,6 +285,132 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                 auwla_ast::Spanned::new(StmtKind::Export { stmt: Box::new(s) }, span)
             });
 
+        // method_parser logic extracted
+        let method_body = stmt
+            .clone()
+            .repeated()
+            .then(expr.clone().or_not())
+            .delimited_by(just(Token::LBrace), just(Token::RBrace));
+
+        let static_kw = select! { Token::Ident(name) if name == "static" => name }
+            .or_not()
+            .map(|kw| kw.is_some());
+
+        let method =
+            attributes
+                .clone()
+                .then(static_kw)
+                .then_ignore(just(Token::Fn))
+                .then(select! { Token::Ident(name) => name })
+                .then(generic_params.clone())
+                .then(
+                    select! { Token::Ident(name) => name }
+                        .then(just(Token::Colon).ignore_then(ty.clone()).or_not())
+                        .separated_by(just(Token::Comma))
+                        .delimited_by(just(Token::LParen), just(Token::RParen)),
+                )
+                .then(just(Token::Colon).ignore_then(ty.clone()).or_not())
+                .then(
+                    method_body
+                        .map(|(mut body, trailing)| {
+                            if let Some(e) = trailing {
+                                let span = e.span.clone();
+                                body.push(auwla_ast::Spanned::new(
+                                    auwla_ast::StmtKind::Return(Some(e)),
+                                    span,
+                                ));
+                            }
+                            body
+                        })
+                        .or(just(Token::FatArrow)
+                            .ignore_then(expr.clone())
+                            .then_ignore(just(Token::Semicolon))
+                            .map(|e| {
+                                let span = e.span.clone();
+                                vec![auwla_ast::Spanned::new(
+                                    auwla_ast::StmtKind::Return(Some(e)),
+                                    span,
+                                )]
+                            }))
+                        .or(just(Token::Semicolon).to(Vec::new())),
+                )
+                .map_with_span(
+                    |args: (
+                        (
+                            (
+                                (
+                                    ((Vec<auwla_ast::Attribute>, bool), String),
+                                    Option<Vec<String>>,
+                                ),
+                                Vec<(String, Option<auwla_ast::Type>)>,
+                            ),
+                            Option<auwla_ast::Type>,
+                        ),
+                        Vec<auwla_ast::Stmt>,
+                    ),
+                     span: std::ops::Range<usize>| {
+                        let (
+                            ((((attributes_and_static, name), type_params), params), return_ty),
+                            body,
+                        ) = args;
+                        let (attributes, is_static) = attributes_and_static;
+                        auwla_ast::Method {
+                            name,
+                            attributes,
+                            params,
+                            return_ty,
+                            body,
+                            is_static,
+                            type_params,
+                            span,
+                        }
+                    },
+                );
+
+        // type Name = Result<string, string>;
+        // OR
+        // type Name { fn method() { ... } }
+        let type_decl = attributes
+            .clone()
+            .then_ignore(just(Token::Type))
+            .then(select! { Token::Ident(name) => name })
+            .then(generic_params.clone())
+            .then(
+                just(Token::Assign)
+                    .ignore_then(ty.clone())
+                    .then_ignore(just(Token::Semicolon))
+                    .map(|aliased| (Some(aliased), Vec::new()))
+                    .or(method
+                        .clone()
+                        .repeated()
+                        .delimited_by(just(Token::LBrace), just(Token::RBrace))
+                        .map(|methods| (None, methods))),
+            )
+            .map_with_span(
+                |(((attributes, name), type_params), (aliased, methods)), span| {
+                    if let Some(aliased_type) = aliased {
+                        auwla_ast::Spanned::new(
+                            StmtKind::TypeAlias {
+                                name,
+                                type_params,
+                                aliased_type,
+                            },
+                            span,
+                        )
+                    } else {
+                        auwla_ast::Spanned::new(
+                            StmtKind::TypeDecl {
+                                name,
+                                type_params,
+                                attributes,
+                                methods,
+                            },
+                            span,
+                        )
+                    }
+                },
+            );
+
         // extend TypeName { fn method(self, ...) => expr; }
         let extend_type_args = ty
             .clone()
@@ -286,98 +418,22 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             .delimited_by(just(Token::Lt), just(Token::Gt))
             .or_not();
 
-        let extend_decl = just(Token::Extend)
-            .ignore_then(
+        let extend_decl = attributes
+            .clone()
+            .then_ignore(just(Token::Extend))
+            .then(
                 select! { Token::Ident(name) => name }
                     .or(just(Token::Array).to("array".to_string())),
             )
             .then(extend_type_args)
-            .then({
-                let method_body = stmt
-                    .clone()
-                    .repeated()
-                    .then(expr.clone().or_not())
-                    .delimited_by(just(Token::LBrace), just(Token::RBrace));
-
-                let static_kw = select! { Token::Ident(name) if name == "static" => name }
-                    .or_not()
-                    .map(|kw| kw.is_some());
-
-                let method = attributes
-                    .clone()
-                    .then(static_kw)
-                    .then_ignore(just(Token::Fn))
-                    .then(select! { Token::Ident(name) => name })
-                    .then(generic_params.clone())
-                    .then(
-                        select! { Token::Ident(name) => name }
-                            .then(just(Token::Colon).ignore_then(ty.clone()).or_not())
-                            .separated_by(just(Token::Comma))
-                            .delimited_by(just(Token::LParen), just(Token::RParen)),
-                    )
-                    .then(just(Token::Colon).ignore_then(ty.clone()).or_not())
-                    .then(
-                        method_body
-                            .map(|(mut body, trailing)| {
-                                if let Some(e) = trailing {
-                                    let span = e.span.clone();
-                                    body.push(auwla_ast::Spanned::new(
-                                        auwla_ast::StmtKind::Return(Some(e)),
-                                        span,
-                                    ));
-                                }
-                                body
-                            })
-                            .or(just(Token::FatArrow)
-                                .ignore_then(expr.clone())
-                                .then_ignore(just(Token::Semicolon))
-                                .map(|e| {
-                                    let span = e.span.clone();
-                                    vec![auwla_ast::Spanned::new(
-                                        auwla_ast::StmtKind::Return(Some(e)),
-                                        span,
-                                    )]
-                                }))
-                            .or(just(Token::Semicolon).to(Vec::new())),
-                    )
-                    .map_with_span(
-                        |args: (
-                            (
-                                (
-                                    (
-                                        ((Vec<auwla_ast::Attribute>, bool), String),
-                                        Option<Vec<String>>,
-                                    ),
-                                    Vec<(String, Option<auwla_ast::Type>)>,
-                                ),
-                                Option<auwla_ast::Type>,
-                            ),
-                            Vec<auwla_ast::Stmt>,
-                        ),
-                         span: std::ops::Range<usize>| {
-                            let (
-                                ((((attributes_and_static, name), type_params), params), return_ty),
-                                body,
-                            ) = args;
-                            let (attributes, is_static) = attributes_and_static;
-                            auwla_ast::Method {
-                                name,
-                                attributes,
-                                params,
-                                return_ty,
-                                body,
-                                is_static,
-                                type_params,
-                                span,
-                            }
-                        },
-                    );
-
+            .then(
+                #[allow(clippy::redundant_clone)] // method is used multiple times
                 method
+                    .clone()
                     .repeated()
-                    .delimited_by(just(Token::LBrace), just(Token::RBrace))
-            })
-            .map_with_span(|((type_name, type_args_raw), methods), span| {
+                    .delimited_by(just(Token::LBrace), just(Token::RBrace)),
+            )
+            .map_with_span(|(((_attributes, type_name), type_args_raw), methods), span| {
                 let (type_params, type_args) = if let Some(args) = type_args_raw {
                     let is_type_params = args.iter().all(|t| {
                         matches!(t, auwla_ast::Type::Custom(name) if name.len() == 1 && name.chars().all(|c| c.is_ascii_uppercase()))
@@ -397,30 +453,15 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                 } else {
                     (None, None)
                 };
+                // Note: We currently don't store attributes on Extend in AST, but we could.
+                // For now, these attributes on 'Extend' will be ignored if the AST doesn't have them.
+                // Actually, let's keep them if we can.
                 auwla_ast::Spanned::new(
                     StmtKind::Extend {
                         type_params,
                         type_args,
                         type_name,
                         methods,
-                    },
-                    span,
-                )
-            });
-
-        // type Name = Result<string, string>;
-        let type_alias = just(Token::Type)
-            .ignore_then(select! { Token::Ident(name) => name })
-            .then(generic_params.clone())
-            .then_ignore(just(Token::Assign))
-            .then(ty.clone())
-            .then_ignore(just(Token::Semicolon))
-            .map_with_span(|((name, type_params), aliased_type), span| {
-                auwla_ast::Spanned::new(
-                    StmtKind::TypeAlias {
-                        name,
-                        type_params,
-                        aliased_type,
                     },
                     span,
                 )
@@ -456,7 +497,7 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             enum_decl,
             fn_decl,
             assign_stmt,
-            type_alias,
+            type_decl,
             match_stmt,
             expr_stmt,
         ))

@@ -13,6 +13,8 @@ pub struct Typechecker {
     pub(crate) type_aliases: HashMap<String, Type>,
     /// type_name -> [(type_params, method_name, is_static, params_with_types, return_ty)]
     pub extensions: HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
+    /// Meta-information about types (e.g., attributes like @external)
+    pub type_attributes: HashMap<String, Vec<auwla_ast::Attribute>>,
 }
 
 impl Default for Typechecker {
@@ -31,6 +33,7 @@ impl Typechecker {
             enums: HashMap::new(),
             type_aliases: HashMap::new(),
             extensions: HashMap::new(),
+            type_attributes: HashMap::new(),
         }
     }
 
@@ -38,6 +41,10 @@ impl Typechecker {
     /// Used by the code generator to identify extension call sites.
     pub fn get_extensions(&self) -> &HashMap<String, Vec<auwla_ast::ExtensionMethod>> {
         &self.extensions
+    }
+
+    pub fn get_enum_names(&self) -> std::collections::HashSet<String> {
+        self.enums.keys().cloned().collect()
     }
 
     pub(crate) fn enter_scope(&mut self) {
@@ -73,6 +80,40 @@ impl Typechecker {
             format!("{}<{}>", type_name, parts.join(", "))
         } else {
             type_name.to_string()
+        }
+    }
+
+    pub(crate) fn has_attribute(
+        &self,
+        attributes: &[auwla_ast::Attribute],
+        name: &str,
+        arg: Option<&str>,
+    ) -> bool {
+        attributes.iter().any(|attr| {
+            if attr.name != name {
+                return false;
+            }
+            if let Some(expected_arg) = arg {
+                attr.args.iter().any(|a| a == expected_arg)
+            } else {
+                true
+            }
+        })
+    }
+
+    pub(crate) fn is_namespace(&self, type_name: &str) -> bool {
+        if let Some(attrs) = self.type_attributes.get(type_name) {
+            self.has_attribute(attrs, "external", Some("namespace"))
+        } else {
+            false
+        }
+    }
+    #[allow(dead_code)]
+    pub(crate) fn is_external_class(&self, type_name: &str) -> bool {
+        if let Some(attrs) = self.type_attributes.get(type_name) {
+            self.has_attribute(attrs, "external", Some("class"))
+        } else {
+            false
         }
     }
 
@@ -191,6 +232,8 @@ impl Typechecker {
                         self.structs.insert(name.clone(), fields.clone());
                     } else if let Some(variants) = export_map.enums.get(name) {
                         self.enums.insert(name.clone(), variants.clone());
+                    } else if let Some(attrs) = export_map.type_attributes.get(name) {
+                        self.type_attributes.insert(name.clone(), attrs.clone());
                     } else {
                         return self.error(
                             stmt.span.clone(),

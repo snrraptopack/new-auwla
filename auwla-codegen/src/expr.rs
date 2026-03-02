@@ -209,18 +209,59 @@ impl JsEmitter {
                 args,
                 ..
             } => {
-                let is_extension = self
-                    .extensions
-                    .get(&self.extend_key(type_name, type_args))
-                    .map(|methods| {
-                        methods
-                            .iter()
-                            .any(|m| m.name == method.as_str() && m.is_static)
-                    })
-                    .unwrap_or(false);
+                if self.enums.contains(type_name) {
+                    // Emit as enum initialization
+                    self.write("{ $variant: \"");
+                    self.write(method);
+                    self.write("\"");
+                    if !args.is_empty() {
+                        self.write(", $data: [");
+                        for (i, arg) in args.iter().enumerate() {
+                            if i > 0 {
+                                self.write(", ");
+                            }
+                            self.emit_expr(arg);
+                        }
+                        self.write("]");
+                    }
+                    self.write(" }");
+                    return;
+                }
 
-                if is_extension {
-                    let type_key = self.extend_key(type_name, type_args);
+                let type_key = self.extend_key(type_name, type_args);
+                let (is_extension, is_constructor) = self
+                    .extensions
+                    .get(&type_key)
+                    .map(|methods| {
+                        let mut ext = false;
+                        let mut cons = false;
+                        for m in methods {
+                            if m.name == method.as_str() && m.is_static {
+                                ext = true;
+                                if self.has_attribute(
+                                    &m.attributes,
+                                    "external",
+                                    Some("constructor"),
+                                ) {
+                                    cons = true;
+                                }
+                                break;
+                            }
+                        }
+                        (ext, cons)
+                    })
+                    .unwrap_or((false, false));
+
+                if is_constructor {
+                    self.write(&format!("new {}(", type_name));
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 {
+                            self.write(", ");
+                        }
+                        self.emit_expr(arg);
+                    }
+                    self.write(")");
+                } else if is_extension {
                     let safe_type = self.type_key_ident(&type_key);
                     self.write(&format!("_ext_{}_{}(", safe_type, method));
                     for (i, arg) in args.iter().enumerate() {

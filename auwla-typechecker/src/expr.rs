@@ -703,14 +703,19 @@ impl Typechecker {
                 Ok(ok_ty)
             }
             auwla_ast::ExprKind::StructInit { name, fields, .. } => {
-                let struct_def = self
-                    .structs
-                    .get(name)
-                    .ok_or_else(|| TypeError {
+                let struct_def_raw = self.structs.get(name).cloned().ok_or_else(|| TypeError {
+                    span: expr.span.clone(),
+                    message: format!("Undefined struct '{}'", name),
+                })?;
+
+                if self.is_namespace(name) {
+                    return Err(TypeError {
                         span: expr.span.clone(),
-                        message: format!("Undefined struct '{}'", name),
-                    })?
-                    .clone();
+                        message: format!("Type error: cannot instantiate namespace '{}'", name),
+                    });
+                }
+
+                let struct_def = struct_def_raw;
 
                 if fields.len() != struct_def.len() {
                     return Err(TypeError {
@@ -1065,13 +1070,51 @@ impl Typechecker {
                         }
                     }
                 }
-                let method_sig = method_sig.ok_or_else(|| TypeError {
-                    span: expr.span.clone(),
-                    message: format!(
-                        "Type error: static method '{}' not found for type '{}'",
-                        method, type_name
-                    ),
-                })?;
+                let method_sig = if let Some(sig) = method_sig {
+                    sig
+                } else {
+                    // Fallback to Enum Variant
+                    let maybe_variant_args = self.enums.get(type_name).and_then(|enum_def| {
+                        enum_def
+                            .iter()
+                            .find(|(vn, _)| vn == method)
+                            .map(|(_, va)| va.clone())
+                    });
+
+                    if let Some(variant_args) = maybe_variant_args {
+                        if args.len() != variant_args.len() {
+                            return Err(TypeError {
+                                span: expr.span.clone(),
+                                message: format!(
+                                    "Enum variant '{}::{}' expects {} arguments, but {} were provided",
+                                    type_name,
+                                    method,
+                                    variant_args.len(),
+                                    args.len()
+                                ),
+                            });
+                        }
+
+                        for (expected_ty, arg_expr) in variant_args.iter().zip(args) {
+                            let actual_ty = self.check_expr(arg_expr)?;
+                            self.assert_type_eq(expected_ty, &actual_ty)
+                                .map_err(|msg| TypeError {
+                                    span: arg_expr.span.clone(),
+                                    message: msg,
+                                })?;
+                        }
+
+                        return Ok(Type::Custom(type_name.clone()));
+                    }
+
+                    return Err(TypeError {
+                        span: expr.span.clone(),
+                        message: format!(
+                            "Type error: static method or enum variant '{}' not found for type '{}'",
+                            method, type_name
+                        ),
+                    });
+                };
 
                 if args.len() != method_sig.params.len() {
                     return Err(TypeError {

@@ -16,6 +16,8 @@ pub struct ExportMap {
     pub enums: HashMap<String, Vec<(String, Vec<Type>)>>,
     /// Exported extension methods: type_key -> [ExtensionMethod]
     pub extensions: HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
+    /// Meta-information about types (e.g., attributes like @external)
+    pub type_attributes: HashMap<String, Vec<auwla_ast::Attribute>>,
 }
 
 /// First-pass scan: collect every exported name and its type signature
@@ -86,11 +88,23 @@ fn register_export(map: &mut ExportMap, stmt: &Stmt) {
                 );
             }
         }
-        auwla_ast::StmtKind::StructDecl { name, fields, .. } => {
+        auwla_ast::StmtKind::StructDecl {
+            name,
+            fields,
+            attributes,
+            ..
+        } => {
             map.structs.insert(name.clone(), fields.clone());
+            map.type_attributes.insert(name.clone(), attributes.clone());
         }
-        auwla_ast::StmtKind::EnumDecl { name, variants, .. } => {
+        auwla_ast::StmtKind::EnumDecl {
+            name,
+            variants,
+            attributes,
+            ..
+        } => {
             map.enums.insert(name.clone(), variants.clone());
+            map.type_attributes.insert(name.clone(), attributes.clone());
         }
         // nested export (shouldn't occur but handle gracefully)
         auwla_ast::StmtKind::Export { stmt: inner } => register_export(map, inner),
@@ -177,6 +191,37 @@ fn register_export(map: &mut ExportMap, stmt: &Stmt) {
                 .entry(type_key)
                 .or_default()
                 .extend(method_sigs);
+        }
+        auwla_ast::StmtKind::TypeDecl {
+            name,
+            attributes,
+            methods,
+            ..
+        } => {
+            map.type_attributes.insert(name.clone(), attributes.clone());
+            let mut method_sigs = Vec::new();
+            for method in methods {
+                let full_params: Vec<(String, Type)> = method
+                    .params
+                    .iter()
+                    .map(|(n, ty_opt)| {
+                        (
+                            n.clone(),
+                            ty_opt.clone().unwrap_or(Type::Basic("unknown".to_string())),
+                        )
+                    })
+                    .collect();
+
+                method_sigs.push(auwla_ast::ExtensionMethod {
+                    type_params: method.type_params.clone(),
+                    name: method.name.clone(),
+                    is_static: method.is_static,
+                    params: full_params,
+                    return_ty: method.return_ty.clone(),
+                    attributes: method.attributes.clone(),
+                });
+            }
+            map.extensions.insert(name.clone(), method_sigs);
         }
         _ => {}
     }

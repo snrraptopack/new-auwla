@@ -381,7 +381,7 @@ impl JsEmitter {
                                     .args
                                     .get(2)
                                     .map(|s| s.as_str())
-                                    .unwrap_or(method.name.as_str());
+                                    .expect("Missing JS property name in @external attribute");
                                 let call = format!("__self.{}", target);
                                 if let Some(auwla_ast::Type::Optional(_)) = &method.return_ty {
                                     self.write_indent_ext();
@@ -397,7 +397,7 @@ impl JsEmitter {
                                     .args
                                     .get(2)
                                     .map(|s| s.as_str())
-                                    .unwrap_or(method.name.as_str());
+                                    .expect("Missing JS method name in @external attribute");
                                 let args: Vec<&str> = method
                                     .params
                                     .iter()
@@ -415,12 +415,14 @@ impl JsEmitter {
                                     self.write_ext(&format!("return {};\n", call));
                                 }
                             } else if mapping_type == Some("static") {
-                                let obj = attr.args.get(2).map(|s| s.as_str()).unwrap_or(type_name);
-                                let target = attr
-                                    .args
-                                    .get(3)
-                                    .map(|s| s.as_str())
-                                    .unwrap_or(method.name.as_str());
+                                let obj =
+                                    attr.args.get(2).map(|s| s.as_str()).expect(
+                                        "Missing JS object name in @external static attribute",
+                                    );
+                                let target =
+                                    attr.args.get(3).map(|s| s.as_str()).expect(
+                                        "Missing JS static member name in @external attribute",
+                                    );
                                 let args: Vec<&str> =
                                     method.params.iter().map(|(n, _)| n.as_str()).collect();
                                 let call = format!("{}.{}({})", obj, target, args.join(", "));
@@ -442,6 +444,116 @@ impl JsEmitter {
                             self.emit_stmt_with_self_rename(s);
                         }
 
+                        let body_output = std::mem::take(&mut self.output);
+                        self.output = old_output;
+                        self.write_ext(&body_output);
+                    }
+
+                    self.indent -= 1;
+                    self.writeln_ext("}\n");
+                }
+            }
+            auwla_ast::StmtKind::TypeDecl { name, methods, .. } => {
+                // TypeDecl behaves like an Extend block for the type it declares
+                let type_key = name.clone();
+                let safe_type_key = self.type_key_ident(&type_key);
+                for method in methods {
+                    for (param_name, ty_opt) in &method.params {
+                        if let Some(ty) = ty_opt {
+                            let t_name = self.type_to_key(ty);
+                            self.var_types.insert(param_name.clone(), t_name);
+                        }
+                    }
+
+                    if method.is_static {
+                        self.write_indent_ext();
+                        self.write_ext(&format!(
+                            "export function _ext_{}_{}(",
+                            safe_type_key, method.name
+                        ));
+                        let params: Vec<_> = method.params.iter().collect();
+                        for (i, (pname, _)) in params.iter().enumerate() {
+                            if i > 0 {
+                                self.write_ext(", ");
+                            }
+                            self.write_ext(pname);
+                        }
+                        self.write_ext(") {\n");
+                    } else {
+                        self.write_indent_ext();
+                        self.write_ext(&format!(
+                            "export function _ext_{}_{}(__self",
+                            safe_type_key, method.name
+                        ));
+                        for (pname, _) in method.params.iter().filter(|(n, _)| n != "self") {
+                            self.write_ext(", ");
+                            self.write_ext(pname);
+                        }
+                        self.write_ext(") {\n");
+                    }
+                    self.indent += 1;
+
+                    let external_attr = method
+                        .attributes
+                        .iter()
+                        .find(|a| a.name == "external")
+                        .cloned();
+
+                    if let Some(attr) = external_attr {
+                        if attr.args.get(0).map(|s| s.as_str()) == Some("js") {
+                            let mapping_type = attr.args.get(1).map(|s| s.as_str());
+                            if mapping_type == Some("property") {
+                                let target = attr
+                                    .args
+                                    .get(2)
+                                    .map(|s| s.as_str())
+                                    .expect("Missing JS property name in @external attribute");
+                                self.write_indent_ext();
+                                self.write_ext(&format!("return __self.{};\n", target));
+                            } else if mapping_type == Some("method") {
+                                let target = attr
+                                    .args
+                                    .get(2)
+                                    .map(|s| s.as_str())
+                                    .expect("Missing JS method name in @external attribute");
+                                let args: Vec<&str> = method
+                                    .params
+                                    .iter()
+                                    .filter(|(n, _)| n != "self")
+                                    .map(|(n, _)| n.as_str())
+                                    .collect();
+                                self.write_indent_ext();
+                                self.write_ext(&format!(
+                                    "return __self.{}({});\n",
+                                    target,
+                                    args.join(", ")
+                                ));
+                            } else if mapping_type == Some("static") {
+                                let obj =
+                                    attr.args.get(2).map(|s| s.as_str()).expect(
+                                        "Missing JS object name in @external static attribute",
+                                    );
+                                let target = attr
+                                    .args
+                                    .get(3)
+                                    .map(|s| s.as_str())
+                                    .expect("Missing JS static name in @external attribute");
+                                let args: Vec<&str> =
+                                    method.params.iter().map(|(n, _)| n.as_str()).collect();
+                                self.write_indent_ext();
+                                self.write_ext(&format!(
+                                    "return {}.{}({});\n",
+                                    obj,
+                                    target,
+                                    args.join(", ")
+                                ));
+                            }
+                        }
+                    } else {
+                        let old_output = std::mem::take(&mut self.output);
+                        for s in &method.body {
+                            self.emit_stmt_with_self_rename(s);
+                        }
                         let body_output = std::mem::take(&mut self.output);
                         self.output = old_output;
                         self.write_ext(&body_output);

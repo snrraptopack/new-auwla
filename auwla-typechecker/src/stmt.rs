@@ -391,7 +391,12 @@ impl Typechecker {
                 self.exit_scope();
                 Ok(())
             }
-            auwla_ast::StmtKind::StructDecl { name, fields, .. } => {
+            auwla_ast::StmtKind::StructDecl {
+                name,
+                fields,
+                attributes,
+                ..
+            } => {
                 if self.structs.contains_key(name) {
                     return self.error(
                         stmt.span.clone(),
@@ -399,6 +404,8 @@ impl Typechecker {
                     );
                 }
                 self.structs.insert(name.clone(), fields.clone());
+                self.type_attributes
+                    .insert(name.clone(), attributes.clone());
                 Ok(())
             }
             auwla_ast::StmtKind::TypeAlias {
@@ -407,7 +414,12 @@ impl Typechecker {
                 self.type_aliases.insert(name.clone(), aliased_type.clone());
                 Ok(())
             }
-            auwla_ast::StmtKind::EnumDecl { name, variants, .. } => {
+            auwla_ast::StmtKind::EnumDecl {
+                name,
+                variants,
+                attributes,
+                ..
+            } => {
                 if self.enums.contains_key(name) {
                     return self.error(
                         stmt.span.clone(),
@@ -415,6 +427,8 @@ impl Typechecker {
                     );
                 }
                 self.enums.insert(name.clone(), variants.clone());
+                self.type_attributes
+                    .insert(name.clone(), attributes.clone());
                 Ok(())
             }
             // Imports are pre-resolved in check_program_with_imports before check_stmt is called.
@@ -450,9 +464,7 @@ impl Typechecker {
                     }
                 } else {
                     match type_name.as_str() {
-                        "number" | "string" | "boolean" | "bool" => {
-                            Type::Basic(type_name.clone())
-                        }
+                        "number" | "string" | "boolean" | "bool" => Type::Basic(type_name.clone()),
                         _ => Type::Custom(type_name.clone()),
                     }
                 };
@@ -507,13 +519,77 @@ impl Typechecker {
                     method_infos.push((method, full_params, return_ty_gen));
                 }
                 let ext_key = self.extend_key(type_name, type_args);
-                self.extensions.entry(ext_key).or_default().extend(method_sigs);
+                self.extensions
+                    .entry(ext_key)
+                    .or_default()
+                    .extend(method_sigs);
                 for (method, full_params, return_ty_gen) in method_infos {
                     self.enter_scope();
                     let saved_return = self.current_return_type.take();
                     let saved_fn = self.current_function_name.take();
                     self.current_return_type = Some(return_ty_gen);
                     self.current_function_name = Some(format!("{}::{}", type_name, method.name));
+                    for (pname, pty) in &full_params {
+                        self.declare_variable(
+                            stmt.span.clone(),
+                            pname.clone(),
+                            pty.clone(),
+                            Mutability::Immutable,
+                        )?;
+                    }
+                    for s in &method.body {
+                        self.check_stmt(s)?;
+                    }
+                    self.current_return_type = saved_return;
+                    self.current_function_name = saved_fn;
+                    self.exit_scope();
+                }
+                Ok(())
+            }
+            auwla_ast::StmtKind::TypeDecl {
+                name,
+                attributes,
+                methods,
+                ..
+            } => {
+                self.type_attributes
+                    .insert(name.clone(), attributes.clone());
+                let mut method_sigs = Vec::new();
+                let mut method_infos = Vec::new();
+                for method in methods {
+                    let full_params: Vec<(String, Type)> = method
+                        .params
+                        .iter()
+                        .map(|(n, ty_opt)| {
+                            let ty = ty_opt.clone().unwrap_or(Type::Basic("unknown".to_string()));
+                            (n.clone(), ty)
+                        })
+                        .collect();
+
+                    let ret = method.return_ty.clone();
+                    method_sigs.push(auwla_ast::ExtensionMethod {
+                        type_params: method.type_params.clone(),
+                        name: method.name.clone(),
+                        is_static: method.is_static,
+                        params: full_params.clone(),
+                        return_ty: ret.clone(),
+                        attributes: method.attributes.clone(),
+                    });
+                    method_infos.push((method, full_params, ret));
+                }
+                self.extensions.insert(name.clone(), method_sigs);
+
+                for (method, full_params, ret) in method_infos {
+                    // Ambient methods don't need body checking if they are @external
+                    if self.has_attribute(&method.attributes, "external", None) {
+                        continue;
+                    }
+
+                    self.enter_scope();
+                    let saved_return = self.current_return_type.take();
+                    let saved_fn = self.current_function_name.take();
+                    self.current_return_type = Some(ret);
+                    self.current_function_name = Some(format!("{}::{}", name, method.name));
                     for (pname, pty) in &full_params {
                         self.declare_variable(
                             stmt.span.clone(),

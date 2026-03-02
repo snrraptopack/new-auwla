@@ -77,6 +77,4 @@ fn main() {
 
 let ama = 1 .. 10;
 
-ama.find_one(1022);
-
 main();
