@@ -57,7 +57,7 @@ export function _ext_number_by(__self, value) {
 }
 
 export function _ext_number_double_then_square(__self) {
-  return _ext_number_double(__self).square();
+  return _ext_number_square(_ext_number_double(__self));
 }
 
 export function _ext_number_add(__self, other) {

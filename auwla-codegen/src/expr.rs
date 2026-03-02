@@ -154,15 +154,7 @@ impl JsEmitter {
             auwla_ast::ExprKind::MethodCall {
                 expr, method, args, ..
             } => {
-                let receiver_type_key: Option<String> = match &expr.node {
-                    auwla_ast::ExprKind::Identifier(name) => self.var_types.get(name).cloned(),
-                    auwla_ast::ExprKind::StringLit(_) => Some("string".to_string()),
-                    auwla_ast::ExprKind::NumberLit(_) => Some("number".to_string()),
-                    auwla_ast::ExprKind::BoolLit(_) => Some("bool".to_string()),
-                    auwla_ast::ExprKind::Array(elems) => self.array_literal_type_key(elems),
-                    auwla_ast::ExprKind::Range { .. } => Some("array<number>".to_string()),
-                    _ => None,
-                };
+                let receiver_type_key: Option<String> = self.infer_expr_type(expr);
 
                 let mut resolved_key: Option<String> = None;
                 if let Some(tk) = receiver_type_key.as_ref() {

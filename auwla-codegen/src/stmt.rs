@@ -163,6 +163,7 @@ impl JsEmitter {
                 } = &iterable.node
                 {
                     // Optimized number range loop
+                    self.var_types.insert(binding.clone(), "number".to_string());
                     self.write_indent();
                     let start_str = self.emit_expr_to_string(start);
                     let end_str = self.emit_expr_to_string(end);
@@ -172,6 +173,17 @@ impl JsEmitter {
                         binding, start_str, binding, op, end_str, binding
                     ));
                 } else {
+                    // For-of loop: try to infer element type from iterable
+                    if let Some(iter_type) = self.infer_expr_type(iterable) {
+                        // If iterable is array<T>, element type is T
+                        if iter_type.starts_with("array<") && iter_type.ends_with('>') {
+                            let elem_type = &iter_type[6..iter_type.len() - 1];
+                            self.var_types
+                                .insert(binding.clone(), elem_type.to_string());
+                        } else if iter_type == "string" {
+                            self.var_types.insert(binding.clone(), "char".to_string());
+                        }
+                    }
                     self.write_indent();
                     self.write(&format!("for (const {} of ", binding));
                     self.emit_expr(iterable);

@@ -250,6 +250,66 @@ impl JsEmitter {
         None
     }
 
+    /// Recursively infer the type key of an expression for extension method resolution.
+    /// Used for chaining (e.g., `self.double().square()` — need to know `double()` returns `number`).
+    pub(crate) fn infer_expr_type(&self, expr: &auwla_ast::expr::Expr) -> Option<String> {
+        match &expr.node {
+            ExprKind::Identifier(name) => self.var_types.get(name).cloned(),
+            ExprKind::StringLit(_) | ExprKind::Interpolation(_) => Some("string".to_string()),
+            ExprKind::NumberLit(_) => Some("number".to_string()),
+            ExprKind::BoolLit(_) => Some("bool".to_string()),
+            ExprKind::Array(elems) => self.array_literal_type_key(elems),
+            ExprKind::Range { .. } => Some("array<number>".to_string()),
+            ExprKind::MethodCall {
+                expr: recv, method, ..
+            } => {
+                // Look up the receiver type, then find the method's return type
+                let recv_type = self.infer_expr_type(recv)?;
+                let keys_to_try: Vec<String> = {
+                    let mut ks = vec![recv_type.clone()];
+                    if let Some(idx) = recv_type.find('<') {
+                        ks.push(recv_type[..idx].to_string());
+                    }
+                    ks
+                };
+                for key in &keys_to_try {
+                    if let Some(methods) = self.extensions.get(key) {
+                        for m in methods {
+                            if m.name == method.as_str() {
+                                if let Some(ref ret_ty) = m.return_ty {
+                                    return Some(self.type_to_key(ret_ty));
+                                }
+                            }
+                        }
+                    }
+                }
+                None
+            }
+            ExprKind::StaticMethodCall {
+                type_name,
+                type_args,
+                method,
+                ..
+            } => {
+                let type_key = self.extend_key(type_name, type_args);
+                let keys_to_try = [type_key.clone(), type_name.clone()];
+                for key in &keys_to_try {
+                    if let Some(methods) = self.extensions.get(key) {
+                        for m in methods {
+                            if m.name == method.as_str() && m.is_static {
+                                if let Some(ref ret_ty) = m.return_ty {
+                                    return Some(self.type_to_key(ret_ty));
+                                }
+                            }
+                        }
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
     pub(crate) fn array_literal_type_key(&self, elems: &[Expr]) -> Option<String> {
         if elems.is_empty() {
             return None;

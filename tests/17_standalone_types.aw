@@ -23,22 +23,6 @@ type Console {
     static fn log(msg: string): void;
 }
 
-// ─── Class: WebSocket (constructor + instance methods) ───
-// @external("class")
-// type WebSocket {
-//     @external("js", "constructor")
-//     static fn create(url: string): Self;
-
-//     @external("js", "property", "readyState")
-//     fn ready_state(self): number;
-
-//     @external("js", "method", "send")
-//     fn send(self, data: string): void;
-
-//     @external("js", "method", "close")
-//     fn close(self): void;
-// }
-
 fn main() {
     // Test namespace static method calls
     let x = Math::round_down(3.7);
