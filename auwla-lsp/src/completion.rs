@@ -111,13 +111,14 @@ fn handle_dot_completion(
     shadow.push(' ');
     shadow.push_str(&content[dot_idx + 1..]);
 
-    let lexed = match std::panic::catch_unwind(|| auwla_lexer::lex(&shadow)) {
-        Ok(l) => l,
-        Err(_) => return,
-    };
+    let lexed = auwla_lexer::lex(&shadow);
     let token_byte_spans: Vec<std::ops::Range<usize>> =
         lexed.iter().map(|(_, s)| s.clone()).collect();
-    let tokens: Vec<_> = lexed.into_iter().map(|(t, _)| t).collect();
+    let tokens: Vec<_> = lexed
+        .into_iter()
+        .filter(|(t, _)| !matches!(t, auwla_lexer::token::Token::Error(_)))
+        .map(|(t, _)| t)
+        .collect();
 
     if let Ok(ast) = auwla_parser::parse(tokens) {
         let mut typechecker = auwla_typechecker::Typechecker::new();
@@ -199,11 +200,12 @@ fn handle_general_completion(backend: &Backend, content: &str, items: &mut Vec<C
     }
 
     // Shadow-compile to get variables, functions, structs, enums in scope
-    let lexed = match std::panic::catch_unwind(|| auwla_lexer::lex(content)) {
-        Ok(l) => l,
-        Err(_) => return,
-    };
-    let tokens: Vec<_> = lexed.into_iter().map(|(t, _)| t).collect();
+    let lexed = auwla_lexer::lex(content);
+    let tokens: Vec<_> = lexed
+        .into_iter()
+        .filter(|(t, _)| !matches!(t, auwla_lexer::token::Token::Error(_)))
+        .map(|(t, _)| t)
+        .collect();
 
     if let Ok(ast) = auwla_parser::parse(tokens) {
         let mut typechecker = auwla_typechecker::Typechecker::new();

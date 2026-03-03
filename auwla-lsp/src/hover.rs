@@ -42,17 +42,18 @@ pub async fn handle_hover(backend: &Backend, params: HoverParams) -> Result<Opti
         byte_offset = content.len();
     }
 
-    // Shadow-compile the document for type info (wrapped to prevent crashes)
-    let lexed = match std::panic::catch_unwind(|| auwla_lexer::lex(&content)) {
-        Ok(l) => l,
-        Err(_) => return Ok(None),
-    };
+    // Shadow-compile the document for type info
+    let lexed = auwla_lexer::lex(&content);
     let token_byte_spans: Vec<std::ops::Range<usize>> =
         lexed.iter().map(|(_, s)| s.clone()).collect();
-    let tokens: Vec<_> = lexed.into_iter().map(|(t, _)| t).collect();
+    let tokens: Vec<_> = lexed
+        .into_iter()
+        .filter(|(t, _)| !matches!(t, auwla_lexer::token::Token::Error(_)))
+        .map(|(t, _)| t)
+        .collect();
 
-    let ast = match std::panic::catch_unwind(move || auwla_parser::parse(tokens)) {
-        Ok(Ok(a)) => a,
+    let ast = match auwla_parser::parse(tokens) {
+        Ok(a) => a,
         _ => return Ok(None),
     };
 
@@ -62,9 +63,7 @@ pub async fn handle_hover(backend: &Backend, params: HoverParams) -> Result<Opti
             .extensions
             .insert(entry.key().clone(), entry.value().clone());
     }
-    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        typechecker.check_program(&ast)
-    }));
+    let _ = typechecker.check_program(&ast);
 
     // --- Node type lookup: find the tightest span containing the cursor ---
     if let Some(hover) = try_node_type_hover(&typechecker, &token_byte_spans, byte_offset) {

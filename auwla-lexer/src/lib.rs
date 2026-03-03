@@ -25,7 +25,11 @@ pub fn lex(source: &str) -> Vec<(Token, std::ops::Range<usize>)> {
                 tokens.push((token, span));
             }
             Err(_) => {
-                // Ignore or collect errors here
+                // Emit an Error token for the unrecognized character so the
+                // parser can report it instead of working on an incomplete stream.
+                let span = lexer.span();
+                let bad = source[span.clone()].to_string();
+                tokens.push((Token::Error(bad), span));
             }
         }
     }
@@ -80,10 +84,12 @@ fn expand_interpolation(
         }
     }
 
-    // Emit trailing text
-    let frag = &s[frag_start..];
-    if !frag.is_empty() {
-        result.push((Token::StringFragment(frag.to_string()), span.clone()));
+    // Emit trailing text (guard against out-of-bounds from unclosed braces)
+    if frag_start < s.len() {
+        let frag = &s[frag_start..];
+        if !frag.is_empty() {
+            result.push((Token::StringFragment(frag.to_string()), span.clone()));
+        }
     }
 
     result.push((Token::InterpEnd, span.clone()));

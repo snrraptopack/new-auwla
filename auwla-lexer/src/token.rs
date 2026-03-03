@@ -1,7 +1,7 @@
 use logos::Logos;
 
 #[derive(Logos, Debug, PartialEq, Eq, Hash, Clone)]
-#[logos(skip r"[ \t\n\f]+")] // whitespace
+#[logos(skip r"[ \t\r\n\f]+")] // whitespace (including \r for Windows line endings)
 #[logos(skip(r"//[^\n]*", allow_greedy = true))] // single-line comments
 pub enum Token {
     // Keywords
@@ -138,6 +138,10 @@ pub enum Token {
     FatArrow,
     #[token("@")]
     At,
+
+    /// Represents an unrecognized character or sequence in the source.
+    /// Emitted by the lexer instead of silently swallowing errors.
+    Error(String),
 }
 
 impl std::fmt::Display for Token {
@@ -203,6 +207,7 @@ impl std::fmt::Display for Token {
             Token::Not => write!(f, "!"),
             Token::FatArrow => write!(f, "=>"),
             Token::At => write!(f, "@"),
+            Token::Error(s) => write!(f, "<error: {}>", s),
         }
     }
 }
