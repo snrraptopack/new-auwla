@@ -2,9 +2,11 @@ mod completion;
 mod definition;
 mod diagnostics;
 mod hover;
+mod metadata;
 mod utils;
 
 use dashmap::DashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
@@ -15,8 +17,12 @@ pub struct Backend {
     pub client: Client,
     /// uri -> content
     pub documents: DashMap<String, String>,
-    /// type_key -> [Extensions]
+    /// type_key -> [Extensions] (the global merged view, shared with MetadataCache)
     pub metadata: Arc<DashMap<String, Vec<auwla_ast::ExtensionMethod>>>,
+    /// Incremental metadata cache that tracks per-file contributions
+    pub metadata_cache: metadata::MetadataCache,
+    /// Workspace root path (if available)
+    pub workspace_root: Option<PathBuf>,
 }
 
 #[tower_lsp::async_trait]
@@ -35,15 +41,22 @@ impl LanguageServer for Backend {
                             for (k, v) in map {
                                 self.metadata.insert(k, v);
                             }
-                            self.client
-                                .log_message(
-                                    MessageType::INFO,
-                                    format!("Loaded {} metadata entries", self.metadata.len()),
-                                )
-                                .await;
                         }
                     }
                 }
+
+                // Scan all .aw files in the workspace to build live metadata
+                self.metadata_cache.scan_workspace(&path);
+
+                self.client
+                    .log_message(
+                        MessageType::INFO,
+                        format!(
+                            "Scanned workspace: {} metadata entries loaded",
+                            self.metadata.len()
+                        ),
+                    )
+                    .await;
             }
         }
 
@@ -78,6 +91,12 @@ impl LanguageServer for Backend {
         let uri = params.text_document.uri.to_string();
         let text = params.text_document.text;
         self.documents.insert(uri.clone(), text.clone());
+
+        // Update metadata from this file's content
+        if let Some(file_path) = uri_to_path(&params.text_document.uri) {
+            self.metadata_cache.update_from_content(&file_path, &text);
+        }
+
         diagnostics::analyze_document(self, &uri, &text).await;
     }
 
@@ -85,6 +104,15 @@ impl LanguageServer for Backend {
         if let Some(change) = params.content_changes.into_iter().next() {
             let uri = params.text_document.uri.to_string();
             self.documents.insert(uri.clone(), change.text.clone());
+
+            // Incrementally update metadata from this file's new content
+            if let Ok(parsed_uri) = url::Url::parse(&uri) {
+                if let Some(file_path) = uri_to_path(&parsed_uri) {
+                    self.metadata_cache
+                        .update_from_content(&file_path, &change.text);
+                }
+            }
+
             diagnostics::analyze_document(self, &uri, &change.text).await;
         }
     }
@@ -105,15 +133,25 @@ impl LanguageServer for Backend {
     }
 }
 
+/// Convert a `Url` to a filesystem `PathBuf` (returns None for non-file: URIs).
+fn uri_to_path(uri: &url::Url) -> Option<PathBuf> {
+    uri.to_file_path().ok()
+}
+
 #[tokio::main]
 async fn main() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 
+    let metadata = Arc::new(DashMap::new());
+    let metadata_cache = metadata::MetadataCache::new(Arc::clone(&metadata));
+
     let (service, socket) = LspService::new(|client| Backend {
         client,
         documents: DashMap::new(),
-        metadata: Arc::new(DashMap::new()),
+        metadata,
+        metadata_cache,
+        workspace_root: None,
     });
     Server::new(stdin, stdout, socket).serve(service).await;
 }

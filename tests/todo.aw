@@ -77,6 +77,10 @@ fn main() {
 
 let ama = 1 .. 10;
 
+extend string{
+    fn one(self): string => self;
+}
+
 main();
 
 

@@ -18,6 +18,12 @@ pub fn parse(tokens: Vec<Token>) -> Result<Program, Vec<Simple<Token>>> {
     parser().parse(tokens)
 }
 
+/// Parse with recovery: returns a (possibly partial) AST alongside any parse errors.
+/// This allows the LSP to typecheck the valid portions while still reporting errors.
+pub fn parse_recovery(tokens: Vec<Token>) -> (Option<Program>, Vec<Simple<Token>>) {
+    parser().parse_recovery(tokens)
+}
+
 #[cfg(test)]
 mod tests {
     use auwla_ast::{BinaryOp, Type};

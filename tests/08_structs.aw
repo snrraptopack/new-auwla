@@ -49,6 +49,8 @@ let as = (1 .. 100);
 print(acc.user.name.len());
 print(acc.balance);
 
+
+
 // 2. Struct Property Validation 
 // let user_missing_field_is_an_error = User {
 //     name: "Charlie",
