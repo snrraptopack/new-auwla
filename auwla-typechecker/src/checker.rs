@@ -139,6 +139,24 @@ impl Typechecker {
         ty: Type,
         mutability: Mutability,
     ) -> Result<(), TypeError> {
+        // Reserved word validation
+        const RESERVED_WORDS: &[&str] = &[
+            // Keywords
+            "let", "var", "fn", "return", "if", "else", "match", "while", "for", "in", "struct",
+            "enum", "import", "export", "from", "extend", "type", "break", "continue", "true",
+            "false", "some", "none", // Built-in types
+            "number", "string", "bool", "char", "void", "array",
+        ];
+        if RESERVED_WORDS.contains(&name.as_str()) {
+            return self.error(
+                _span,
+                format!(
+                    "'{}' is a reserved word and cannot be used as a variable name.",
+                    name
+                ),
+            );
+        }
+
         let current_scope = self.scopes.last_mut().unwrap();
         if current_scope.variables.contains_key(&name) {
             return self.error(
