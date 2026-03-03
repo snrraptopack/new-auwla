@@ -168,7 +168,7 @@ fn handle_dot_completion(
                     let sig = format_method_signature(method);
                     items.push(CompletionItem {
                         label: method.name.clone(),
-                        detail: Some(format!("extension for {}", type_key)),
+                        detail: Some(sig.clone()),
                         documentation: Some(Documentation::MarkupContent(MarkupContent {
                             kind: MarkupKind::Markdown,
                             value: format!("```auwla\n{}\n```", sig),

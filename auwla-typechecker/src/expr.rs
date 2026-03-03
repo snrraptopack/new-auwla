@@ -1008,13 +1008,25 @@ impl Typechecker {
                         .map(|r| instantiate(r, &type_env));
 
                     if inst_params.len() != args.len() {
+                        let expected_sig: Vec<String> = explicit_params
+                            .iter()
+                            .map(|(name, ty)| format!("{}: {}", name, self.type_to_key(ty)))
+                            .collect();
+                        let ret_str = method_sig
+                            .return_ty
+                            .as_ref()
+                            .map(|r| format!(" -> {}", self.type_to_key(r)))
+                            .unwrap_or_default();
                         return Err(TypeError {
                             span: expr.span.clone(),
                             message: format!(
-                                "Method '{}' expects {} arg(s), got {}",
+                                "Method '{}' expects {} argument(s), but got {}.\nExpected signature: fn {}({}){}",
                                 method,
                                 inst_params.len(),
-                                args.len()
+                                args.len(),
+                                method,
+                                expected_sig.join(", "),
+                                ret_str
                             ),
                         });
                     }
@@ -1123,13 +1135,26 @@ impl Typechecker {
                 };
 
                 if args.len() != method_sig.params.len() {
+                    let expected_sig: Vec<String> = method_sig
+                        .params
+                        .iter()
+                        .map(|(name, ty)| format!("{}: {}", name, self.type_to_key(ty)))
+                        .collect();
+                    let ret_str = method_sig
+                        .return_ty
+                        .as_ref()
+                        .map(|r| format!(" -> {}", self.type_to_key(r)))
+                        .unwrap_or_default();
                     return Err(TypeError {
                         span: expr.span.clone(),
                         message: format!(
-                            "Type error: expected {} arguments for static method '{}', found {}",
-                            method_sig.params.len(),
+                            "Static method '{}' expects {} argument(s), but got {}.\nExpected signature: fn {}({}){}",
                             method,
-                            args.len()
+                            method_sig.params.len(),
+                            args.len(),
+                            method,
+                            expected_sig.join(", "),
+                            ret_str
                         ),
                     });
                 }
