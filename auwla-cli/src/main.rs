@@ -40,6 +40,19 @@ fn main() {
             path.parent().unwrap_or(Path::new("."))
         });
 
+    // Emitting auwla_metadata.json for LSP autocomplete
+    let metadata_path = global_output_root.join("auwla_metadata.json");
+    if let Ok(metadata_json) = serde_json::to_string_pretty(&global_extensions) {
+        fs::write(&metadata_path, &metadata_json).unwrap_or_else(|e| {
+            eprintln!(
+                "[Warning] Failed to write '{}': {}",
+                metadata_path.display(),
+                e
+            );
+        });
+        println!("✓  Generated '{}'", metadata_path.display());
+    }
+
     let mut emitted_paths = HashSet::new();
     for p in &discovered_paths {
         if emitted_paths.contains(p) {

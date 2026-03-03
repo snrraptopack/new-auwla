@@ -12,5 +12,6 @@ auwla-ast = { path = "../auwla-ast" }
 auwla-lexer = { path = "../auwla-lexer" }
 auwla-parser = { path = "../auwla-parser" }
 auwla-typechecker = { path = "../auwla-typechecker" }
+chumsky = "0.9.3"
 dashmap = "5.5"
 url = "2.4"

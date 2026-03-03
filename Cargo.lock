@@ -87,6 +87,7 @@ dependencies = [
  "auwla-lexer",
  "auwla-parser",
  "auwla-typechecker",
+ "serde_json",
 ]
 
 [[package]]
@@ -119,6 +120,7 @@ dependencies = [
  "auwla-lexer",
  "auwla-parser",
  "auwla-typechecker",
+ "chumsky",
  "dashmap",
  "serde",
  "serde_json",

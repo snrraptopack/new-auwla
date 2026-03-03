@@ -13,6 +13,8 @@ let alice = User {
     is_active: true
 };
 
+let name = (1 .. 199).len();
+
 print(alice.name);
 print(alice.age);
 print(alice.is_active);
@@ -28,10 +30,13 @@ struct Account {
     balance: number
 }
 
+
 let acc = Account {
     user: alice,
     balance: 1000.50
 };
+
+
 
 print(acc.user.name);
 print(acc.balance);

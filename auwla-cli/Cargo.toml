@@ -10,3 +10,4 @@ auwla-parser = { version = "0.1.0", path = "../auwla-parser" }
 auwla-typechecker = { version = "0.1.0", path = "../auwla-typechecker" }
 auwla-codegen = { version = "0.1.0", path = "../auwla-codegen" }
 auwla-error = { version = "0.1.0", path = "../auwla-error" }
+serde_json = "1.0.149"

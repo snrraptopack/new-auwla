@@ -1,0 +1,799 @@
+{
+  "array": [
+    {
+      "type_params": [
+        "T"
+      ],
+      "name": "len",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Array": {
+              "TypeVar": "T"
+            }
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "property",
+            "length"
+          ]
+        }
+      ]
+    },
+    {
+      "type_params": [
+        "T"
+      ],
+      "name": "last",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Array": {
+              "TypeVar": "T"
+            }
+          }
+        ]
+      ],
+      "return_ty": {
+        "Optional": {
+          "Custom": "T"
+        }
+      },
+      "attributes": []
+    },
+    {
+      "type_params": [
+        "T"
+      ],
+      "name": "first",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Array": {
+              "TypeVar": "T"
+            }
+          }
+        ]
+      ],
+      "return_ty": {
+        "Optional": {
+          "Custom": "T"
+        }
+      },
+      "attributes": []
+    },
+    {
+      "type_params": [
+        "T"
+      ],
+      "name": "lens",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Array": {
+              "TypeVar": "T"
+            }
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "property",
+            "length"
+          ]
+        }
+      ]
+    },
+    {
+      "type_params": [
+        "T"
+      ],
+      "name": "push_val",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Array": {
+              "TypeVar": "T"
+            }
+          }
+        ],
+        [
+          "val",
+          {
+            "Custom": "T"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "void"
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "method",
+            "push"
+          ]
+        }
+      ]
+    },
+    {
+      "type_params": [
+        "T"
+      ],
+      "name": "is_arr",
+      "is_static": true,
+      "params": [
+        [
+          "val",
+          {
+            "Array": {
+              "Basic": "number"
+            }
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "bool"
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "static",
+            "Array",
+            "isArray"
+          ]
+        }
+      ]
+    },
+    {
+      "type_params": [
+        "T"
+      ],
+      "name": "low",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Array": {
+              "TypeVar": "T"
+            }
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": []
+    },
+    {
+      "type_params": [
+        "T"
+      ],
+      "name": "high",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Array": {
+              "TypeVar": "T"
+            }
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": []
+    },
+    {
+      "type_params": null,
+      "name": "shuffle",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Array": {
+              "Basic": "unknown"
+            }
+          }
+        ]
+      ],
+      "return_ty": null,
+      "attributes": []
+    }
+  ],
+  "array<Task>": [
+    {
+      "type_params": null,
+      "name": "find_one",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Array": {
+              "Custom": "Task"
+            }
+          }
+        ],
+        [
+          "id",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Result": {
+          "ok_type": {
+            "Custom": "Task"
+          },
+          "err_type": {
+            "Basic": "string"
+          }
+        }
+      },
+      "attributes": []
+    },
+    {
+      "type_params": null,
+      "name": "print_summary",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Array": {
+              "Custom": "Task"
+            }
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "void"
+      },
+      "attributes": []
+    }
+  ],
+  "number": [
+    {
+      "type_params": null,
+      "name": "double",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": []
+    },
+    {
+      "type_params": null,
+      "name": "square",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": []
+    },
+    {
+      "type_params": null,
+      "name": "triple",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": []
+    },
+    {
+      "type_params": null,
+      "name": "by",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "number"
+          }
+        ],
+        [
+          "value",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": []
+    },
+    {
+      "type_params": null,
+      "name": "double_then_square",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": []
+    },
+    {
+      "type_params": null,
+      "name": "add",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "number"
+          }
+        ],
+        [
+          "other",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": []
+    }
+  ],
+  "User": [
+    {
+      "type_params": null,
+      "name": "greet",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Custom": "User"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "string"
+      },
+      "attributes": []
+    }
+  ],
+  "Math": [
+    {
+      "type_params": null,
+      "name": "round_down",
+      "is_static": true,
+      "params": [
+        [
+          "x",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "method",
+            "floor"
+          ]
+        }
+      ]
+    },
+    {
+      "type_params": null,
+      "name": "round_up",
+      "is_static": true,
+      "params": [
+        [
+          "x",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "method",
+            "ceil"
+          ]
+        }
+      ]
+    },
+    {
+      "type_params": null,
+      "name": "random",
+      "is_static": true,
+      "params": [],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "method",
+            "random"
+          ]
+        }
+      ]
+    },
+    {
+      "type_params": null,
+      "name": "pi",
+      "is_static": true,
+      "params": [],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "property",
+            "PI"
+          ]
+        }
+      ]
+    }
+  ],
+  "array<number>": [
+    {
+      "type_params": null,
+      "name": "max",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Array": {
+              "Basic": "number"
+            }
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": []
+    },
+    {
+      "type_params": null,
+      "name": "sum",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Array": {
+              "Basic": "number"
+            }
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": []
+    }
+  ],
+  "string": [
+    {
+      "type_params": null,
+      "name": "repeat",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "string"
+          }
+        ],
+        [
+          "times",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "string"
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "method",
+            "repeat"
+          ]
+        }
+      ]
+    },
+    {
+      "type_params": null,
+      "name": "get",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "string"
+          }
+        ],
+        [
+          "index",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Optional": {
+          "Basic": "char"
+        }
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "method",
+            "at"
+          ]
+        }
+      ]
+    },
+    {
+      "type_params": null,
+      "name": "char_at",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "string"
+          }
+        ],
+        [
+          "index",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "string"
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "method",
+            "charAt"
+          ]
+        }
+      ]
+    },
+    {
+      "type_params": null,
+      "name": "index_of",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "string"
+          }
+        ],
+        [
+          "search",
+          {
+            "Basic": "string"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "method",
+            "indexOf"
+          ]
+        }
+      ]
+    },
+    {
+      "type_params": null,
+      "name": "len",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "string"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "property",
+            "length"
+          ]
+        }
+      ]
+    },
+    {
+      "type_params": null,
+      "name": "shout",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "string"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "string"
+      },
+      "attributes": []
+    },
+    {
+      "type_params": null,
+      "name": "whisper",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "string"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "string"
+      },
+      "attributes": []
+    },
+    {
+      "type_params": null,
+      "name": "first_n",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "string"
+          }
+        ],
+        [
+          "n",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "string"
+      },
+      "attributes": []
+    }
+  ],
+  "console": [
+    {
+      "type_params": null,
+      "name": "log",
+      "is_static": true,
+      "params": [
+        [
+          "msg",
+          {
+            "Basic": "string"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "void"
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "method",
+            "log"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -69,16 +69,17 @@ impl LanguageServer for Backend {
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        self.documents.insert(
-            params.text_document.uri.to_string(),
-            params.text_document.text,
-        );
+        let uri = params.text_document.uri.to_string();
+        let text = params.text_document.text;
+        self.documents.insert(uri.clone(), text.clone());
+        self.analyze_document(&uri, &text).await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         if let Some(change) = params.content_changes.into_iter().next() {
-            self.documents
-                .insert(params.text_document.uri.to_string(), change.text);
+            let uri = params.text_document.uri.to_string();
+            self.documents.insert(uri.clone(), change.text.clone());
+            self.analyze_document(&uri, &change.text).await;
         }
     }
 
@@ -165,6 +166,143 @@ impl LanguageServer for Backend {
 
         Ok(Some(CompletionResponse::Array(items)))
     }
+}
+
+impl Backend {
+    async fn analyze_document(&self, uri: &str, content: &str) {
+        let mut diagnostics = Vec::new();
+
+        let lexed = match std::panic::catch_unwind(|| auwla_lexer::lex(content)) {
+            Ok(l) => l,
+            Err(_) => return, // Ignore panics during lexing and preserve previous diagnostics
+        };
+        let spans: Vec<std::ops::Range<usize>> = lexed.iter().map(|(_, s)| s.clone()).collect();
+        let tokens: Vec<_> = lexed.into_iter().map(|(t, _)| t).collect();
+
+        match auwla_parser::parse(tokens) {
+            Ok(ast) => {
+                let mut typechecker = auwla_typechecker::Typechecker::new();
+                for entry in self.metadata.iter() {
+                    typechecker
+                        .extensions
+                        .insert(entry.key().clone(), entry.value().clone());
+                }
+
+                if let Err(e) = typechecker.check_program(&ast) {
+                    let byte_start = spans.get(e.span.start).map(|r| r.start).unwrap_or(0);
+                    let byte_end = spans
+                        .get(e.span.end.saturating_sub(1))
+                        .map(|r| r.end)
+                        .unwrap_or(content.len());
+
+                    diagnostics.push(Diagnostic {
+                        range: Range::new(
+                            byte_to_position(content, byte_start),
+                            byte_to_position(content, byte_end),
+                        ),
+                        severity: Some(DiagnosticSeverity::ERROR),
+                        message: e.message,
+                        source: Some("auwla".to_string()),
+                        ..Default::default()
+                    });
+                }
+            }
+            Err(errs) => {
+                for e in errs {
+                    let span = e.span();
+                    let byte_start = spans
+                        .get(span.start)
+                        .map(|r| r.start)
+                        .unwrap_or_else(|| content.len());
+                    let byte_end = spans
+                        .get(span.end.saturating_sub(1))
+                        .map(|r| r.end)
+                        .unwrap_or_else(|| content.len());
+
+                    let mut message = match e.reason() {
+                        chumsky::error::SimpleReason::Unclosed { delimiter, .. } => {
+                            format!("Unclosed delimiter '{}'", delimiter)
+                        }
+                        chumsky::error::SimpleReason::Unexpected => {
+                            let expected_str = if e.expected().len() == 0 {
+                                "something else".to_string()
+                            } else {
+                                let mut strings: Vec<String> = e
+                                    .expected()
+                                    .map(|ex| match ex {
+                                        Some(token) => token.to_string(),
+                                        None => "end of input".to_string(),
+                                    })
+                                    .collect();
+                                strings.sort();
+                                strings.dedup();
+                                strings.join(", ")
+                            };
+
+                            if let Some(found) = e.found() {
+                                format!("Unexpected token '{}', expected {}", found, expected_str)
+                            } else {
+                                format!("Unexpected end of input, expected {}", expected_str)
+                            }
+                        }
+                        chumsky::error::SimpleReason::Custom(msg) => msg.to_string(),
+                    };
+
+                    use auwla_lexer::token::Token;
+                    let mut is_missing_semi = false;
+                    for expected_token in e.expected() {
+                        if let Some(token) = expected_token {
+                            if matches!(token, Token::Semicolon) {
+                                message =
+                                    "Missing semicolon ';' at the end of statement".to_string();
+                                is_missing_semi = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    let mut b_start = byte_start;
+                    let mut b_end = byte_end;
+
+                    if is_missing_semi && span.start > 0 {
+                        // Pin precisely to the end of the previous token
+                        if let Some(prev_span) = spans.get(span.start - 1) {
+                            b_start = prev_span.end;
+                            b_end = prev_span.end;
+                        }
+                    } else {
+                        // Highlight only the *first* offensive token to prevent a giant multi-line block
+                        b_end = spans.get(span.start).map(|r| r.end).unwrap_or(b_start);
+                    }
+
+                    diagnostics.push(Diagnostic {
+                        range: Range::new(
+                            byte_to_position(content, b_start),
+                            byte_to_position(content, b_end),
+                        ),
+                        severity: Some(DiagnosticSeverity::ERROR),
+                        message,
+                        source: Some("auwla".to_string()),
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+
+        if let Ok(url) = url::Url::parse(uri) {
+            self.client
+                .publish_diagnostics(url, diagnostics, None)
+                .await;
+        }
+    }
+}
+
+fn byte_to_position(source: &str, byte: usize) -> Position {
+    let safe = byte.min(source.len());
+    let prefix = &source[..safe];
+    let line = prefix.lines().count().max(1) - 1;
+    let col = prefix.rfind('\n').map(|i| safe - i - 1).unwrap_or(safe);
+    Position::new(line as u32, col as u32)
 }
 
 fn get_word_at_offset(line: &str, char_idx: usize) -> &str {
