@@ -477,7 +477,8 @@ impl Typechecker {
                 }
 
                 let mut method_sigs = Vec::new();
-                let mut method_infos = Vec::new();
+                let mut method_infos: Vec<(&auwla_ast::Method, Vec<(String, Type)>, Option<Type>)> =
+                    Vec::new();
                 for method in methods {
                     let mut method_tps = base_tps.clone();
                     if let Some(mtps) = method.type_params.as_ref() {
@@ -494,16 +495,17 @@ impl Typechecker {
                             } else {
                                 let ty =
                                     ty_opt.clone().unwrap_or(Type::Basic("unknown".to_string()));
-                                self.genericize_type(&ty, &method_tps)
+                                let generic_ty = self.genericize_type(&ty, &method_tps);
+                                self.resolve_self_type(&generic_ty, &self_type)
                             };
                             (n.clone(), t)
                         })
                         .collect();
 
-                    let return_ty_gen = method
-                        .return_ty
-                        .as_ref()
-                        .map(|ty| self.genericize_type(ty, &method_tps));
+                    let return_ty_gen = method.return_ty.as_ref().map(|ty| {
+                        let generic_ty = self.genericize_type(ty, &method_tps);
+                        self.resolve_self_type(&generic_ty, &self_type)
+                    });
 
                     let combined_tps = if method_tps.is_empty() {
                         None
@@ -560,14 +562,16 @@ impl Typechecker {
                 self.type_attributes
                     .insert(name.clone(), attributes.clone());
                 let mut method_sigs = Vec::new();
-                let mut method_infos = Vec::new();
+                let mut method_infos: Vec<(&auwla_ast::Method, Vec<(String, Type)>, Option<Type>)> =
+                    Vec::new();
                 for method in methods {
+                    let custom_type = Type::Custom(name.clone());
                     let full_params: Vec<(String, Type)> = method
                         .params
                         .iter()
                         .map(|(n, ty_opt)| {
                             let ty = ty_opt.clone().unwrap_or(Type::Basic("unknown".to_string()));
-                            let resolved = self.resolve_self_type(&ty, name);
+                            let resolved = self.resolve_self_type(&ty, &custom_type);
                             (n.clone(), resolved)
                         })
                         .collect();
@@ -575,7 +579,7 @@ impl Typechecker {
                     let ret = method
                         .return_ty
                         .as_ref()
-                        .map(|t| self.resolve_self_type(t, name));
+                        .map(|t| self.resolve_self_type(t, &custom_type));
                     method_sigs.push(auwla_ast::ExtensionMethod {
                         type_params: method.type_params.clone(),
                         name: method.name.clone(),

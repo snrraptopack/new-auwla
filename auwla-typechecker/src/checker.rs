@@ -331,24 +331,24 @@ impl Typechecker {
         }
     }
 
-    /// Resolve `Self` within a type to the given concrete type name.
-    pub(crate) fn resolve_self_type(&self, ty: &Type, self_name: &str) -> Type {
+    /// Resolve `Self` within a type to the given concrete type.
+    pub(crate) fn resolve_self_type(&self, ty: &Type, self_ty: &Type) -> Type {
         match ty {
-            Type::SelfType => Type::Custom(self_name.to_string()),
-            Type::Array(inner) => Type::Array(Box::new(self.resolve_self_type(inner, self_name))),
+            Type::SelfType => self_ty.clone(),
+            Type::Array(inner) => Type::Array(Box::new(self.resolve_self_type(inner, self_ty))),
             Type::Optional(inner) => {
-                Type::Optional(Box::new(self.resolve_self_type(inner, self_name)))
+                Type::Optional(Box::new(self.resolve_self_type(inner, self_ty)))
             }
             Type::Result { ok_type, err_type } => Type::Result {
-                ok_type: Box::new(self.resolve_self_type(ok_type, self_name)),
-                err_type: Box::new(self.resolve_self_type(err_type, self_name)),
+                ok_type: Box::new(self.resolve_self_type(ok_type, self_ty)),
+                err_type: Box::new(self.resolve_self_type(err_type, self_ty)),
             },
             Type::Function(params, ret) => {
                 let p = params
                     .iter()
-                    .map(|t| self.resolve_self_type(t, self_name))
+                    .map(|t| self.resolve_self_type(t, self_ty))
                     .collect();
-                Type::Function(p, Box::new(self.resolve_self_type(ret, self_name)))
+                Type::Function(p, Box::new(self.resolve_self_type(ret, self_ty)))
             }
             _ => ty.clone(),
         }

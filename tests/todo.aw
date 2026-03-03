@@ -60,6 +60,8 @@ fn main() {
         },
     }
 
+    let at = my_tasks.filter((val:Task)=> val.id == 10);
+
     // Testing safe 'char?' wrapping on a literal string
     let version = "v1.0.0";
     print("Checking version prefix...");
@@ -77,9 +79,8 @@ fn main() {
 
 let ama = 1 .. 10;
 
-extend string{
-    fn one(self): string => self;
-}
+
+
 
 main();
 

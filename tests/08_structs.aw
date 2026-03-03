@@ -50,6 +50,9 @@ print(acc.user.name.len());
 print(acc.balance);
 
 
+let asd = Math::random();
+
+
 
 // 2. Struct Property Validation 
 // let user_missing_field_is_an_error = User {
