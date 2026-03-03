@@ -7,6 +7,11 @@ struct User {
     is_active: bool
 }
 
+@external("standalone")
+type Hello{
+    
+}
+
 let alice = User {
     name: "Alice",
     age: 30,
@@ -36,6 +41,9 @@ let acc = Account {
     balance: 1000.50
 };
 
+type One = string?number;
+
+let a:One = some("");
 
 
 print(acc.user.name);

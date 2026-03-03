@@ -5,6 +5,12 @@ use auwla_ast::{Expr, Type};
 
 impl Typechecker {
     pub fn check_expr(&mut self, expr: &Expr) -> Result<Type, TypeError> {
+        let ty = self.check_expr_internal(expr)?;
+        self.node_types.insert(expr.span.clone(), ty.clone());
+        Ok(ty)
+    }
+
+    fn check_expr_internal(&mut self, expr: &Expr) -> Result<Type, TypeError> {
         match &expr.node {
             auwla_ast::ExprKind::Void => Ok(Type::Basic("void".to_string())),
             auwla_ast::ExprKind::BoolLit(_) => Ok(Type::Basic("bool".to_string())),

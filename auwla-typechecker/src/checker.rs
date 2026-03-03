@@ -15,6 +15,8 @@ pub struct Typechecker {
     pub extensions: HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
     /// Meta-information about types (e.g., attributes like @external)
     pub type_attributes: HashMap<String, Vec<auwla_ast::Attribute>>,
+    /// Mapping from AST node span to its evaluated Type for LSP services
+    pub node_types: HashMap<std::ops::Range<usize>, Type>,
 }
 
 impl Default for Typechecker {
@@ -34,6 +36,7 @@ impl Typechecker {
             type_aliases: HashMap::new(),
             extensions: HashMap::new(),
             type_attributes: HashMap::new(),
+            node_types: HashMap::new(),
         }
     }
 
@@ -51,7 +54,7 @@ impl Typechecker {
         self.scopes.push(Scope::new());
     }
 
-    pub(crate) fn type_to_key(&self, ty: &Type) -> String {
+    pub fn type_to_key(&self, ty: &Type) -> String {
         match ty {
             Type::Basic(name) => name.clone(),
             Type::Custom(name) => name.clone(),

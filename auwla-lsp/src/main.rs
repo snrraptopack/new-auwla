@@ -140,12 +140,119 @@ impl LanguageServer for Backend {
         Ok(None)
     }
 
-    async fn completion(&self, _params: CompletionParams) -> Result<Option<CompletionResponse>> {
+    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+        let uri = params.text_document_position.text_document.uri.to_string();
+        let position = params.text_document_position.position;
         let mut items = Vec::new();
 
-        // Naively suggest ALL extension methods across the project
+        let content = if let Some(c) = self.documents.get(&uri) {
+            c.clone()
+        } else {
+            return Ok(None);
+        };
+
+        // Calculate byte offset from (line, character) using raw bytes
+        // This correctly handles both \n and \r\n line endings
+        let mut byte_offset = 0usize;
+        let mut current_line = 0u32;
+        for (i, byte) in content.as_bytes().iter().enumerate() {
+            if current_line == position.line {
+                byte_offset = i + position.character as usize;
+                break;
+            }
+            if *byte == b'\n' {
+                current_line += 1;
+            }
+        }
+        // If we're on the last line and didn't find enough newlines
+        if current_line < position.line {
+            byte_offset = content.len();
+        }
+
+        // Search backwards from cursor for a dot, but ONLY on the current line
+        let mut dot_idx = None;
+        let search_start = byte_offset.saturating_sub(1);
+        for i in (0..=search_start).rev() {
+            let b = content.as_bytes()[i];
+            if b == b'.' {
+                dot_idx = Some(i);
+                break;
+            }
+            if b == b'\n' || b == b'\r' {
+                break; // Stop at line boundary
+            }
+        }
+
+        let mut target_type_key = None;
+
+        if let Some(di) = dot_idx {
+            // Shadow-compile: replace the dot with a space so the file parses
+            let mut shadow = String::with_capacity(content.len());
+            shadow.push_str(&content[..di]);
+            shadow.push(' ');
+            shadow.push_str(&content[di + 1..]);
+
+            let lexed = match std::panic::catch_unwind(|| auwla_lexer::lex(&shadow)) {
+                Ok(l) => l,
+                Err(_) => {
+                    // Lexer panicked, fall back to global completions
+                    return Ok(Some(self.global_completions()));
+                }
+            };
+            let token_byte_spans: Vec<std::ops::Range<usize>> =
+                lexed.iter().map(|(_, s)| s.clone()).collect();
+            let tokens: Vec<_> = lexed.into_iter().map(|(t, _)| t).collect();
+
+            if let Ok(ast) = auwla_parser::parse(tokens) {
+                let mut typechecker = auwla_typechecker::Typechecker::new();
+                for entry in self.metadata.iter() {
+                    typechecker
+                        .extensions
+                        .insert(entry.key().clone(), entry.value().clone());
+                }
+                let _ = typechecker.check_program(&ast);
+
+                // node_types keys are token-index spans (e.g., 3..5 = tokens 3,4)
+                // Convert them to byte spans using token_byte_spans for comparison
+                let mut best_fit: Option<auwla_ast::Type> = None;
+                let mut best_byte_end = 0usize;
+
+                for (tok_span, ty) in typechecker.node_types.iter() {
+                    // Convert token-index span to byte span
+                    let byte_start = token_byte_spans
+                        .get(tok_span.start)
+                        .map(|r| r.start)
+                        .unwrap_or(0);
+                    let byte_end = token_byte_spans
+                        .get(tok_span.end.saturating_sub(1))
+                        .map(|r| r.end)
+                        .unwrap_or(0);
+
+                    // We want the expression whose byte_end is closest to (but <= ) the dot
+                    if byte_end <= di && byte_end > best_byte_end {
+                        best_byte_end = byte_end;
+                        best_fit = Some(ty.clone());
+                    }
+                }
+
+                if let Some(ty) = best_fit {
+                    target_type_key = Some(typechecker.type_to_key(&ty));
+                }
+            }
+        }
+
+        // Also add struct fields if target_type_key matches a known struct
+        // (struct fields aren't in metadata, they come from the typechecker)
+
         for entry in self.metadata.iter() {
             let type_key = entry.key();
+
+            if let Some(ref target) = target_type_key {
+                if target != type_key {
+                    continue;
+                }
+            }
+
             for method in entry.value() {
                 items.push(CompletionItem {
                     label: method.name.clone(),
@@ -169,6 +276,24 @@ impl LanguageServer for Backend {
 }
 
 impl Backend {
+    fn global_completions(&self) -> CompletionResponse {
+        let mut items = Vec::new();
+        for entry in self.metadata.iter() {
+            let type_key = entry.key();
+            for method in entry.value() {
+                items.push(CompletionItem {
+                    label: method.name.clone(),
+                    detail: Some(format!("extension for {}", type_key)),
+                    kind: Some(CompletionItemKind::METHOD),
+                    ..Default::default()
+                });
+            }
+        }
+        items.sort_by(|a, b| a.label.cmp(&b.label));
+        items.dedup_by(|a, b| a.label == b.label);
+        CompletionResponse::Array(items)
+    }
+
     async fn analyze_document(&self, uri: &str, content: &str) {
         let mut diagnostics = Vec::new();
 
