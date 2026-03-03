@@ -17,6 +17,8 @@ pub struct Typechecker {
     pub type_attributes: HashMap<String, Vec<auwla_ast::Attribute>>,
     /// Mapping from AST node span to its evaluated Type for LSP services
     pub node_types: HashMap<std::ops::Range<usize>, Type>,
+    /// Mapping from name to its declaration token span for go-to-definition
+    pub definitions: HashMap<String, Span>,
 }
 
 impl Default for Typechecker {
@@ -37,6 +39,7 @@ impl Typechecker {
             extensions: HashMap::new(),
             type_attributes: HashMap::new(),
             node_types: HashMap::new(),
+            definitions: HashMap::new(),
         }
     }
 
@@ -165,12 +168,14 @@ impl Typechecker {
             );
         }
         current_scope.mutability.insert(name.clone(), mutability);
-        current_scope.variables.insert(name, ty);
+        current_scope.variables.insert(name.clone(), ty);
+        self.definitions.insert(name, _span);
         Ok(())
     }
 
     pub(crate) fn declare_function(
         &mut self,
+        span: Span,
         name: String,
         type_params: Option<Vec<String>>,
         params: Vec<Type>,
@@ -179,7 +184,8 @@ impl Typechecker {
         let current_scope = self.scopes.last_mut().unwrap();
         current_scope
             .functions
-            .insert(name, (type_params, params, ret));
+            .insert(name.clone(), (type_params, params, ret));
+        self.definitions.insert(name, span);
     }
 
     pub(crate) fn is_mutable(&self, name: &str) -> bool {
@@ -238,6 +244,7 @@ impl Typechecker {
                 for name in names {
                     if let Some(sig) = export_map.functions.get(name) {
                         self.declare_function(
+                            stmt.span.clone(),
                             name.clone(),
                             sig.0.clone(),
                             sig.1.clone(),

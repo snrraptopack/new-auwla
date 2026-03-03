@@ -1,4 +1,5 @@
 mod completion;
+mod definition;
 mod diagnostics;
 mod hover;
 mod utils;
@@ -56,6 +57,7 @@ impl LanguageServer for Backend {
                     trigger_characters: Some(vec![".".to_string()]),
                     ..Default::default()
                 }),
+                definition_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
             ..Default::default()
@@ -93,6 +95,13 @@ impl LanguageServer for Backend {
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         completion::handle_completion(self, params).await
+    }
+
+    async fn goto_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        definition::handle_definition(self, params).await
     }
 }
 

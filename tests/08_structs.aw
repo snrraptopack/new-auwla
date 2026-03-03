@@ -46,7 +46,7 @@ let a:One = some("");
 let as = (1 .. 100);
 
 
-print(acc.user.name);
+print(acc.user.name.len());
 print(acc.balance);
 
 // 2. Struct Property Validation 

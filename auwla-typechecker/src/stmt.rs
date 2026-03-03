@@ -239,6 +239,7 @@ impl Typechecker {
                     .map(|ty| self.genericize_type(ty, &all_tps));
 
                 self.declare_function(
+                    stmt.span.clone(),
                     name.clone(),
                     type_params.clone(),
                     param_types.clone(),
@@ -404,6 +405,7 @@ impl Typechecker {
                     );
                 }
                 self.structs.insert(name.clone(), fields.clone());
+                self.definitions.insert(name.clone(), stmt.span.clone());
                 self.type_attributes
                     .insert(name.clone(), attributes.clone());
                 Ok(())
@@ -427,6 +429,7 @@ impl Typechecker {
                     );
                 }
                 self.enums.insert(name.clone(), variants.clone());
+                self.definitions.insert(name.clone(), stmt.span.clone());
                 self.type_attributes
                     .insert(name.clone(), attributes.clone());
                 Ok(())
