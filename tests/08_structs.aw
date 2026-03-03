@@ -9,6 +9,7 @@ struct User {
 
 
 
+
 let alice = User {
     name: "Alice",
     age: 30,
@@ -41,6 +42,8 @@ let acc = Account {
 type One = string?number;
 
 let a:One = some("");
+
+let as = (1 .. 100);
 
 
 print(acc.user.name);

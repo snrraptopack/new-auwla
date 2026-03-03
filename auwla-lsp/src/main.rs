@@ -177,24 +177,28 @@ impl LanguageServer for Backend {
                 None
             };
 
-            let mut markdown = if let Some(ref resolved) = resolved_key {
-                format!("**Type:** `{}` (alias for `{}`)\n\n", type_key, resolved)
+            let mut markdown = String::new();
+            if let Some(ref resolved) = resolved_key {
+                markdown.push_str(&format!(
+                    "```auwla\ntype {} = {}\n```\n\n",
+                    type_key, resolved
+                ));
             } else {
-                format!("**Type:** `{}`\n\n", type_key)
-            };
+                markdown.push_str(&format!("```auwla\n{}\n```\n\n", type_key));
+            }
 
             // Show struct fields — check both the original and resolved type
             let struct_key = resolved_key.as_deref().unwrap_or(&type_key);
             if let Some(fields) = typechecker.structs.get(struct_key) {
-                markdown.push_str("**Fields:**\n");
+                markdown.push_str(&format!("```auwla\nstruct {} {{\n", struct_key));
                 for (fname, ftype) in fields {
                     markdown.push_str(&format!(
-                        "- `{}: {}`\n",
+                        "  {}: {}\n",
                         fname,
                         typechecker.type_to_key(ftype)
                     ));
                 }
-                markdown.push('\n');
+                markdown.push_str("}\n```\n");
             }
 
             return Ok(Some(Hover {
@@ -218,26 +222,28 @@ impl LanguageServer for Backend {
                         .get(&type_key)
                         .map(|rt| typechecker.type_to_key(rt));
 
-                    let mut markdown = if let Some(ref resolved) = resolved_key {
-                        format!(
-                            "**{}:** `{}` (alias for `{}`)\n\n",
+                    let mut markdown = String::new();
+                    if let Some(ref resolved) = resolved_key {
+                        markdown.push_str(&format!(
+                            "```auwla\nvar {}: {} // alias for {}\n```\n\n",
                             word, type_key, resolved
-                        )
+                        ));
                     } else {
-                        format!("**{}:** `{}`\n\n", word, type_key)
-                    };
+                        markdown
+                            .push_str(&format!("```auwla\nvar {}: {}\n```\n\n", word, type_key));
+                    }
 
                     let struct_key = resolved_key.as_deref().unwrap_or(&type_key);
                     if let Some(fields) = typechecker.structs.get(struct_key) {
-                        markdown.push_str("**Fields:**\n");
+                        markdown.push_str(&format!("```auwla\nstruct {} {{\n", struct_key));
                         for (fname, ftype) in fields {
                             markdown.push_str(&format!(
-                                "- `{}: {}`\n",
+                                "  {}: {}\n",
                                 fname,
                                 typechecker.type_to_key(ftype)
                             ));
                         }
-                        markdown.push('\n');
+                        markdown.push_str("}\n```\n");
                     }
 
                     return Ok(Some(Hover {
@@ -420,12 +426,13 @@ impl LanguageServer for Backend {
                     // Add extension methods for this type
                     if let Some(methods) = self.metadata.get(&type_key) {
                         for method in methods.value() {
+                            let sig = format_method_signature(method);
                             items.push(CompletionItem {
                                 label: method.name.clone(),
                                 detail: Some(format!("extension for {}", type_key)),
                                 documentation: Some(Documentation::MarkupContent(MarkupContent {
                                     kind: MarkupKind::Markdown,
-                                    value: format!("```auwla\nfn {}(...)\n```", method.name),
+                                    value: format!("```auwla\n{}\n```", sig),
                                 })),
                                 kind: Some(CompletionItemKind::METHOD),
                                 ..Default::default()
@@ -537,9 +544,10 @@ impl Backend {
         for entry in self.metadata.iter() {
             let type_key = entry.key();
             for method in entry.value() {
+                let sig = format_method_signature(method);
                 items.push(CompletionItem {
                     label: method.name.clone(),
-                    detail: Some(format!("extension for {}", type_key)),
+                    detail: Some(format!("{} ({})", sig, type_key)),
                     kind: Some(CompletionItemKind::METHOD),
                     ..Default::default()
                 });
@@ -684,6 +692,43 @@ fn byte_to_position(source: &str, byte: usize) -> Position {
     let line = prefix.lines().count().max(1) - 1;
     let col = prefix.rfind('\n').map(|i| safe - i - 1).unwrap_or(safe);
     Position::new(line as u32, col as u32)
+}
+
+fn format_type(ty: &auwla_ast::Type) -> String {
+    match ty {
+        auwla_ast::Type::Basic(name) => name.clone(),
+        auwla_ast::Type::Custom(name) => name.clone(),
+        auwla_ast::Type::Array(inner) => format!("array<{}>", format_type(inner)),
+        auwla_ast::Type::Optional(inner) => format!("{}?", format_type(inner)),
+        auwla_ast::Type::Result { ok_type, err_type } => {
+            format!("{}?{}", format_type(ok_type), format_type(err_type))
+        }
+        auwla_ast::Type::Generic(name, args) => {
+            let parts: Vec<String> = args.iter().map(format_type).collect();
+            format!("{}< {}>", name, parts.join(", "))
+        }
+        auwla_ast::Type::Function(params, ret) => {
+            let ps: Vec<String> = params.iter().map(format_type).collect();
+            format!("fn({}) -> {}", ps.join(", "), format_type(ret))
+        }
+        auwla_ast::Type::TypeVar(name) => name.clone(),
+        auwla_ast::Type::InferenceVar(id) => format!("_{}", id),
+        auwla_ast::Type::SelfType => "Self".to_string(),
+    }
+}
+
+fn format_method_signature(method: &auwla_ast::ExtensionMethod) -> String {
+    let params_str: Vec<String> = method
+        .params
+        .iter()
+        .map(|(name, ty)| format!("{}: {}", name, format_type(ty)))
+        .collect();
+    let ret_str = method
+        .return_ty
+        .as_ref()
+        .map(|r| format!(" -> {}", format_type(r)))
+        .unwrap_or_default();
+    format!("fn {}({}){}", method.name, params_str.join(", "), ret_str)
 }
 
 fn get_word_at_offset(line: &str, char_idx: usize) -> &str {
