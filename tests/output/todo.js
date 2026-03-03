@@ -1,11 +1,11 @@
 import { __print, __range } from './__util.js';
-import * as __auwla from './__runtime.js';
+import * as __std_array from './std/array.js';
 function main() {
   const my_tasks = [{ id: 101, title: "Refactor Codegen", status: { $variant: "Done" } }, { id: 102, title: "Secure JS Interop", status: { $variant: "Pending" } }, { id: 103, title: "Ship Auwla", status: { $variant: "Pending" } }];
   __print("--- AUWLA TASK MANAGER ---");
-  __auwla._ext_array_Task_print_summary(my_tasks);
+  _ext_array_Task_print_summary(my_tasks);
   __print("Searching for Task 102...");
-  const __match_1 = __auwla._ext_array_Task_find_one(my_tasks, 1022);
+  const __match_1 = _ext_array_Task_find_one(my_tasks, 1022);
   if (__match_1.ok) {
     const t = __match_1.value;
     __print("Target Found!");

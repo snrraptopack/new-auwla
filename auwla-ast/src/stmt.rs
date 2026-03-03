@@ -12,6 +12,19 @@ pub struct Attribute {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ExtensionOrigin {
+    Std,
+    User,
+    Package,
+}
+
+impl Default for ExtensionOrigin {
+    fn default() -> Self {
+        ExtensionOrigin::User
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExtensionMethod {
     pub type_params: Option<Vec<String>>,
     pub name: String,
@@ -21,6 +34,8 @@ pub struct ExtensionMethod {
     pub attributes: Vec<Attribute>,
     #[serde(skip, default = "default_span")]
     pub span: crate::Span,
+    #[serde(default)]
+    pub origin: ExtensionOrigin,
 }
 
 fn default_span() -> crate::Span {

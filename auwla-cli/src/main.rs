@@ -9,6 +9,68 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+// ─────────────────────────────────────────────────────────────
+// Embedded standard library sources (baked into the binary)
+// ─────────────────────────────────────────────────────────────
+const STD_STRING: &str = include_str!("../../std/string.aw");
+const STD_ARRAY: &str = include_str!("../../std/array.aw");
+const STD_NUMBER: &str = include_str!("../../std/number.aw");
+const STD_MATH: &str = include_str!("../../std/math.aw");
+
+/// Embedded std module: (module_name, source_code)
+const STD_MODULES: &[(&str, &str)] = &[
+    ("string", STD_STRING),
+    ("array", STD_ARRAY),
+    ("number", STD_NUMBER),
+    ("math", STD_MATH),
+];
+
+/// Parse all embedded std sources, collect their extensions, and tag each
+/// method with `ExtensionOrigin::Std`. Returns a map of (type_key → methods)
+/// and a list of (module_name, parsed_ast) for later codegen.
+fn load_std_extensions() -> (
+    HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
+    HashSet<String>,
+    Vec<(String, Program)>,
+) {
+    let mut extensions: HashMap<String, Vec<auwla_ast::ExtensionMethod>> = HashMap::new();
+    let mut enums = HashSet::new();
+    let mut parsed_modules = Vec::new();
+
+    for (module_name, source) in STD_MODULES {
+        let lexed = lex(source);
+        let tokens: Vec<_> = lexed.into_iter().map(|(t, _)| t).collect();
+        match parse(tokens) {
+            Ok(ast) => {
+                let exports = collect_exports(&ast);
+                for (type_key, mut methods) in exports.extensions {
+                    // Tag every method as Std
+                    for m in &mut methods {
+                        m.origin = auwla_ast::ExtensionOrigin::Std;
+                    }
+                    extensions
+                        .entry(type_key)
+                        .or_insert_with(Vec::new)
+                        .extend(methods);
+                }
+                for enum_name in exports.enums.keys() {
+                    enums.insert(enum_name.clone());
+                }
+                parsed_modules.push((module_name.to_string(), ast));
+            }
+            Err(errs) => {
+                eprintln!(
+                    "[Error] Failed to parse std/{}.aw ({} errors)",
+                    module_name,
+                    errs.len()
+                );
+            }
+        }
+    }
+
+    (extensions, enums, parsed_modules)
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let target = if args.len() > 1 { &args[1] } else { "app.aw" };
@@ -29,18 +91,33 @@ fn main() {
         fs::create_dir_all(&global_output_root).ok();
     }
 
-    let mut global_extensions_js = String::new();
     let mut global_util_needed = false;
 
-    // 1. Centralized Discovery and Extension Emission
-    let (global_extensions, global_enums, discovered_paths) =
+    // ── Step 1: Load embedded standard library ──
+    let (std_extensions, std_enums, std_parsed_modules) = load_std_extensions();
+
+    // ── Step 2: Discover user extensions from project files ──
+    let (user_extensions, user_enums, discovered_paths) =
         discover_all_extensions(if path.is_dir() {
             path
         } else {
             path.parent().unwrap_or(Path::new("."))
         });
 
-    // Emitting auwla_metadata.json for LSP autocomplete
+    // ── Step 3: Merge into a single map for typechecking ──
+    // The typechecker needs to see ALL extensions (std + user) together.
+    let mut global_extensions: HashMap<String, Vec<auwla_ast::ExtensionMethod>> =
+        std_extensions.clone();
+    for (type_key, methods) in &user_extensions {
+        global_extensions
+            .entry(type_key.clone())
+            .or_insert_with(Vec::new)
+            .extend(methods.clone());
+    }
+    let mut global_enums: HashSet<String> = std_enums.clone();
+    global_enums.extend(user_enums);
+
+    // ── Step 4: Emit auwla_metadata.json (std + user combined) for LSP ──
     let metadata_path = global_output_root.join("auwla_metadata.json");
     if let Ok(metadata_json) = serde_json::to_string_pretty(&global_extensions) {
         fs::write(&metadata_path, &metadata_json).unwrap_or_else(|e| {
@@ -53,6 +130,56 @@ fn main() {
         println!("✓  Generated '{}'", metadata_path.display());
     }
 
+    // ── Step 5: Emit std modules → output/std/*.js ──
+    let std_output_dir = global_output_root.join("std");
+    fs::create_dir_all(&std_output_dir).ok();
+
+    for (module_name, ast) in &std_parsed_modules {
+        let (_, ext_js) = emit_js(ast, &global_extensions, &global_enums, &HashMap::new());
+        if !ext_js.is_empty() {
+            let mut final_js = String::new();
+
+            // Add util imports if needed
+            let mut util_imports = Vec::new();
+            if ext_js.contains("__print(") {
+                util_imports.push("__print");
+            }
+            if ext_js.contains("__range(") {
+                util_imports.push("__range");
+            }
+            if !util_imports.is_empty() {
+                final_js.push_str(&format!(
+                    "import {{ {} }} from '../__util.js';\n\n",
+                    util_imports.join(", ")
+                ));
+                global_util_needed = true;
+            }
+
+            // Std modules may call methods from other std modules — add cross-imports
+            for (other_name, _) in STD_MODULES {
+                if *other_name != module_name.as_str() {
+                    // Check if this module references methods from another std module
+                    // For now, we handle this by making each std module self-contained
+                    // Cross-module std imports will be added as needed
+                }
+            }
+
+            final_js.push_str(&ext_js);
+
+            let module_path = std_output_dir.join(format!("{}.js", module_name));
+            fs::write(&module_path, &final_js).unwrap_or_else(|e| {
+                eprintln!("[Error] Failed to write 'std/{}.js': {}", module_name, e);
+            });
+            println!(
+                "✓  Generated 'std/{}.js' ({} bytes)",
+                module_name,
+                final_js.len()
+            );
+        }
+    }
+
+    // ── Step 6: Emit user extensions → output/__user_ext.js ──
+    let mut user_extensions_js = String::new();
     let mut emitted_paths = HashSet::new();
     for p in &discovered_paths {
         if emitted_paths.contains(p) {
@@ -62,7 +189,7 @@ fn main() {
             if let Ok((ast, _)) = parse_source(&source, p) {
                 let (_, ext_js) = emit_js(&ast, &global_extensions, &global_enums, &HashMap::new());
                 if !ext_js.is_empty() {
-                    global_extensions_js.push_str(&ext_js);
+                    user_extensions_js.push_str(&ext_js);
                     if ext_js.contains("__print(") || ext_js.contains("__range(") {
                         global_util_needed = true;
                     }
@@ -180,31 +307,51 @@ fn main() {
     }
 
     // Emit global shared files once at the end
-    if !global_extensions_js.is_empty() {
-        let mut final_runtime_js = String::new();
+    if !user_extensions_js.is_empty() {
+        let mut final_user_ext_js = String::new();
         let mut util_imports = Vec::new();
-        if global_extensions_js.contains("__print(") {
+        if user_extensions_js.contains("__print(") {
             util_imports.push("__print");
         }
-        if global_extensions_js.contains("__range(") {
+        if user_extensions_js.contains("__range(") {
             util_imports.push("__range");
         }
 
         if !util_imports.is_empty() {
-            final_runtime_js.push_str(&format!(
+            final_user_ext_js.push_str(&format!(
                 "import {{ {} }} from './__util.js';\n\n",
                 util_imports.join(", ")
             ));
         }
-        final_runtime_js.push_str(&global_extensions_js);
 
-        let runtime_path = global_output_root.join("__runtime.js");
-        fs::write(&runtime_path, &final_runtime_js).unwrap_or_else(|e| {
-            eprintln!("[Error] Failed to write '__runtime.js': {}", e);
+        // User extensions may call std methods — import from std modules
+        for (module_name, _) in STD_MODULES {
+            // Check if user extensions reference methods from this std module
+            // For now, import all std modules that exist
+            let std_module_path = std_output_dir.join(format!("{}.js", module_name));
+            if std_module_path.exists() {
+                // Check if any std method names from this module appear in user ext JS
+                if let Some(std_methods) = std_extensions.get(*module_name) {
+                    let needs_import = std_methods.iter().any(|m| {
+                        user_extensions_js.contains(&format!("{}__{}", module_name, m.name))
+                    });
+                    if needs_import {
+                        final_user_ext_js
+                            .push_str(&format!("import './std/{}.js';\n", module_name));
+                    }
+                }
+            }
+        }
+
+        final_user_ext_js.push_str(&user_extensions_js);
+
+        let user_ext_path = global_output_root.join("__user_ext.js");
+        fs::write(&user_ext_path, &final_user_ext_js).unwrap_or_else(|e| {
+            eprintln!("[Error] Failed to write '__user_ext.js': {}", e);
         });
         println!(
-            "✓  Generated global '__runtime.js' ({} bytes)",
-            global_extensions_js.len()
+            "✓  Generated '__user_ext.js' ({} bytes)",
+            final_user_ext_js.len()
         );
     }
     if global_util_needed {

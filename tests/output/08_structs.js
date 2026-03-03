@@ -1,5 +1,6 @@
-import { __print } from './__util.js';
+import { __print, __range } from './__util.js';
 const alice = { name: "Alice", age: 30, is_active: true };
+const name = __range(1, 199, true).length;
 __print(alice.name);
 __print(alice.age);
 __print(alice.is_active);
@@ -7,5 +8,7 @@ let bob = { name: "Bob", age: 25, is_active: false };
 bob.age = 26;
 __print(bob.age);
 const acc = { user: alice, balance: 1000.5 };
-__print(acc.user.name);
+const a = ({ ok: true, value: "" });
+const as = __range(1, 100, true);
+__print(acc.user.name.len());
 __print(acc.balance);

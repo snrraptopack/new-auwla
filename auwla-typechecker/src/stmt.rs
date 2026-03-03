@@ -519,6 +519,7 @@ impl Typechecker {
                         return_ty: return_ty_gen.clone(),
                         attributes: method.attributes.clone(),
                         span: method.span.clone(),
+                        origin: Default::default(),
                     });
                     method_infos.push((method, full_params, return_ty_gen));
                 }
@@ -583,6 +584,7 @@ impl Typechecker {
                         return_ty: ret.clone(),
                         attributes: method.attributes.clone(),
                         span: method.span.clone(),
+                        origin: Default::default(),
                     });
                     method_infos.push((method, full_params, ret));
                 }

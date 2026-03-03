@@ -192,6 +192,7 @@ fn register_export(map: &mut ExportMap, stmt: &Stmt) {
                     return_ty: method.return_ty.clone(),
                     attributes: method.attributes.clone(),
                     span: method.span.clone(),
+                    origin: Default::default(),
                 });
             }
             map.extensions
@@ -227,6 +228,7 @@ fn register_export(map: &mut ExportMap, stmt: &Stmt) {
                     return_ty: method.return_ty.clone(),
                     attributes: method.attributes.clone(),
                     span: method.span.clone(),
+                    origin: Default::default(),
                 });
             }
             map.extensions.insert(name.clone(), method_sigs);
