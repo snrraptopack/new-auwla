@@ -23,6 +23,10 @@ extend number {
         return r != 0;
     }
 
+    fn is_positive(self): bool { return self > 0; }
+    fn is_negative(self): bool { return self < 0; }
+    fn is_zero(self): bool { return self == 0; }
+
     fn clamp(self, low: number, high: number): number {
         if self < low { return low; }
         if self > high { return high; }
