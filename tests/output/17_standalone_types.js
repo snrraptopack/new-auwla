@@ -8,6 +8,6 @@ function main() {
   __print(`random = ${r}`);
   const pi = Math.PI;
   __print(`PI = ${pi}`);
-  Console.log("hello from Console::log");
+  console.log("hello from Console::log");
 }
 main();

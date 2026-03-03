@@ -35,6 +35,12 @@ pub fn collect_exports(program: &Program) -> ExportMap {
                 // Extensions are globally visible in Auwla if the file is part of the project
                 register_export(&mut map, stmt);
             }
+            auwla_ast::StmtKind::TypeDecl { attributes, .. } => {
+                // Any type marked with @external is globally visible
+                if attributes.iter().any(|attr| attr.name == "external") {
+                    register_export(&mut map, stmt);
+                }
+            }
             _ => {}
         }
     }
@@ -185,6 +191,7 @@ fn register_export(map: &mut ExportMap, stmt: &Stmt) {
                     params: full_params,
                     return_ty: method.return_ty.clone(),
                     attributes: method.attributes.clone(),
+                    span: method.span.clone(),
                 });
             }
             map.extensions
@@ -219,6 +226,7 @@ fn register_export(map: &mut ExportMap, stmt: &Stmt) {
                     params: full_params,
                     return_ty: method.return_ty.clone(),
                     attributes: method.attributes.clone(),
+                    span: method.span.clone(),
                 });
             }
             map.extensions.insert(name.clone(), method_sigs);

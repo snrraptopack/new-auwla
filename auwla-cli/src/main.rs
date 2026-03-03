@@ -306,10 +306,17 @@ fn compile_directory_as_module(
     let mut merged_enums = global_enums.clone();
     for map in export_maps.values() {
         for (type_key, methods) in &map.extensions {
-            merged_extensions
+            let existing = merged_extensions
                 .entry(type_key.clone())
-                .or_insert_with(Vec::new)
-                .extend(methods.clone());
+                .or_insert_with(Vec::new);
+            for m in methods {
+                if !existing
+                    .iter()
+                    .any(|e| e.name == m.name && e.is_static == m.is_static)
+                {
+                    existing.push(m.clone());
+                }
+            }
         }
         for enum_name in map.enums.keys() {
             merged_enums.insert(enum_name.clone());
@@ -518,6 +525,7 @@ fn compile_file_standalone(
 
     let mut typechecker = Typechecker::new();
     typechecker.extensions = global_extensions.clone();
+
     match typechecker.check_program(&ast) {
         Ok(_) => {
             let mut all_enums = global_enums.clone();
@@ -645,7 +653,10 @@ fn discover_all_extensions(
     let mut extensions = HashMap::new();
     let mut enums = HashSet::new();
     let mut paths = Vec::new();
+    let mut method_origins: HashMap<(String, String, bool), (PathBuf, std::ops::Range<usize>)> =
+        HashMap::new();
     let mut walk = VecDeque::new();
+    let mut has_duplicate_errors = false;
     walk.push_back(root.to_path_buf());
 
     while let Some(current) = walk.pop_front() {
@@ -659,15 +670,65 @@ fn discover_all_extensions(
                     }
                 } else if p.is_file() && p.extension().and_then(|s| s.to_str()) == Some("aw") {
                     if let Ok(source) = fs::read_to_string(&p) {
-                        if let Ok((ast, _)) = parse_source(&source, &p) {
+                        if let Ok((ast, token_byte_spans)) = parse_source(&source, &p) {
                             let map = collect_exports(&ast);
                             if !map.extensions.is_empty() {
                                 paths.push(p.clone());
                                 for (type_key, methods) in map.extensions {
-                                    extensions
-                                        .entry(type_key)
-                                        .or_insert_with(Vec::new)
-                                        .extend(methods);
+                                    let existing =
+                                        extensions.entry(type_key.clone()).or_insert_with(Vec::new);
+                                    for m in methods {
+                                        let byte_start = token_byte_spans
+                                            .get(m.span.start)
+                                            .map(|r| r.start)
+                                            .unwrap_or(0);
+                                        let byte_end = token_byte_spans
+                                            .get(m.span.end.saturating_sub(1))
+                                            .map(|r| r.end)
+                                            .unwrap_or(source.len());
+
+                                        let key = (type_key.clone(), m.name.clone(), m.is_static);
+
+                                        if let Some((orig_path, orig_span)) =
+                                            method_origins.get(&key)
+                                        {
+                                            if let Ok(orig_source) = fs::read_to_string(orig_path) {
+                                                Diagnostic::new(
+                                                    Level::Note,
+                                                    "Previously defined here",
+                                                    orig_path.to_string_lossy(),
+                                                )
+                                                .with_label(
+                                                    orig_span.clone(),
+                                                    format!(
+                                                        "method '{}' was originally defined here",
+                                                        m.name
+                                                    ),
+                                                )
+                                                .emit(&orig_source);
+                                            }
+
+                                            Diagnostic::new(
+                                                Level::Error,
+                                                "Type Error",
+                                                p.to_string_lossy(),
+                                            )
+                                            .with_label(
+                                                byte_start..byte_end,
+                                                format!(
+                                                    "method '{}' is already defined for type '{}'",
+                                                    m.name, type_key
+                                                ),
+                                            )
+                                            .emit(&source);
+                                            has_duplicate_errors = true;
+                                            continue;
+                                        }
+
+                                        method_origins
+                                            .insert(key, (p.clone(), byte_start..byte_end));
+                                        existing.push(m);
+                                    }
                                 }
                                 for enum_name in map.enums.keys() {
                                     enums.insert(enum_name.clone());
@@ -679,6 +740,11 @@ fn discover_all_extensions(
             }
         }
     }
+
+    if has_duplicate_errors {
+        std::process::exit(1);
+    }
+
     (extensions, enums, paths)
 }
 

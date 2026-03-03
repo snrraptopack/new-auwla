@@ -515,6 +515,7 @@ impl Typechecker {
                         params: full_params.clone(),
                         return_ty: return_ty_gen.clone(),
                         attributes: method.attributes.clone(),
+                        span: method.span.clone(),
                     });
                     method_infos.push((method, full_params, return_ty_gen));
                 }
@@ -578,6 +579,7 @@ impl Typechecker {
                         params: full_params.clone(),
                         return_ty: ret.clone(),
                         attributes: method.attributes.clone(),
+                        span: method.span.clone(),
                     });
                     method_infos.push((method, full_params, ret));
                 }

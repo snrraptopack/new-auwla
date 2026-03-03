@@ -1,4 +1,4 @@
-import { __print } from './__util.js';
+import { __print, __range } from './__util.js';
 import * as __auwla from './__runtime.js';
 const greeting = "Hello World";
 const ch = greeting.charAt(0);
@@ -8,4 +8,8 @@ __print(`Position of World: ${pos}`);
 __print(`Length of greeting: ${greeting.length}`);
 __print(__auwla._ext_string_shout(greeting));
 __print(__auwla._ext_string_whisper(greeting));
+const nums = __range(1, 100, true);
+__print(`original : ${nums}`);
+__auwla._ext_array_shuffle(nums);
+__print(`shuffled : ${nums}`);
 __print(`First 5: ${__auwla._ext_string_first_n(greeting, 5)}`);

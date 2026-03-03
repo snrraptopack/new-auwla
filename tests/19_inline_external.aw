@@ -44,4 +44,21 @@ extend string {
     }
 }
 
+extend array{
+    fn shuffle(self){
+        for i in 0 ..< self.len(){
+            let random = Math::round_down(Math::random() * self.len());
+            let temp = self[i];
+            self[i] = self[random];
+            self[random] = temp;
+        }
+    }
+}
+
+let nums = 1 .. 100;
+print("original : {nums}");
+nums.shuffle();
+print("shuffled : {nums}");
+
+
 print("First 5: {greeting.first_n(5)}");

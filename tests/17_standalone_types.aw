@@ -18,10 +18,11 @@ type Math {
 
 // ─── Namespace: console ───
 @external("namespace")
-type Console {
+type console {
     @external("js", "method", "log")
     static fn log(msg: string): void;
 }
+
 
 fn main() {
     // Test namespace static method calls
@@ -39,7 +40,7 @@ fn main() {
     print("PI = {pi}");
 
     // Test another namespace
-    Console::log("hello from Console::log");
+    console::log("hello from Console::log");
 }
 
 main();

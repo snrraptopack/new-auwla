@@ -123,7 +123,6 @@ impl LanguageServer for Backend {
                             params_str.join(", "),
                             method.return_ty
                         ));
-                        markdown.push_str(&format!("Defined in: `{}`", method.file));
 
                         return Ok(Some(Hover {
                             contents: HoverContents::Markup(MarkupContent {

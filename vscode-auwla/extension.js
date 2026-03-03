@@ -11,9 +11,8 @@ let client;
 
 function activate(context) {
     // The server is implemented in Rust
-    // Find the binary in the target directory relative to the workspace root
-    // For development, we'll assume it's at ../target/debug/auwla-lsp.exe
-    let serverPath = context.asAbsolutePath(path.join('..', 'target', 'debug', 'auwla-lsp.exe'));
+    // Find the bundled release binary inside the extension's `bin` folder
+    let serverPath = context.asAbsolutePath(path.join('bin', 'auwla-lsp.exe'));
 
     // Server options
     let serverOptions = {

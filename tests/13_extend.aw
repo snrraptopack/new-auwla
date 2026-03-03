@@ -9,12 +9,7 @@ extend User {
     }
 }
 
-// Test extending a built-in type
-extend string {
-    fn shout(self): string {
-        return self + "!!!";
-    }
-}
+
 
 let u: User = User { name: "Amihere", age: 30 };
 let msg: string = u.greet();

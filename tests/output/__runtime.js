@@ -4,10 +4,6 @@ export function _ext_User_greet(__self) {
   return ("Hello, " + __self.name);
 }
 
-export function _ext_string_shout(__self) {
-  return (__self + "!!!");
-}
-
 export function _ext_array_last(__self) {
   if ((__self.length > 0)) {
     return ({ ok: true, value: __self[(__self.length - 1)] });
@@ -78,6 +74,15 @@ export function _ext_string_first_n(__self, n) {
     result = (result + __self.charAt(i));
   }
   return result;
+}
+
+export function _ext_array_shuffle(__self) {
+  for (let i = 0; i < __self.length; i++) {
+    const random = Math.floor((Math.random() * __self.length));
+    const temp = __self[i];
+    __self[i] = __self[random];
+    __self[random] = temp;
+  }
 }
 
 export function _ext_array_Task_find_one(__self, id) {

@@ -19,6 +19,12 @@ pub struct ExtensionMethod {
     pub params: Vec<(String, Type)>,
     pub return_ty: Option<Type>,
     pub attributes: Vec<Attribute>,
+    #[serde(skip, default = "default_span")]
+    pub span: crate::Span,
+}
+
+fn default_span() -> crate::Span {
+    0..0
 }
 
 #[derive(Debug, Clone, PartialEq)]
