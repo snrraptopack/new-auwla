@@ -5,12 +5,12 @@ use auwla_ast::{Program, Span, Type};
 use std::collections::HashMap;
 
 pub struct Typechecker {
-    pub(crate) scopes: Vec<Scope>,
+    pub scopes: Vec<Scope>,
     pub(crate) current_return_type: Option<Option<Type>>,
     pub(crate) current_function_name: Option<String>,
-    pub(crate) structs: HashMap<String, Vec<(String, Type)>>,
-    pub(crate) enums: HashMap<String, Vec<(String, Vec<Type>)>>,
-    pub(crate) type_aliases: HashMap<String, Type>,
+    pub structs: HashMap<String, Vec<(String, Type)>>,
+    pub enums: HashMap<String, Vec<(String, Vec<Type>)>>,
+    pub type_aliases: HashMap<String, Type>,
     /// type_name -> [(type_params, method_name, is_static, params_with_types, return_ty)]
     pub extensions: HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
     /// Meta-information about types (e.g., attributes like @external)

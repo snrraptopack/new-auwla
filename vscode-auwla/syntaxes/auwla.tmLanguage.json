@@ -10,19 +10,28 @@
             "include": "#strings"
         },
         {
-            "include": "#keywords"
+            "include": "#decorators"
         },
         {
             "include": "#functions"
+        },
+        {
+            "include": "#storage"
+        },
+        {
+            "include": "#control"
+        },
+        {
+            "include": "#constants"
+        },
+        {
+            "include": "#builtins"
         },
         {
             "include": "#types"
         },
         {
             "include": "#numbers"
-        },
-        {
-            "include": "#decorators"
         },
         {
             "include": "#operators"
@@ -42,23 +51,58 @@
                 }
             ]
         },
-        "keywords": {
+        "storage": {
             "patterns": [
                 {
+                    "comment": "Variable/function declarations — purple in most themes",
+                    "name": "storage.type.auwla",
+                    "match": "\\b(let|var|fn)\\b"
+                },
+                {
+                    "comment": "Type definitions — teal/green in most themes",
+                    "name": "storage.type.class.auwla",
+                    "match": "\\b(struct|enum)\\b"
+                }
+            ]
+        },
+        "control": {
+            "patterns": [
+                {
+                    "comment": "Control flow keywords — magenta/pink in most themes",
                     "name": "keyword.control.auwla",
-                    "match": "\\b(if|else|while|for|in|return|match|import|export|from|extend|type)\\b"
+                    "match": "\\b(if|else|while|for|in|return|match|break|continue)\\b"
                 },
                 {
+                    "comment": "Module keywords",
+                    "name": "keyword.control.import.auwla",
+                    "match": "\\b(import|export|from)\\b"
+                },
+                {
+                    "comment": "Extension and type alias keywords",
                     "name": "keyword.other.auwla",
-                    "match": "\\b(let|var|fn|struct|enum|array)\\b"
-                },
+                    "match": "\\b(extend|type)\\b"
+                }
+            ]
+        },
+        "constants": {
+            "patterns": [
                 {
+                    "comment": "Boolean and optional literals — orange in most themes",
                     "name": "constant.language.auwla",
                     "match": "\\b(true|false|none|some)\\b"
                 },
                 {
                     "name": "variable.language.self.auwla",
                     "match": "\\bself\\b"
+                }
+            ]
+        },
+        "builtins": {
+            "patterns": [
+                {
+                    "comment": "Built-in functions — distinct from user functions",
+                    "name": "support.function.auwla",
+                    "match": "\\b(print)\\b(?=\\s*\\()"
                 }
             ]
         },
@@ -86,10 +130,11 @@
         "functions": {
             "patterns": [
                 {
+                    "comment": "Function definition name",
                     "match": "\\b(fn)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
                     "captures": {
                         "1": {
-                            "name": "keyword.other.auwla"
+                            "name": "storage.type.auwla"
                         },
                         "2": {
                             "name": "entity.name.function.auwla"
@@ -97,7 +142,17 @@
                     }
                 },
                 {
-                    "match": "([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
+                    "comment": "Method call on property: .method_name()",
+                    "match": "\\.([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.function.auwla"
+                        }
+                    }
+                },
+                {
+                    "comment": "Standalone function call: name()",
+                    "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
                     "name": "entity.name.function.auwla"
                 }
             ]
@@ -125,7 +180,8 @@
                     "match": "=>"
                 },
                 {
-                    "match": "\\.([a-zA-Z_][a-zA-Z0-9_]*)",
+                    "comment": "Property access after dot (not a method call)",
+                    "match": "\\.([a-zA-Z_][a-zA-Z0-9_]*)(?!\\s*\\()",
                     "captures": {
                         "1": {
                             "name": "variable.other.property.auwla"
@@ -161,8 +217,28 @@
         "decorators": {
             "patterns": [
                 {
-                    "name": "meta.decorator.auwla",
+                    "comment": "Attribute decorator — gold/yellow in most themes",
+                    "name": "entity.name.function.decorator.auwla",
                     "match": "@[a-zA-Z_][a-zA-Z0-9_]*"
+                },
+                {
+                    "comment": "Decorator arguments in parentheses",
+                    "begin": "(@[a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "entity.name.function.decorator.auwla"
+                        }
+                    },
+                    "end": "\\)",
+                    "patterns": [
+                        {
+                            "include": "#strings"
+                        },
+                        {
+                            "name": "punctuation.separator.auwla",
+                            "match": ","
+                        }
+                    ]
                 }
             ]
         },
@@ -173,11 +249,13 @@
         "types": {
             "patterns": [
                 {
-                    "name": "entity.name.type.auwla",
-                    "match": "\\b(number|string|bool|void|char)\\b"
+                    "comment": "Built-in primitive types — blue/cyan in most themes",
+                    "name": "support.type.auwla",
+                    "match": "\\b(number|string|bool|void|char|array)\\b"
                 },
                 {
-                    "name": "entity.name.type.custom.auwla",
+                    "comment": "User-defined types (PascalCase) — green/teal in most themes",
+                    "name": "entity.name.type.auwla",
                     "match": "\\b[A-Z][a-zA-Z0-9]*\\b"
                 }
             ]

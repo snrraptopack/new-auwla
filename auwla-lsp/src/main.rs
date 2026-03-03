@@ -91,40 +91,179 @@ impl LanguageServer for Backend {
             .to_string();
         let position = params.text_document_position_params.position;
 
-        if let Some(content) = self.documents.get(&uri) {
-            let lines: Vec<&str> = content.lines().collect();
-            if let Some(line) = lines.get(position.line as usize) {
-                // Extremely naive: find word under cursor
-                let word = get_word_at_offset(line, position.character as usize);
+        let content = if let Some(c) = self.documents.get(&uri) {
+            c.clone()
+        } else {
+            return Ok(None);
+        };
 
-                // Search in metadata for this method name
-                for entry in self.metadata.iter() {
-                    let type_key = entry.key();
-                    let methods = entry.value();
-                    if let Some(method) = methods.iter().find(|m| m.name == word) {
-                        let mut markdown =
-                            format!("### Extension: `{}.{}`\n\n", type_key, method.name);
-                        if !method.attributes.is_empty() {
-                            markdown.push_str("**Attributes:**\n");
-                            for attr in &method.attributes {
-                                markdown
-                                    .push_str(&format!("- `@{}({:?})`\n", attr.name, attr.args));
-                            }
-                            markdown.push_str("\n");
+        // Get the word under the cursor for extension method lookup
+        let lines: Vec<&str> = content.lines().collect();
+        let word = lines
+            .get(position.line as usize)
+            .map(|line| get_word_at_offset(line, position.character as usize))
+            .unwrap_or_default();
+
+        // Calculate byte offset
+        let mut byte_offset = 0usize;
+        let mut current_line = 0u32;
+        for (i, byte) in content.as_bytes().iter().enumerate() {
+            if current_line == position.line {
+                byte_offset = i + position.character as usize;
+                break;
+            }
+            if *byte == b'\n' {
+                current_line += 1;
+            }
+        }
+        if current_line < position.line {
+            byte_offset = content.len();
+        }
+
+        // Shadow-compile the document for type info (wrapped to prevent crashes)
+        let lexed = match std::panic::catch_unwind(|| auwla_lexer::lex(&content)) {
+            Ok(l) => l,
+            Err(_) => return Ok(None),
+        };
+        let token_byte_spans: Vec<std::ops::Range<usize>> =
+            lexed.iter().map(|(_, s)| s.clone()).collect();
+        let tokens: Vec<_> = lexed.into_iter().map(|(t, _)| t).collect();
+
+        let ast = match std::panic::catch_unwind(move || auwla_parser::parse(tokens)) {
+            Ok(Ok(a)) => a,
+            _ => return Ok(None),
+        };
+
+        let mut typechecker = auwla_typechecker::Typechecker::new();
+        for entry in self.metadata.iter() {
+            typechecker
+                .extensions
+                .insert(entry.key().clone(), entry.value().clone());
+        }
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            typechecker.check_program(&ast)
+        }));
+
+        // Find the tightest span containing the cursor byte offset
+        let mut best_type: Option<auwla_ast::Type> = None;
+        let mut best_span_len = usize::MAX;
+
+        for (tok_span, ty) in typechecker.node_types.iter() {
+            let b_start = token_byte_spans
+                .get(tok_span.start)
+                .map(|r| r.start)
+                .unwrap_or(0);
+            let b_end = token_byte_spans
+                .get(tok_span.end.saturating_sub(1))
+                .map(|r| r.end)
+                .unwrap_or(0);
+
+            if b_start <= byte_offset && byte_offset <= b_end {
+                let span_len = b_end - b_start;
+                if span_len < best_span_len {
+                    best_span_len = span_len;
+                    best_type = Some(ty.clone());
+                }
+            }
+        }
+
+        if let Some(ty) = best_type {
+            let type_key = typechecker.type_to_key(&ty);
+
+            // Resolve type alias if applicable
+            let resolved_key = if let Some(resolved_ty) = typechecker.type_aliases.get(&type_key) {
+                Some(typechecker.type_to_key(resolved_ty))
+            } else {
+                None
+            };
+
+            let mut markdown = if let Some(ref resolved) = resolved_key {
+                format!("**Type:** `{}` (alias for `{}`)\n\n", type_key, resolved)
+            } else {
+                format!("**Type:** `{}`\n\n", type_key)
+            };
+
+            // Show struct fields — check both the original and resolved type
+            let struct_key = resolved_key.as_deref().unwrap_or(&type_key);
+            if let Some(fields) = typechecker.structs.get(struct_key) {
+                markdown.push_str("**Fields:**\n");
+                for (fname, ftype) in fields {
+                    markdown.push_str(&format!(
+                        "- `{}: {}`\n",
+                        fname,
+                        typechecker.type_to_key(ftype)
+                    ));
+                }
+                markdown.push('\n');
+            }
+
+            return Ok(Some(Hover {
+                contents: HoverContents::Markup(MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value: markdown,
+                }),
+                range: None,
+            }));
+        }
+
+        // Fallback: look up the word under cursor as a variable name in scopes
+        if !word.is_empty() {
+            for scope in typechecker.scopes.iter().rev() {
+                if let Some(ty) = scope.variables.get(word) {
+                    let type_key = typechecker.type_to_key(ty);
+
+                    // Resolve type alias
+                    let resolved_key = typechecker
+                        .type_aliases
+                        .get(&type_key)
+                        .map(|rt| typechecker.type_to_key(rt));
+
+                    let mut markdown = if let Some(ref resolved) = resolved_key {
+                        format!(
+                            "**{}:** `{}` (alias for `{}`)\n\n",
+                            word, type_key, resolved
+                        )
+                    } else {
+                        format!("**{}:** `{}`\n\n", word, type_key)
+                    };
+
+                    let struct_key = resolved_key.as_deref().unwrap_or(&type_key);
+                    if let Some(fields) = typechecker.structs.get(struct_key) {
+                        markdown.push_str("**Fields:**\n");
+                        for (fname, ftype) in fields {
+                            markdown.push_str(&format!(
+                                "- `{}: {}`\n",
+                                fname,
+                                typechecker.type_to_key(ftype)
+                            ));
                         }
+                        markdown.push('\n');
+                    }
 
-                        let params_str: Vec<String> = method
-                            .params
-                            .iter()
-                            .map(|(p, t)| format!("{}: {:?}", p, t))
-                            .collect();
-                        markdown.push_str(&format!(
-                            "```auwla\nfn {}({}) -> {:?}\n```\n\n",
-                            method.name,
+                    return Ok(Some(Hover {
+                        contents: HoverContents::Markup(MarkupContent {
+                            kind: MarkupKind::Markdown,
+                            value: markdown,
+                        }),
+                        range: None,
+                    }));
+                }
+
+                // Also check functions
+                for scope in typechecker.scopes.iter().rev() {
+                    if let Some((_, params, ret)) = scope.functions.get(word) {
+                        let ret_str = ret
+                            .as_ref()
+                            .map(|r| typechecker.type_to_key(r))
+                            .unwrap_or_else(|| "void".to_string());
+                        let params_str: Vec<String> =
+                            params.iter().map(|p| typechecker.type_to_key(p)).collect();
+                        let markdown = format!(
+                            "**fn** `{}({}) -> {}`\n",
+                            word,
                             params_str.join(", "),
-                            method.return_ty
-                        ));
-
+                            ret_str
+                        );
                         return Ok(Some(Hover {
                             contents: HoverContents::Markup(MarkupContent {
                                 kind: MarkupKind::Markdown,
@@ -133,6 +272,44 @@ impl LanguageServer for Backend {
                             range: None,
                         }));
                     }
+                }
+            }
+        }
+
+        // Fallback: search extension methods by word
+        if !word.is_empty() {
+            for entry in self.metadata.iter() {
+                let type_key = entry.key();
+                let methods = entry.value();
+                if let Some(method) = methods.iter().find(|m| m.name == word) {
+                    let mut markdown = format!("### Extension: `{}.{}`\n\n", type_key, method.name);
+                    if !method.attributes.is_empty() {
+                        markdown.push_str("**Attributes:**\n");
+                        for attr in &method.attributes {
+                            markdown.push_str(&format!("- `@{}({:?})`\n", attr.name, attr.args));
+                        }
+                        markdown.push('\n');
+                    }
+
+                    let params_str: Vec<String> = method
+                        .params
+                        .iter()
+                        .map(|(p, t)| format!("{}: {:?}", p, t))
+                        .collect();
+                    markdown.push_str(&format!(
+                        "```auwla\nfn {}({}) -> {:?}\n```\n\n",
+                        method.name,
+                        params_str.join(", "),
+                        method.return_ty
+                    ));
+
+                    return Ok(Some(Hover {
+                        contents: HoverContents::Markup(MarkupContent {
+                            kind: MarkupKind::Markdown,
+                            value: markdown,
+                        }),
+                        range: None,
+                    }));
                 }
             }
         }
@@ -152,7 +329,6 @@ impl LanguageServer for Backend {
         };
 
         // Calculate byte offset from (line, character) using raw bytes
-        // This correctly handles both \n and \r\n line endings
         let mut byte_offset = 0usize;
         let mut current_line = 0u32;
         for (i, byte) in content.as_bytes().iter().enumerate() {
@@ -164,7 +340,6 @@ impl LanguageServer for Backend {
                 current_line += 1;
             }
         }
-        // If we're on the last line and didn't find enough newlines
         if current_line < position.line {
             byte_offset = content.len();
         }
@@ -172,21 +347,21 @@ impl LanguageServer for Backend {
         // Search backwards from cursor for a dot, but ONLY on the current line
         let mut dot_idx = None;
         let search_start = byte_offset.saturating_sub(1);
-        for i in (0..=search_start).rev() {
-            let b = content.as_bytes()[i];
-            if b == b'.' {
-                dot_idx = Some(i);
-                break;
-            }
-            if b == b'\n' || b == b'\r' {
-                break; // Stop at line boundary
+        if search_start < content.len() {
+            for i in (0..=search_start).rev() {
+                let b = content.as_bytes()[i];
+                if b == b'.' {
+                    dot_idx = Some(i);
+                    break;
+                }
+                if b == b'\n' || b == b'\r' {
+                    break;
+                }
             }
         }
 
-        let mut target_type_key = None;
-
         if let Some(di) = dot_idx {
-            // Shadow-compile: replace the dot with a space so the file parses
+            // ===== DOT COMPLETION: type-aware extension methods + struct fields =====
             let mut shadow = String::with_capacity(content.len());
             shadow.push_str(&content[..di]);
             shadow.push(' ');
@@ -194,10 +369,7 @@ impl LanguageServer for Backend {
 
             let lexed = match std::panic::catch_unwind(|| auwla_lexer::lex(&shadow)) {
                 Ok(l) => l,
-                Err(_) => {
-                    // Lexer panicked, fall back to global completions
-                    return Ok(Some(self.global_completions()));
-                }
+                Err(_) => return Ok(Some(self.global_completions())),
             };
             let token_byte_spans: Vec<std::ops::Range<usize>> =
                 lexed.iter().map(|(_, s)| s.clone()).collect();
@@ -212,65 +384,149 @@ impl LanguageServer for Backend {
                 }
                 let _ = typechecker.check_program(&ast);
 
-                // node_types keys are token-index spans (e.g., 3..5 = tokens 3,4)
-                // Convert them to byte spans using token_byte_spans for comparison
                 let mut best_fit: Option<auwla_ast::Type> = None;
                 let mut best_byte_end = 0usize;
 
                 for (tok_span, ty) in typechecker.node_types.iter() {
-                    // Convert token-index span to byte span
-                    let byte_start = token_byte_spans
-                        .get(tok_span.start)
-                        .map(|r| r.start)
-                        .unwrap_or(0);
                     let byte_end = token_byte_spans
                         .get(tok_span.end.saturating_sub(1))
                         .map(|r| r.end)
                         .unwrap_or(0);
-
-                    // We want the expression whose byte_end is closest to (but <= ) the dot
                     if byte_end <= di && byte_end > best_byte_end {
                         best_byte_end = byte_end;
                         best_fit = Some(ty.clone());
                     }
                 }
 
-                if let Some(ty) = best_fit {
-                    target_type_key = Some(typechecker.type_to_key(&ty));
+                if let Some(ref ty) = best_fit {
+                    let type_key = typechecker.type_to_key(ty);
+
+                    // Add struct fields if this is a struct type
+                    if let Some(fields) = typechecker.structs.get(&type_key) {
+                        for (field_name, field_type) in fields {
+                            items.push(CompletionItem {
+                                label: field_name.clone(),
+                                detail: Some(format!(
+                                    "{}: {}",
+                                    field_name,
+                                    typechecker.type_to_key(field_type)
+                                )),
+                                kind: Some(CompletionItemKind::FIELD),
+                                ..Default::default()
+                            });
+                        }
+                    }
+
+                    // Add extension methods for this type
+                    if let Some(methods) = self.metadata.get(&type_key) {
+                        for method in methods.value() {
+                            items.push(CompletionItem {
+                                label: method.name.clone(),
+                                detail: Some(format!("extension for {}", type_key)),
+                                documentation: Some(Documentation::MarkupContent(MarkupContent {
+                                    kind: MarkupKind::Markdown,
+                                    value: format!("```auwla\nfn {}(...)\n```", method.name),
+                                })),
+                                kind: Some(CompletionItemKind::METHOD),
+                                ..Default::default()
+                            });
+                        }
+                    }
                 }
-            }
-        }
 
-        // Also add struct fields if target_type_key matches a known struct
-        // (struct fields aren't in metadata, they come from the typechecker)
-
-        for entry in self.metadata.iter() {
-            let type_key = entry.key();
-
-            if let Some(ref target) = target_type_key {
-                if target != type_key {
-                    continue;
+                if items.is_empty() {
+                    return Ok(Some(self.global_completions()));
                 }
+            } else {
+                return Ok(Some(self.global_completions()));
             }
-
-            for method in entry.value() {
+        } else {
+            // ===== GENERAL COMPLETION: keywords + variables + functions + types =====
+            let keywords = [
+                "let", "var", "fn", "return", "if", "else", "match", "while", "for", "in",
+                "struct", "enum", "import", "export", "from", "extend", "type", "array", "true",
+                "false", "some", "none", "print", "break", "continue",
+            ];
+            for kw in &keywords {
                 items.push(CompletionItem {
-                    label: method.name.clone(),
-                    detail: Some(format!("extension for {}", type_key)),
-                    documentation: Some(Documentation::MarkupContent(MarkupContent {
-                        kind: MarkupKind::Markdown,
-                        value: format!("```auwla\nfn {}(...)\n```", method.name),
-                    })),
-                    kind: Some(CompletionItemKind::METHOD),
+                    label: kw.to_string(),
+                    kind: Some(CompletionItemKind::KEYWORD),
                     ..Default::default()
                 });
             }
+
+            // Shadow-compile to get variables, functions, structs, enums in scope
+            let lexed = match std::panic::catch_unwind(|| auwla_lexer::lex(&content)) {
+                Ok(l) => l,
+                Err(_) => {
+                    items.sort_by(|a, b| a.label.cmp(&b.label));
+                    items.dedup_by(|a, b| a.label == b.label);
+                    return Ok(Some(CompletionResponse::Array(items)));
+                }
+            };
+            let tokens: Vec<_> = lexed.into_iter().map(|(t, _)| t).collect();
+
+            if let Ok(ast) = auwla_parser::parse(tokens) {
+                let mut typechecker = auwla_typechecker::Typechecker::new();
+                for entry in self.metadata.iter() {
+                    typechecker
+                        .extensions
+                        .insert(entry.key().clone(), entry.value().clone());
+                }
+                let _ = typechecker.check_program(&ast);
+
+                for scope in &typechecker.scopes {
+                    for (name, ty) in &scope.variables {
+                        items.push(CompletionItem {
+                            label: name.clone(),
+                            detail: Some(typechecker.type_to_key(ty)),
+                            kind: Some(CompletionItemKind::VARIABLE),
+                            ..Default::default()
+                        });
+                    }
+                    for (name, (_, params, ret)) in &scope.functions {
+                        let ret_str = ret
+                            .as_ref()
+                            .map(|r| typechecker.type_to_key(r))
+                            .unwrap_or_else(|| "void".to_string());
+                        items.push(CompletionItem {
+                            label: name.clone(),
+                            detail: Some(format!(
+                                "fn({}) -> {}",
+                                params
+                                    .iter()
+                                    .map(|p| typechecker.type_to_key(p))
+                                    .collect::<Vec<_>>()
+                                    .join(", "),
+                                ret_str
+                            )),
+                            kind: Some(CompletionItemKind::FUNCTION),
+                            ..Default::default()
+                        });
+                    }
+                }
+
+                for name in typechecker.structs.keys() {
+                    items.push(CompletionItem {
+                        label: name.clone(),
+                        detail: Some("struct".to_string()),
+                        kind: Some(CompletionItemKind::STRUCT),
+                        ..Default::default()
+                    });
+                }
+                for name in typechecker.enums.keys() {
+                    items.push(CompletionItem {
+                        label: name.clone(),
+                        detail: Some("enum".to_string()),
+                        kind: Some(CompletionItemKind::ENUM),
+                        ..Default::default()
+                    });
+                }
+            }
         }
 
-        // De-duplicate by name for now to avoid noise
         items.sort_by(|a, b| a.label.cmp(&b.label));
         items.dedup_by(|a, b| a.label == b.label);
-
         Ok(Some(CompletionResponse::Array(items)))
     }
 }
@@ -431,18 +687,41 @@ fn byte_to_position(source: &str, byte: usize) -> Position {
 }
 
 fn get_word_at_offset(line: &str, char_idx: usize) -> &str {
-    let mut start = char_idx;
-    while start > 0 && line.as_bytes()[start - 1].is_ascii_alphanumeric()
-        || line.as_bytes()[start - 1] == b'_'
-    {
+    let bytes = line.as_bytes();
+    if bytes.is_empty() || char_idx > bytes.len() {
+        return "";
+    }
+    let idx = char_idx.min(bytes.len().saturating_sub(1));
+
+    let is_word_byte = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
+
+    let mut start = idx;
+    while start > 0 && is_word_byte(bytes[start - 1]) {
         start -= 1;
     }
-    let mut end = char_idx;
-    while end < line.len() && line.as_bytes()[end].is_ascii_alphanumeric()
-        || line.as_bytes()[end] == b'_'
-    {
+    // If we're not on a word char, maybe we're one past the end
+    if start <= idx && idx < bytes.len() && !is_word_byte(bytes[idx]) && start > 0 {
+        // Cursor might be right after a word
+        start = idx;
+    }
+
+    let mut end = if idx < bytes.len() && is_word_byte(bytes[idx]) {
+        idx
+    } else if start < idx {
+        start
+    } else {
+        return "";
+    };
+
+    // Expand start backwards
+    while start > 0 && is_word_byte(bytes[start - 1]) {
+        start -= 1;
+    }
+    // Expand end forwards
+    while end < bytes.len() && is_word_byte(bytes[end]) {
         end += 1;
     }
+
     &line[start..end]
 }
 

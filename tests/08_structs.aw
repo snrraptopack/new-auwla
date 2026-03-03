@@ -7,10 +7,7 @@ struct User {
     is_active: bool
 }
 
-@external("standalone")
-type Hello{
-    
-}
+
 
 let alice = User {
     name: "Alice",
