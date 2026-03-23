@@ -198,12 +198,10 @@ impl JsEmitter {
                                     let js_name =
                                         attr.args.get(2).map(|s| s.as_str()).unwrap_or(method);
                                     if needs_optional_wrap {
-                                        self.write("((_r = ");
+                                        self.write("((_r) => _r != null ? { ok: true, value: _r } : { ok: false })(");
                                         self.emit_expr(expr);
                                         self.write(&format!(".{}", js_name));
-                                        self.write(
-                                            ") != null ? { ok: true, value: _r } : { ok: false })",
-                                        );
+                                        self.write(")");
                                     } else {
                                         self.emit_expr(expr);
                                         self.write(&format!(".{}", js_name));
@@ -213,7 +211,7 @@ impl JsEmitter {
                                     let js_name =
                                         attr.args.get(2).map(|s| s.as_str()).unwrap_or(method);
                                     if needs_optional_wrap {
-                                        self.write("((_r = ");
+                                        self.write("((_r) => _r != null ? { ok: true, value: _r } : { ok: false })(");
                                         self.emit_expr(expr);
                                         self.write(&format!(".{}(", js_name));
                                         for (i, arg) in args.iter().enumerate() {
@@ -222,9 +220,7 @@ impl JsEmitter {
                                             }
                                             self.emit_expr(arg);
                                         }
-                                        self.write(
-                                            ")) != null ? { ok: true, value: _r } : { ok: false })",
-                                        );
+                                        self.write("))");
                                     } else {
                                         self.emit_expr(expr);
                                         self.write(&format!(".{}(", js_name));
@@ -240,7 +236,7 @@ impl JsEmitter {
                                 _ => {
                                     // Unknown @external mapping — fall through to _ext_ wrapper
                                     let safe_type = self.type_key_ident(&type_name);
-                                    self.write(&format!("_ext_{}_{}(", safe_type, method));
+                                    self.write(&format!("_ext_{}__{}(", safe_type, method));
                                     self.emit_expr(expr);
                                     for arg in args {
                                         self.write(", ");
@@ -252,7 +248,7 @@ impl JsEmitter {
                         } else {
                             // Non-JS @external — use _ext_ wrapper
                             let safe_type = self.type_key_ident(&type_name);
-                            self.write(&format!("_ext_{}_{}(", safe_type, method));
+                            self.write(&format!("_ext_{}__{}(", safe_type, method));
                             self.emit_expr(expr);
                             for arg in args {
                                 self.write(", ");
@@ -263,7 +259,7 @@ impl JsEmitter {
                     } else {
                         // Pure Auwla extension method — use _ext_ wrapper
                         let safe_type = self.type_key_ident(&type_name);
-                        self.write(&format!("_ext_{}_{}(", safe_type, method));
+                        self.write(&format!("_ext_{}__{}(", safe_type, method));
                         self.emit_expr(expr);
                         for arg in args {
                             self.write(", ");
@@ -390,7 +386,7 @@ impl JsEmitter {
                                 _ => {
                                     // Fallback to _ext_ wrapper
                                     let safe_type = self.type_key_ident(&type_key);
-                                    self.write(&format!("_ext_{}_{}(", safe_type, method));
+                                    self.write(&format!("_ext_{}__{}(", safe_type, method));
                                     for (i, arg) in args.iter().enumerate() {
                                         if i > 0 {
                                             self.write(", ");
@@ -403,7 +399,7 @@ impl JsEmitter {
                         } else {
                             // Unknown @external target — use _ext_ wrapper
                             let safe_type = self.type_key_ident(&type_key);
-                            self.write(&format!("_ext_{}_{}(", safe_type, method));
+                            self.write(&format!("_ext_{}__{}(", safe_type, method));
                             for (i, arg) in args.iter().enumerate() {
                                 if i > 0 {
                                     self.write(", ");
@@ -415,7 +411,7 @@ impl JsEmitter {
                     } else {
                         // No @external — pure Auwla static, use _ext_ wrapper
                         let safe_type = self.type_key_ident(&type_key);
-                        self.write(&format!("_ext_{}_{}(", safe_type, method));
+                        self.write(&format!("_ext_{}__{}(", safe_type, method));
                         for (i, arg) in args.iter().enumerate() {
                             if i > 0 {
                                 self.write(", ");

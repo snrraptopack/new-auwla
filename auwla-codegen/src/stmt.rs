@@ -338,7 +338,7 @@ impl JsEmitter {
             if method.is_static {
                 self.write_indent_ext();
                 self.write_ext(&format!(
-                    "export function _ext_{}_{}(",
+                    "export function _ext_{}__{}(",
                     safe_type_key, method.name
                 ));
                 let params: Vec<_> = method.params.iter().collect();
@@ -352,7 +352,7 @@ impl JsEmitter {
             } else {
                 self.write_indent_ext();
                 self.write_ext(&format!(
-                    "export function _ext_{}_{}(__self",
+                    "export function _ext_{}__{}(__self",
                     safe_type_key, method.name
                 ));
                 for (pname, _) in method.params.iter().filter(|(n, _)| n != "self") {

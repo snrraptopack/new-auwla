@@ -1,4 +1,243 @@
 {
+  "array<Task>": [
+    {
+      "type_params": null,
+      "name": "find_one",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Array": {
+              "Custom": "Task"
+            }
+          }
+        ],
+        [
+          "id",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Result": {
+          "ok_type": {
+            "Custom": "Task"
+          },
+          "err_type": {
+            "Basic": "string"
+          }
+        }
+      },
+      "attributes": [],
+      "origin": "User"
+    },
+    {
+      "type_params": null,
+      "name": "print_summary",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Array": {
+              "Custom": "Task"
+            }
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "void"
+      },
+      "attributes": [],
+      "origin": "User"
+    }
+  ],
+  "array<number>": [
+    {
+      "type_params": null,
+      "name": "reduce",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Array": {
+              "Basic": "number"
+            }
+          }
+        ],
+        [
+          "f",
+          {
+            "Function": [
+              [
+                {
+                  "Basic": "number"
+                },
+                {
+                  "Basic": "number"
+                }
+              ],
+              {
+                "Basic": "number"
+              }
+            ]
+          }
+        ],
+        [
+          "initial",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "method",
+            "reduce"
+          ]
+        }
+      ],
+      "origin": "Std"
+    },
+    {
+      "type_params": null,
+      "name": "sum",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Array": {
+              "Basic": "number"
+            }
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": null,
+      "name": "max",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Array": {
+              "Basic": "number"
+            }
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": null,
+      "name": "min",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Array": {
+              "Basic": "number"
+            }
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": null,
+      "name": "max",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Array": {
+              "Basic": "number"
+            }
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [],
+      "origin": "User"
+    },
+    {
+      "type_params": null,
+      "name": "sum",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Array": {
+              "Basic": "number"
+            }
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [],
+      "origin": "User"
+    }
+  ],
+  "console": [
+    {
+      "type_params": null,
+      "name": "log",
+      "is_static": true,
+      "params": [
+        [
+          "msg",
+          {
+            "Basic": "string"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "void"
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "method",
+            "log"
+          ]
+        }
+      ],
+      "origin": "User"
+    }
+  ],
   "string": [
     {
       "type_params": null,
@@ -770,58 +1009,41 @@
       },
       "attributes": [],
       "origin": "User"
-    }
-  ],
-  "array<Task>": [
-    {
-      "type_params": null,
-      "name": "find_one",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Array": {
-              "Custom": "Task"
-            }
-          }
-        ],
-        [
-          "id",
-          {
-            "Basic": "number"
-          }
-        ]
-      ],
-      "return_ty": {
-        "Result": {
-          "ok_type": {
-            "Custom": "Task"
-          },
-          "err_type": {
-            "Basic": "string"
-          }
-        }
-      },
-      "attributes": [],
-      "origin": "User"
     },
     {
       "type_params": null,
-      "name": "print_summary",
+      "name": "ones",
       "is_static": false,
       "params": [
         [
           "self",
           {
-            "Array": {
-              "Custom": "Task"
-            }
+            "Basic": "string"
           }
         ]
       ],
       "return_ty": {
-        "Basic": "void"
+        "Basic": "string"
+      },
+      "attributes": [],
+      "origin": "User"
+    }
+  ],
+  "User": [
+    {
+      "type_params": null,
+      "name": "greet",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Custom": "User"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "string"
       },
       "attributes": [],
       "origin": "User"
@@ -1611,210 +1833,6 @@
           "other",
           {
             "Basic": "number"
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "number"
-      },
-      "attributes": [],
-      "origin": "User"
-    }
-  ],
-  "User": [
-    {
-      "type_params": null,
-      "name": "greet",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Custom": "User"
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "string"
-      },
-      "attributes": [],
-      "origin": "User"
-    }
-  ],
-  "console": [
-    {
-      "type_params": null,
-      "name": "log",
-      "is_static": true,
-      "params": [
-        [
-          "msg",
-          {
-            "Basic": "string"
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "void"
-      },
-      "attributes": [
-        {
-          "name": "external",
-          "args": [
-            "js",
-            "method",
-            "log"
-          ]
-        }
-      ],
-      "origin": "User"
-    }
-  ],
-  "array<number>": [
-    {
-      "type_params": null,
-      "name": "reduce",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Array": {
-              "Basic": "number"
-            }
-          }
-        ],
-        [
-          "f",
-          {
-            "Function": [
-              [
-                {
-                  "Basic": "number"
-                },
-                {
-                  "Basic": "number"
-                }
-              ],
-              {
-                "Basic": "number"
-              }
-            ]
-          }
-        ],
-        [
-          "initial",
-          {
-            "Basic": "number"
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "number"
-      },
-      "attributes": [
-        {
-          "name": "external",
-          "args": [
-            "js",
-            "method",
-            "reduce"
-          ]
-        }
-      ],
-      "origin": "Std"
-    },
-    {
-      "type_params": null,
-      "name": "sum",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Array": {
-              "Basic": "number"
-            }
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "number"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": null,
-      "name": "max",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Array": {
-              "Basic": "number"
-            }
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "number"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": null,
-      "name": "min",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Array": {
-              "Basic": "number"
-            }
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "number"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": null,
-      "name": "max",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Array": {
-              "Basic": "number"
-            }
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "number"
-      },
-      "attributes": [],
-      "origin": "User"
-    },
-    {
-      "type_params": null,
-      "name": "sum",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Array": {
-              "Basic": "number"
-            }
           }
         ]
       ],

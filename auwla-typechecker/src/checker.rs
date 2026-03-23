@@ -446,4 +446,21 @@ impl Typechecker {
             ))
         }
     }
+
+    pub(crate) fn contains_unknown(&self, ty: &Type) -> bool {
+        match ty {
+            Type::Basic(name) => name == "unknown",
+            Type::Array(inner) => self.contains_unknown(inner),
+            Type::Dict(k, v) => self.contains_unknown(k) || self.contains_unknown(v),
+            Type::Optional(inner) => self.contains_unknown(inner),
+            Type::Result { ok_type, err_type } => {
+                self.contains_unknown(ok_type) || self.contains_unknown(err_type)
+            }
+            Type::Generic(_, args) => args.iter().any(|a| self.contains_unknown(a)),
+            Type::Function(params, ret) => {
+                params.iter().any(|p| self.contains_unknown(p)) || self.contains_unknown(ret)
+            }
+            _ => false,
+        }
+    }
 }

@@ -644,10 +644,15 @@ impl Typechecker {
             }
             auwla_ast::ExprKind::Dict(pairs) => {
                 if pairs.is_empty() {
-                    Ok(Type::Dict(
-                        Box::new(Type::Basic("unknown".to_string())),
-                        Box::new(Type::Basic("unknown".to_string())),
-                    ))
+                    let resolved = expected_ty.map(|t| self.resolve_type(t));
+                    if let Some(Type::Dict(k, v)) = resolved {
+                        Ok(Type::Dict(k.clone(), v.clone()))
+                    } else {
+                        Ok(Type::Dict(
+                            Box::new(Type::Basic("unknown".to_string())),
+                            Box::new(Type::Basic("unknown".to_string())),
+                        ))
+                    }
                 } else {
                     let first_k_ty = self.check_expr(&pairs[0].0)?;
                     let first_v_ty = self.check_expr(&pairs[0].1)?;
@@ -671,9 +676,14 @@ impl Typechecker {
             }
             auwla_ast::ExprKind::Array(elements) => {
                 if elements.is_empty() {
-                    // Empty array — type must be inferred from context (let binding)
-                    // For now return a generic unknown array
-                    Ok(Type::Array(Box::new(Type::Basic("unknown".to_string()))))
+                    let resolved = expected_ty.map(|t| self.resolve_type(t));
+                    if let Some(Type::Array(inner)) = resolved {
+                        Ok(Type::Array(inner.clone()))
+                    } else {
+                        // Empty array — type must be inferred from context (let binding)
+                        // For now return a generic unknown array
+                        Ok(Type::Array(Box::new(Type::Basic("unknown".to_string()))))
+                    }
                 } else {
                     let first_ty = self.check_expr(&elements[0])?;
                     for elem in &elements[1..] {

@@ -23,5 +23,5 @@ print(msg);
 
 let user = 'A' .. 'Z';
 
-fn m(v:number):char => 'a';
+fn m(v:char):char => 'a';
 user.map(m);

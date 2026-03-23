@@ -5,20 +5,20 @@
 // Given an array of integers and a target sum, return indices of the two numbers that add up to target
 fn two_sum(nums: number[], target: number): number[] {
     // Create a map to store numbers and their indices
-    let num_map = {};
-    
+    let num_map: dict<number, number> = {};
+
     for i in 0..nums.len() {
         let complement = target - nums[i];
-        
+
         // Check if complement exists in map
         if complement in num_map {
             return [num_map[complement], i];
         }
-        
+
         // Store current number and its index
         num_map[nums[i]] = i;
     }
-    
+
     // Return empty array if no solution found
     return [];
 }
@@ -42,17 +42,17 @@ print("Two Sum Test 3: {result3}"); // Should print [0, 1]
 // Problem 2: Valid Parentheses
 // Given a string containing just parentheses, determine if the input string is valid
 fn is_valid_parentheses(s: string): bool {
-    let stack = [];
+    let stack: char[] = [];
     let pairs = {
         ')': '(',
         ']': '[',
         '}': '{'
     };
-    
+
     for ch in s {
         if ch in pairs {
             // Closing bracket
-            if stack.len() == 0 || stack[stack.len() - 1] != pairs[char] {
+            if stack.len() == 0 || stack[stack.len() - 1] != pairs[ch] {
                 return false;
             }
             stack.pop();
@@ -61,7 +61,7 @@ fn is_valid_parentheses(s: string): bool {
             stack.push(ch);
         }
     }
-    
+
     return stack.len() == 0;
 }
 
@@ -79,16 +79,16 @@ fn max_subarray_sum(arr: number[], k: number): number {
     if arr.len() < k {
         return 0;
     }
-    
+
     // Calculate initial window sum
     var max_sum = 0;
     var window_sum = 0;
-    
+
     for i in 0..k {
         window_sum = window_sum + arr[i];
     }
     max_sum = window_sum;
-    
+
     // Slide the window
     for i in k..arr.len() {
         window_sum = window_sum - arr[i - k] + arr[i];
@@ -96,7 +96,7 @@ fn max_subarray_sum(arr: number[], k: number): number {
             max_sum = window_sum;
         }
     }
-    
+
     return max_sum;
 }
 
@@ -112,10 +112,10 @@ print("Array: {arr2}, k={k2}, Max Sum: {max_subarray_sum(arr2, k2)}"); // Should
 
 // Problem 4: Reverse a String
 fn reverse_string(s: string): string {
-    let chars = s.split("");
-    let left = 0;
-    let right = chars.len() - 1;
-    
+    var chars = s.split("");
+    var left = 0;
+    var right = chars.len() - 1;
+
     while left < right {
         let temp = chars[left];
         chars[left] = chars[right];
@@ -123,7 +123,7 @@ fn reverse_string(s: string): string {
         left = left + 1;
         right = right - 1;
     }
-    
+
     return chars.join("");
 }
 
@@ -151,6 +151,3 @@ print("factorial(7) = {factorial(7)}"); // Should print 5040
 extend string{
     fn ones(self):string => self;
 }
-
-
-

@@ -45,7 +45,7 @@ extend string {
 }
 
 extend array{
-    fn shuffle(self){
+    fn shuffle(self:number[]){
         for i in 0 ..< self.len(){
             let random = Math::round_down(Math::random() * self.len());
             let temp = self[i];

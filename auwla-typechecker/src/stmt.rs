@@ -11,7 +11,7 @@ impl Typechecker {
                 ty,
                 initializer,
             } => {
-                let init_ty = self.check_expr(initializer)?;
+                let init_ty = self.check_expr_expected(initializer, ty.as_ref())?;
                 let final_ty = if let Some(declared_ty) = ty {
                     self.assert_type_eq(declared_ty, &init_ty)
                         .map_err(|msg| TypeError {
@@ -20,6 +20,15 @@ impl Typechecker {
                         })?;
                     declared_ty.clone()
                 } else {
+                    if self.contains_unknown(&init_ty) {
+                        return Err(TypeError {
+                            span: initializer.span.clone(),
+                            message: format!(
+                                "Type error: type must be explicitly annotated for empty collection, found '{}'",
+                                init_ty
+                            ),
+                        });
+                    }
                     init_ty
                 };
                 self.declare_variable(
@@ -88,7 +97,7 @@ impl Typechecker {
                 ty,
                 initializer,
             } => {
-                let init_ty = self.check_expr(initializer)?;
+                let init_ty = self.check_expr_expected(initializer, ty.as_ref())?;
                 let final_ty = if let Some(declared_ty) = ty {
                     self.assert_type_eq(declared_ty, &init_ty)
                         .map_err(|msg| TypeError {
@@ -97,6 +106,15 @@ impl Typechecker {
                         })?;
                     declared_ty.clone()
                 } else {
+                    if self.contains_unknown(&init_ty) {
+                        return Err(TypeError {
+                            span: initializer.span.clone(),
+                            message: format!(
+                                "Type error: type must be explicitly annotated for empty collection, found '{}'",
+                                init_ty
+                            ),
+                        });
+                    }
                     init_ty
                 };
                 self.declare_variable(
@@ -108,17 +126,12 @@ impl Typechecker {
                 Ok(())
             }
             auwla_ast::StmtKind::Assign { target, value } => {
-                let val_ty = self.check_expr(value)?;
+                let target_ty = self.check_expr(target)?;
+                let val_ty = self.check_expr_expected(value, Some(&target_ty))?;
 
                 match &target.node {
                     auwla_ast::ExprKind::Identifier(name) => {
-                        let var_ty = self.lookup_variable(name).ok_or_else(|| TypeError {
-                            span: target.span.clone(),
-                            message: format!(
-                                "Undefined variable '{}' — declare it with `var` first",
-                                name
-                            ),
-                        })?;
+                        let var_ty = target_ty.clone(); // Use the already evaluated target_ty
 
                         if !self.is_mutable(name) {
                             return self.error(
@@ -313,8 +326,9 @@ impl Typechecker {
                 Ok(())
             }
             auwla_ast::StmtKind::Return(expr_opt) => {
+                let expected_ty = self.current_return_type.as_ref().and_then(|t| t.as_ref()).cloned();
                 let actual_ty = if let Some(expr) = expr_opt {
-                    Some(self.check_expr(expr)?)
+                    Some(self.check_expr_expected(expr, expected_ty.as_ref())?)
                 } else {
                     None
                 };
@@ -384,11 +398,12 @@ impl Typechecker {
                 let iter_ty = self.check_expr(iterable)?;
                 let elem_ty = match iter_ty {
                     Type::Array(inner) => *inner,
+                    Type::Basic(name) if name == "string" => Type::Basic("char".to_string()),
                     other => {
                         return self.error(
                             iterable.span.clone(),
                             format!(
-                                "Type error: 'for..in' requires an array or range, but got '{}'",
+                                "Type error: 'for..in' requires an array, range, or string, but got '{}'",
                                 other
                             ),
                         );
@@ -506,7 +521,12 @@ impl Typechecker {
                         .iter()
                         .map(|(n, ty_opt)| {
                             let t = if n == "self" {
-                                self_type.clone()
+                                if let Some(explicit_ty) = ty_opt {
+                                    let generic_ty = self.genericize_type(explicit_ty, &method_tps);
+                                    self.resolve_self_type(&generic_ty, &self_type)
+                                } else {
+                                    self_type.clone()
+                                }
                             } else {
                                 let ty =
                                     ty_opt.clone().unwrap_or(Type::Basic("unknown".to_string()));

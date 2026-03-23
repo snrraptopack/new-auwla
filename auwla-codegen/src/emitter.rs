@@ -307,6 +307,16 @@ impl JsEmitter {
                 }
                 None
             }
+            ExprKind::Dict(pairs) => {
+                if pairs.is_empty() {
+                    Some("dict".to_string())
+                } else {
+                    let k = self.infer_expr_type(&pairs[0].0).unwrap_or_else(|| "unknown".to_string());
+                    let v = self.infer_expr_type(&pairs[0].1).unwrap_or_else(|| "unknown".to_string());
+                    Some(format!("dict<{}, {}>", k, v))
+                }
+            }
+            ExprKind::CharLit(_) => Some("char".to_string()),
             _ => None,
         }
     }
@@ -336,36 +346,6 @@ impl JsEmitter {
         kind.map(|k| format!("array<{}>", k))
     }
 
-    /// Infer a type key string from an expression's AST shape.
-    ///
-    /// Used to register variable types in `var_types` so extension method
-    /// calls can be resolved. Centralizes the repeated initializer-sniffing
-    /// logic that was duplicated across Let/Var handlers.
-    pub(crate) fn infer_type_key_from_expr(&self, expr: &auwla_ast::expr::Expr) -> Option<String> {
-        match &expr.node {
-            ExprKind::Array(elems) => Some(
-                self.array_literal_type_key(elems)
-                    .unwrap_or_else(|| "array".to_string()),
-            ),
-            ExprKind::Dict(pairs) => {
-                if pairs.is_empty() {
-                    Some("dict".to_string())
-                } else {
-                    let k = self.infer_type_key_from_expr(&pairs[0].0).unwrap_or_else(|| "unknown".to_string());
-                    let v = self.infer_type_key_from_expr(&pairs[0].1).unwrap_or_else(|| "unknown".to_string());
-                    Some(format!("dict<{}, {}>", k, v))
-                }
-            }
-            ExprKind::StringLit(_) => Some("string".to_string()),
-            ExprKind::NumberLit(_) => Some("number".to_string()),
-            ExprKind::BoolLit(_) => Some("bool".to_string()),
-            ExprKind::CharLit(_) => Some("char".to_string()),
-            ExprKind::StructInit { name, .. } => Some(name.clone()),
-            ExprKind::Range { .. } => Some("array<number>".to_string()),
-            _ => None,
-        }
-    }
-
     /// Register a variable's type from an explicit annotation or by
     /// inferring from the initializer expression.
     pub(crate) fn register_var_type(
@@ -376,7 +356,7 @@ impl JsEmitter {
     ) {
         if let Some(t) = ty {
             self.var_types.insert(name.to_string(), self.type_to_key(t));
-        } else if let Some(key) = self.infer_type_key_from_expr(initializer) {
+        } else if let Some(key) = self.infer_expr_type(initializer) {
             self.var_types.insert(name.to_string(), key);
         }
     }

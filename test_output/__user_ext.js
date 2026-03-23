@@ -1,34 +1,37 @@
 import { __print } from './__util.js';
 
-export function _ext_User_greet(__self) {
+import './std/string.js';
+import './std/array.js';
+import './std/number.js';
+export function _ext_User__greet(__self) {
   return ("Hello, " + __self.name);
 }
 
-export function _ext_array_last(__self) {
+export function _ext_array__last(__self) {
   if ((__self.length > 0)) {
     return ({ ok: true, value: __self[(__self.length - 1)] });
   }
   return ({ ok: false });
 }
 
-export function _ext_array_first(__self) {
+export function _ext_array__first(__self) {
   if ((__self.length > 0)) {
     return ({ ok: true, value: __self[0] });
   }
   return ({ ok: false });
 }
 
-export function _ext_array_low(__self) {
+export function _ext_array__low(__self) {
   return 0;
 }
 
-export function _ext_array_high(__self) {
+export function _ext_array__high(__self) {
   return __self.length;
 }
 
-export function _ext_array_number_max(__self) {
+export function _ext_array_number__max(__self) {
   let c_max = 0;
-  for (let i = _ext_array_low(__self); i < _ext_array_high(__self); i++) {
+  for (let i = _ext_array__low(__self); i < _ext_array__high(__self); i++) {
     if ((__self[i] > c_max)) {
       c_max = __self[i];
     }
@@ -36,39 +39,39 @@ export function _ext_array_number_max(__self) {
   return c_max;
 }
 
-export function _ext_number_double(__self) {
+export function _ext_number__double(__self) {
   return (__self * 2);
 }
 
-export function _ext_number_square(__self) {
+export function _ext_number__square(__self) {
   return (__self * __self);
 }
 
-export function _ext_number_triple(__self) {
+export function _ext_number__triple(__self) {
   return (__self * 3);
 }
 
-export function _ext_number_by(__self, value) {
+export function _ext_number__by(__self, value) {
   return (__self * value);
 }
 
-export function _ext_number_double_then_square(__self) {
-  return _ext_number_square(_ext_number_double(__self));
+export function _ext_number__double_then_square(__self) {
+  return _ext_number__square(_ext_number__double(__self));
 }
 
-export function _ext_number_add(__self, other) {
+export function _ext_number__add(__self, other) {
   return (__self + other);
 }
 
-export function _ext_string_shout(__self) {
+export function _ext_string__shout(__self) {
   return (__self + "!!!");
 }
 
-export function _ext_string_whisper(__self) {
+export function _ext_string__whisper(__self) {
   return (__self + "...");
 }
 
-export function _ext_string_first_n(__self, n) {
+export function _ext_string__first_n(__self, n) {
   let result = "";
   for (let i = 0; i < n; i++) {
     result = (result + __self.charAt(i));
@@ -76,7 +79,7 @@ export function _ext_string_first_n(__self, n) {
   return result;
 }
 
-export function _ext_array_shuffle(__self) {
+export function _ext_array__shuffle(__self) {
   for (let i = 0; i < __self.length; i++) {
     const random = Math.floor((Math.random() * __self.length));
     const temp = __self[i];
@@ -85,7 +88,11 @@ export function _ext_array_shuffle(__self) {
   }
 }
 
-export function _ext_array_Task_find_one(__self, id) {
+export function _ext_string__ones(__self) {
+  return __self;
+}
+
+export function _ext_array_Task__find_one(__self, id) {
   for (const t of __self) {
     if ((t.id === id)) {
       return ({ ok: true, value: t });
@@ -94,7 +101,7 @@ export function _ext_array_Task_find_one(__self, id) {
   return ({ ok: false, value: "id not found" });
 }
 
-export function _ext_array_Task_print_summary(__self) {
+export function _ext_array_Task__print_summary(__self) {
   __print(`Summary of ${__self.length} tasks:`);
   for (const t of __self) {
     const __match_0 = t.status;
@@ -114,7 +121,7 @@ export function _ext_array_Task_print_summary(__self) {
   }
 }
 
-export function _ext_array_number_sum(__self) {
+export function _ext_array_number__sum(__self) {
   let total = 0;
   for (const x of __self) {
     total = (total + x);

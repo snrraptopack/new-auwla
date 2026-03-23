@@ -65,12 +65,32 @@ fn expand_interpolation(
             let expr_start = i + 1;
             let mut depth = 1;
             let mut j = expr_start;
+            let mut in_string = false;
+            let mut in_char = false;
+
             while j < bytes.len() && depth > 0 {
-                if bytes[j] == b'{' {
-                    depth += 1;
-                } else if bytes[j] == b'}' {
-                    depth -= 1;
+                if in_string {
+                    if bytes[j] == b'\\' {
+                        j += 1;
+                    } else if bytes[j] == b'"' {
+                        in_string = false;
+                    }
+                } else if in_char {
+                    if bytes[j] == b'\\' {
+                        j += 1;
+                    } else if bytes[j] == b'\'' {
+                        in_char = false;
+                    }
+                } else {
+                    match bytes[j] {
+                        b'"' => in_string = true,
+                        b'\'' => in_char = true,
+                        b'{' => depth += 1,
+                        b'}' => depth -= 1,
+                        _ => {}
+                    }
                 }
+                
                 if depth > 0 {
                     j += 1;
                 }

@@ -55,7 +55,7 @@ pub enum Token {
     Ident(String),
 
     // Literals
-    #[regex(r#""([^"\\]|\\.)*""#, |lex| lex.slice()[1..lex.slice().len()-1].to_string())]
+    #[regex(r#"""#, lex_string)]
     StringLit(String),
 
     // String interpolation tokens (emitted by post-processing in lex())
@@ -210,4 +210,42 @@ impl std::fmt::Display for Token {
             Token::Error(s) => write!(f, "<error: {}>", s),
         }
     }
+}
+
+fn lex_string(lex: &mut logos::Lexer<Token>) -> Option<String> {
+    let mut brace_depth = 0;
+    let mut i = 0;
+    let remainder = lex.remainder();
+    let bytes = remainder.as_bytes();
+
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => {
+                i += 1; // Skip backslash
+                if i < bytes.len() {
+                    i += 1; // Skip escaped char
+                }
+            }
+            b'"' if brace_depth == 0 => {
+                let s = &remainder[..i];
+                lex.bump(i + 1);
+                return Some(s.to_string());
+            }
+            b'{' => {
+                brace_depth += 1;
+                i += 1;
+            }
+            b'}' => {
+                if brace_depth > 0 {
+                    brace_depth -= 1;
+                }
+                i += 1;
+            }
+            _ => {
+                i += 1;
+            }
+        }
+    }
+
+    None // Unclosed string
 }
