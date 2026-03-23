@@ -11,6 +11,7 @@ pub struct Typechecker {
     pub structs: HashMap<String, Vec<(String, Type)>>,
     pub enums: HashMap<String, Vec<(String, Vec<Type>)>>,
     pub type_aliases: HashMap<String, Type>,
+    pub type_alias_params: HashMap<String, Vec<String>>,
     /// type_name -> [(type_params, method_name, is_static, params_with_types, return_ty)]
     pub extensions: HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
     /// Meta-information about types (e.g., attributes like @external)
@@ -36,6 +37,7 @@ impl Typechecker {
             structs: HashMap::new(),
             enums: HashMap::new(),
             type_aliases: HashMap::new(),
+            type_alias_params: HashMap::new(),
             extensions: HashMap::new(),
             type_attributes: HashMap::new(),
             node_types: HashMap::new(),
@@ -79,6 +81,7 @@ impl Typechecker {
             Type::TypeVar(name) => name.clone(),
             Type::InferenceVar(id) => format!("_{}", id),
             Type::SelfType => "Self".to_string(),
+            Type::Wrapper(inner) => format!("wrapper<{}>", self.type_to_key(inner)),
         }
     }
 
@@ -299,6 +302,24 @@ impl Typechecker {
                     ty.clone()
                 }
             }
+            Type::Generic(name, args) => {
+                if let Some(aliased) = self.type_aliases.get(name) {
+                    if let Some(params) = self.type_alias_params.get(name) {
+                        // Perform substitution: map params[i] -> args[i]
+                        let mut substituted = aliased.clone();
+                        for (i, param_name) in params.iter().enumerate() {
+                            if let Some(arg) = args.get(i) {
+                                substituted = self.substitute_type_var(&substituted, param_name, arg);
+                            }
+                        }
+                        return self.resolve_type(&substituted);
+                    }
+                    // Non-generic alias using Generic syntax (unlikely but possible)
+                    self.resolve_type(aliased)
+                } else {
+                    ty.clone()
+                }
+            }
             _ => ty.clone(),
         }
     }
@@ -338,27 +359,48 @@ impl Typechecker {
 
     /// Resolve `Self` within a type to the given concrete type.
     pub(crate) fn resolve_self_type(&self, ty: &Type, self_ty: &Type) -> Type {
+        self.substitute_type_var(ty, "Self", self_ty)
+    }
+
+    pub(crate) fn substitute_type_var(&self, ty: &Type, var_name: &str, replacement: &Type) -> Type {
         match ty {
-            Type::SelfType => self_ty.clone(),
-            Type::Array(inner) => Type::Array(Box::new(self.resolve_self_type(inner, self_ty))),
+            Type::Custom(name) if name == var_name => replacement.clone(),
+            Type::TypeVar(name) if name == var_name => replacement.clone(),
+            Type::Array(inner) => {
+                Type::Array(Box::new(self.substitute_type_var(inner, var_name, replacement)))
+            }
             Type::Dict(k, v) => Type::Dict(
-                Box::new(self.resolve_self_type(k, self_ty)),
-                Box::new(self.resolve_self_type(v, self_ty)),
+                Box::new(self.substitute_type_var(k, var_name, replacement)),
+                Box::new(self.substitute_type_var(v, var_name, replacement)),
             ),
             Type::Optional(inner) => {
-                Type::Optional(Box::new(self.resolve_self_type(inner, self_ty)))
+                Type::Optional(Box::new(self.substitute_type_var(inner, var_name, replacement)))
             }
             Type::Result { ok_type, err_type } => Type::Result {
-                ok_type: Box::new(self.resolve_self_type(ok_type, self_ty)),
-                err_type: Box::new(self.resolve_self_type(err_type, self_ty)),
+                ok_type: Box::new(self.substitute_type_var(ok_type, var_name, replacement)),
+                err_type: Box::new(self.substitute_type_var(err_type, var_name, replacement)),
             },
-            Type::Function(params, ret) => {
-                let p = params
+            Type::Generic(name, args) => {
+                let sub_args = args
                     .iter()
-                    .map(|t| self.resolve_self_type(t, self_ty))
+                    .map(|a| self.substitute_type_var(a, var_name, replacement))
                     .collect();
-                Type::Function(p, Box::new(self.resolve_self_type(ret, self_ty)))
+                Type::Generic(name.clone(), sub_args)
             }
+            Type::Function(params, ret) => {
+                let sub_params = params
+                    .iter()
+                    .map(|p| self.substitute_type_var(p, var_name, replacement))
+                    .collect();
+                Type::Function(
+                    sub_params,
+                    Box::new(self.substitute_type_var(ret, var_name, replacement)),
+                )
+            }
+            Type::Wrapper(inner) => {
+                Type::Wrapper(Box::new(self.substitute_type_var(inner, var_name, replacement)))
+            }
+            Type::SelfType if var_name == "Self" => replacement.clone(),
             _ => ty.clone(),
         }
     }
@@ -407,30 +449,25 @@ impl Typechecker {
                 }
             }
             (Type::Optional(_), Type::Basic(name)) if name == "null" => return Ok(()),
+            
+            // Wrapper (some(val)) compatibility
+            (Type::Wrapper(w_inner), Type::Optional(o_inner))
+            | (Type::Optional(o_inner), Type::Wrapper(w_inner)) => {
+                return self.assert_type_eq(o_inner, w_inner);
+            }
+            (Type::Wrapper(w_inner), Type::Result { ok_type, .. })
+            | (Type::Result { ok_type, .. }, Type::Wrapper(w_inner)) => {
+                return self.assert_type_eq(w_inner, ok_type);
+            }
+            (Type::Wrapper(w1), Type::Wrapper(w2)) => {
+                return self.assert_type_eq(w1, w2);
+            }
+
             (Type::Dict(e_k, e_v), Type::Dict(a_k, a_v)) => {
                 if self.assert_type_eq(e_k, a_k).is_ok() {
                     if self.assert_type_eq(e_v, a_v).is_ok() {
                         return Ok(());
                     }
-                }
-            }
-
-            // Allow `some(value)` to match `Optional` by treating Result<T, unknown> as Optional<T>
-            (
-                Type::Optional(e_inner),
-                Type::Result {
-                    ok_type: a_ok,
-                    err_type: a_err,
-                },
-            ) => {
-                let err_is_unknown = if let Type::Basic(name) = &**a_err {
-                    name == "unknown"
-                } else {
-                    false
-                };
-
-                if err_is_unknown && self.assert_type_eq(e_inner, a_ok).is_ok() {
-                    return Ok(());
                 }
             }
 

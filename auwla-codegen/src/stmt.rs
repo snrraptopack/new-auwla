@@ -56,6 +56,21 @@ impl JsEmitter {
                     self.write(";\n");
                 }
             }
+            auwla_ast::StmtKind::CompoundAssign { target, op, value } => {
+                let target_str = self.emit_expr_to_string(target);
+                let op_str = match op {
+                    auwla_ast::BinaryOp::Add => "+=",
+                    auwla_ast::BinaryOp::Sub => "-=",
+                    auwla_ast::BinaryOp::Mul => "*=",
+                    auwla_ast::BinaryOp::Div => "/=",
+                    auwla_ast::BinaryOp::Mod => "%=",
+                    _ => "=", // Should not happen given parser/typechecker
+                };
+                self.write_indent();
+                self.write(&format!("{} {} ", target_str, op_str));
+                self.emit_expr(value);
+                self.write(";\n");
+            }
             auwla_ast::StmtKind::Fn {
                 name, params, body, ..
             } => {

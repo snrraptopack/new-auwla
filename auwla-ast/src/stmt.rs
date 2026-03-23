@@ -63,6 +63,8 @@ pub enum StmtKind {
     },
     /// target = 10;
     Assign { target: Expr, value: Expr },
+    /// target += 10;
+    CompoundAssign { target: Expr, op: crate::expr::BinaryOp, value: Expr },
     /// fn add<T>(a: T, b: T): T { ... }
     Fn {
         name: String,

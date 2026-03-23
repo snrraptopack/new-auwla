@@ -24,6 +24,14 @@ impl JsEmitter {
                 }
             }
             auwla_ast::ExprKind::Binary { op, left, right } => {
+                if op == &BinaryOp::Coalesce {
+                    self.write("((_o) => _o.ok ? _o.value : (");
+                    self.emit_expr(right);
+                    self.write("))(");
+                    self.emit_expr(left);
+                    self.write(")");
+                    return;
+                }
                 self.write("(");
                 self.emit_expr(left);
                 let op_str = match op {
@@ -31,6 +39,7 @@ impl JsEmitter {
                     BinaryOp::Sub => " - ",
                     BinaryOp::Mul => " * ",
                     BinaryOp::Div => " / ",
+                    BinaryOp::Mod => " % ",
                     BinaryOp::Eq => " === ",
                     BinaryOp::Neq => " !== ",
                     BinaryOp::Lt => " < ",
@@ -39,6 +48,7 @@ impl JsEmitter {
                     BinaryOp::Gte => " >= ",
                     BinaryOp::And => " && ",
                     BinaryOp::Or => " || ",
+                    BinaryOp::Coalesce => unreachable!(),
                     BinaryOp::In => " in ",
                 };
                 self.write(op_str);

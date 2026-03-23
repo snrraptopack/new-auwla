@@ -29,6 +29,8 @@ pub enum Type {
     InferenceVar(usize),
     /// The `Self` type — resolves to the enclosing type name during typechecking
     SelfType,
+    /// Internal: A polymorphic wrapper (either Optional or Result) specifically for some()
+    Wrapper(Box<Type>),
 }
 
 impl fmt::Display for Type {
@@ -63,6 +65,7 @@ impl fmt::Display for Type {
                 write!(f, ">")
             }
             Type::SelfType => write!(f, "Self"),
+            Type::Wrapper(inner) => write!(f, "wrapper<{}>", inner),
         }
     }
 }

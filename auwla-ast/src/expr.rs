@@ -139,6 +139,7 @@ pub enum BinaryOp {
     Sub,
     Mul,
     Div,
+    Mod,
     Eq,
     Neq,
     Lt,
@@ -148,10 +149,44 @@ pub enum BinaryOp {
     And,
     Or,
     In,
+    Coalesce,
+}
+
+impl std::fmt::Display for BinaryOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            BinaryOp::Add => "+",
+            BinaryOp::Sub => "-",
+            BinaryOp::Mul => "*",
+            BinaryOp::Div => "/",
+            BinaryOp::Mod => "%",
+            BinaryOp::Eq => "==",
+            BinaryOp::Neq => "!=",
+            BinaryOp::Lt => "<",
+            BinaryOp::Gt => ">",
+            BinaryOp::Lte => "<=",
+            BinaryOp::Gte => ">=",
+            BinaryOp::And => "&&",
+            BinaryOp::Or => "||",
+            BinaryOp::In => "in",
+            BinaryOp::Coalesce => "??",
+        };
+        write!(f, "{}", s)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOp {
     Not, // !
     Neg, // -
+}
+
+impl std::fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            UnaryOp::Not => "!",
+            UnaryOp::Neg => "-",
+        };
+        write!(f, "{}", s)
+    }
 }

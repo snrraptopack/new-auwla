@@ -47,7 +47,8 @@ impl Typechecker {
                 let right_ty = self.check_expr(right)?;
 
                 if op == &auwla_ast::BinaryOp::In {
-                    match right_ty {
+                    let resolved_right = self.resolve_type(&right_ty);
+                    match resolved_right {
                         Type::Dict(k, _) => {
                             self.assert_type_eq(&k, &left_ty).map_err(|msg| TypeError {
                                 span: expr.span.clone(),
@@ -62,6 +63,61 @@ impl Typechecker {
                             });
                         }
                     }
+                }
+
+                if op == &auwla_ast::BinaryOp::And || op == &auwla_ast::BinaryOp::Or {
+                    self.assert_type_eq(&Type::Basic("bool".to_string()), &left_ty)
+                        .map_err(|msg| TypeError {
+                            span: left.span.clone(),
+                            message: msg,
+                        })?;
+                    self.assert_type_eq(&Type::Basic("bool".to_string()), &right_ty)
+                        .map_err(|msg| TypeError {
+                            span: right.span.clone(),
+                            message: msg,
+                        })?;
+                    return Ok(Type::Basic("bool".to_string()));
+                }
+
+                if op == &auwla_ast::BinaryOp::Coalesce {
+                    let resolved_left = self.resolve_type(&left_ty);
+                    match &resolved_left {
+                        Type::Optional(inner) => {
+                            self.assert_type_eq(inner, &right_ty).map_err(|msg| TypeError {
+                                span: expr.span.clone(),
+                                message: msg,
+                            })?;
+                            return Ok(inner.as_ref().clone());
+                        }
+                        Type::Result { ok_type, .. } => {
+                            self.assert_type_eq(ok_type, &right_ty).map_err(|msg| TypeError {
+                                span: expr.span.clone(),
+                                message: msg,
+                            })?;
+                            return Ok(ok_type.as_ref().clone());
+                        }
+                        Type::Wrapper(inner) => {
+                            self.assert_type_eq(inner, &right_ty).map_err(|msg| TypeError {
+                                span: expr.span.clone(),
+                                message: msg,
+                            })?;
+                            return Ok(inner.as_ref().clone());
+                        }
+                        other => {
+                            return Err(TypeError {
+                                span: left.span.clone(),
+                                message: format!("Type error: coalesce operator '??' expects Optional or Result on the left, but got '{}'", other),
+                            });
+                        }
+                    }
+                }
+
+                if op == &auwla_ast::BinaryOp::Mod {
+                    self.assert_type_eq(&Type::Basic("number".to_string()), &left_ty)
+                        .map_err(|msg| TypeError {
+                            span: left.span.clone(),
+                            message: msg,
+                        })?;
                 }
 
                 let mut unifier = crate::inference::unify::Unifier::new();
@@ -89,10 +145,7 @@ impl Typechecker {
             // If it evaluates `some()`, it wraps the OK branch.
             auwla_ast::ExprKind::Some(inner) => {
                 let inner_ty = self.check_expr(inner)?;
-                Ok(Type::Result {
-                    ok_type: Box::new(inner_ty),
-                    err_type: Box::new(Type::Basic("unknown".to_string())),
-                })
+                Ok(Type::Wrapper(Box::new(inner_ty)))
             }
             auwla_ast::ExprKind::None(inner_opt) => {
                 if let Some(inner) = inner_opt {
@@ -122,7 +175,8 @@ impl Typechecker {
                 let (type_params, params, return_ty) = if let Some(var_ty) =
                     self.lookup_variable(name)
                 {
-                    if let Type::Function(p, r) = var_ty {
+                    let resolved_var_ty = self.resolve_type(&var_ty);
+                    if let Type::Function(p, r) = resolved_var_ty {
                         (None, p, Some(*r))
                     } else {
                         return Err(TypeError {
@@ -290,9 +344,12 @@ impl Typechecker {
                 let mut has_some = false;
                 let mut has_none = false;
 
-                let is_primitive = matches!(result_ty, Type::Basic(ref s) if s == "string" || s == "number" || s == "bool" || s == "char");
+                let is_primitive = match self.resolve_type(&result_ty) {
+                    Type::Basic(ref s) => s == "string" || s == "number" || s == "bool" || s == "char",
+                    _ => false,
+                };
 
-                let enum_def = if let Type::Custom(ref enum_name) = result_ty {
+                let enum_def = if let Type::Custom(ref enum_name) = self.resolve_type(&result_ty) {
                     self.enums.get(enum_name).cloned()
                 } else {
                     None
@@ -356,10 +413,11 @@ impl Typechecker {
                                 })?;
                             }
                             auwla_ast::PatternKind::Variant { name, bindings } => {
+                                let resolved_res = self.resolve_type(&result_ty);
                                 if let Type::Result {
                                     ok_type,
                                     err_type: _,
-                                } = &result_ty
+                                } = &resolved_res
                                 {
                                     if name == "some" {
                                         has_some = true;
@@ -403,7 +461,7 @@ impl Typechecker {
                                             ),
                                         );
                                     }
-                                } else if let Type::Optional(inner) = &result_ty {
+                                } else if let Type::Optional(inner) = &resolved_res {
                                     if name == "some" {
                                         has_some = true;
                                         if i == 0 {

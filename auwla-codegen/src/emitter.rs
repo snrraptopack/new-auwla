@@ -156,6 +156,7 @@ impl JsEmitter {
             Type::TypeVar(name) => name.clone(),
             Type::InferenceVar(id) => format!("_{}", id),
             Type::SelfType => "Self".to_string(),
+            Type::Wrapper(inner) => format!("wrapper<{}>", self.type_to_key(inner)),
         }
     }
 
@@ -317,6 +318,39 @@ impl JsEmitter {
                 }
             }
             ExprKind::CharLit(_) => Some("char".to_string()),
+            ExprKind::Index { expr: rec, .. } => {
+                let rec_ty = self.infer_expr_type(rec)?;
+                if rec_ty.starts_with("dict<") {
+                    // Extract V from dict<K, V>
+                    if let Some(comma_idx) = rec_ty.find(',') {
+                        let mut v_part = rec_ty[comma_idx + 1..].trim();
+                        if v_part.ends_with('>') {
+                            v_part = &v_part[..v_part.len() - 1];
+                        }
+                        return Some(v_part.trim().to_string());
+                    }
+                } else if rec_ty.starts_with("array<") {
+                    // Extract V from array<V>
+                    let inner = &rec_ty[6..rec_ty.len() - 1];
+                    return Some(inner.to_string());
+                }
+                None
+            }
+            ExprKind::Binary { op, left, .. } => {
+                use auwla_ast::BinaryOp;
+                match op {
+                    BinaryOp::Eq
+                    | BinaryOp::Neq
+                    | BinaryOp::Lt
+                    | BinaryOp::Gt
+                    | BinaryOp::Lte
+                    | BinaryOp::Gte
+                    | BinaryOp::In
+                    | BinaryOp::And
+                    | BinaryOp::Or => Some("bool".to_string()),
+                    _ => self.infer_expr_type(left),
+                }
+            }
             _ => None,
         }
     }

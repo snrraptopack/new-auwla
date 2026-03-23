@@ -142,6 +142,16 @@ impl Unifier {
                 }
                 Ok(())
             }
+            // Polymorphic Wrapper (some(val)) unification
+            (Type::Wrapper(w), other) | (other, Type::Wrapper(w)) => {
+                match other {
+                    Type::Optional(inner) => self.unify(w, inner),
+                    Type::Result { ok_type, .. } => self.unify(w, ok_type),
+                    Type::Wrapper(other_w) => self.unify(w, other_w),
+                    Type::InferenceVar(_) => unreachable!("InferenceVar handled above"),
+                    _ => Err(format!("Type Mismatch: cannot unify success-wrapper with {}", other)),
+                }
+            }
             // Allow unifying anything with 'unknown' for permissive checking during transition
             (Type::Basic(n), _) if n == "unknown" => Ok(()),
             (_, Type::Basic(n)) if n == "unknown" => Ok(()),
@@ -181,6 +191,7 @@ impl Unifier {
                 let resolved_args = args.iter().map(|a| self.resolve(a)).collect();
                 Type::Generic(name.clone(), resolved_args)
             }
+            Type::Wrapper(inner) => Type::Optional(Box::new(self.resolve(inner))),
             _ => ty.clone(), // Basic, Custom, TypeVar remain unchanged
         }
     }

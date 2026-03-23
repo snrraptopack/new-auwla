@@ -44,8 +44,9 @@ impl Typechecker {
                 initializer,
             } => {
                 let init_ty = self.check_expr(initializer)?;
+                let resolved_init = self.resolve_type(&init_ty);
 
-                match init_ty {
+                match resolved_init {
                     Type::Custom(struct_name) => {
                         let struct_def =
                             self.structs
@@ -131,7 +132,7 @@ impl Typechecker {
 
                 match &target.node {
                     auwla_ast::ExprKind::Identifier(name) => {
-                        let var_ty = target_ty.clone(); // Use the already evaluated target_ty
+                        let var_ty = self.resolve_type(&target_ty); // Use resolved target_ty
 
                         if !self.is_mutable(name) {
                             return self.error(
@@ -151,7 +152,8 @@ impl Typechecker {
                     }
                     auwla_ast::ExprKind::PropertyAccess { expr, property } => {
                         let expr_ty = self.check_expr(expr)?;
-                        match expr_ty {
+                        let resolved_expr = self.resolve_type(&expr_ty);
+                        match resolved_expr {
                             Type::Custom(name) => {
                                 let struct_def =
                                     self.structs.get(&name).ok_or_else(|| TypeError {
@@ -193,8 +195,9 @@ impl Typechecker {
                     auwla_ast::ExprKind::Index { expr, index } => {
                         let expr_ty = self.check_expr(expr)?;
                         let idx_ty = self.check_expr(index)?;
+                        let resolved_expr = self.resolve_type(&expr_ty);
 
-                        match expr_ty {
+                        match resolved_expr {
                             Type::Array(inner) => {
                                 self.assert_type_eq(&Type::Basic("number".to_string()), &idx_ty)
                                     .map_err(|_| TypeError {
@@ -241,6 +244,95 @@ impl Typechecker {
                             target.span.clone(),
                             format!("Type error: invalid assignment target '{:?}'", other),
                         );
+                    }
+                }
+                Ok(())
+            }
+            auwla_ast::StmtKind::CompoundAssign { target, op, value } => {
+                let target_ty = self.check_expr(target)?;
+                let val_ty = self.check_expr_expected(value, Some(&target_ty))?;
+
+                // Check mutability
+                match &target.node {
+                    auwla_ast::ExprKind::Identifier(name) => {
+                        if !self.is_mutable(name) {
+                            return self.error(
+                                target.span.clone(),
+                                format!(
+                                    "Cannot reassign '{}' using compound assignment — it was declared with `let` (immutable). Use `var` to allow reassignment.",
+                                    name
+                                ),
+                            );
+                        }
+                    }
+                    auwla_ast::ExprKind::PropertyAccess { .. } | auwla_ast::ExprKind::Index { .. } => {
+                        // Properties and indices are assumed mutable in Auwla for now
+                    }
+                    _ => {
+                        return self.error(
+                            target.span.clone(),
+                            "Type error: invalid compound assignment target".to_string(),
+                        );
+                    }
+                }
+
+                // Verify types based on operator
+                match op {
+                    auwla_ast::BinaryOp::Add => {
+                        // Allow number += number or string += string
+                        if target_ty == Type::Basic("string".to_string()) {
+                            self.assert_type_eq(&Type::Basic("string".to_string()), &val_ty)
+                                .map_err(|msg| TypeError {
+                                    span: value.span.clone(),
+                                    message: msg,
+                                })?;
+                        } else {
+                            self.assert_type_eq(&Type::Basic("number".to_string()), &target_ty)
+                                .map_err(|_| TypeError {
+                                    span: target.span.clone(),
+                                    message: format!(
+                                        "Compound assignment '+=' requires numeric or string target, got '{}'",
+                                        target_ty
+                                    ),
+                                })?;
+                            self.assert_type_eq(&Type::Basic("number".to_string()), &val_ty)
+                                .map_err(|_| TypeError {
+                                    span: value.span.clone(),
+                                    message: format!(
+                                        "Compound assignment '+=' requires numeric value for numeric target, got '{}'",
+                                        val_ty
+                                    ),
+                                })?;
+                        }
+                    }
+                    auwla_ast::BinaryOp::Sub
+                    | auwla_ast::BinaryOp::Mul
+                    | auwla_ast::BinaryOp::Div
+                    | auwla_ast::BinaryOp::Mod => {
+                        self.assert_type_eq(&Type::Basic("number".to_string()), &target_ty)
+                            .map_err(|_| TypeError {
+                                span: target.span.clone(),
+                                message: format!(
+                                    "Compound assignment '{}=' requires numeric target, got '{}'",
+                                    op, target_ty
+                                ),
+                            })?;
+                        self.assert_type_eq(&Type::Basic("number".to_string()), &val_ty)
+                            .map_err(|_| TypeError {
+                                span: value.span.clone(),
+                                message: format!(
+                                    "Compound assignment '{}=' requires numeric value, got '{}'",
+                                    op, val_ty
+                                ),
+                            })?;
+                    }
+                    _ => {
+                        // Fallback: strict equality
+                        self.assert_type_eq(&target_ty, &val_ty)
+                            .map_err(|msg| TypeError {
+                                span: value.span.clone(),
+                                message: msg,
+                            })?;
                     }
                 }
                 Ok(())
@@ -441,9 +533,14 @@ impl Typechecker {
                 Ok(())
             }
             auwla_ast::StmtKind::TypeAlias {
-                name, aliased_type, ..
+                name,
+                type_params,
+                aliased_type,
             } => {
                 self.type_aliases.insert(name.clone(), aliased_type.clone());
+                if let Some(params) = type_params {
+                    self.type_alias_params.insert(name.clone(), params.clone());
+                }
                 Ok(())
             }
             auwla_ast::StmtKind::EnumDecl {

@@ -125,6 +125,8 @@ pub enum Token {
     Star,
     #[token("/")]
     Slash,
+    #[token("%")]
+    Percent,
     // Logical operators
     #[token("&&")]
     And,
@@ -136,6 +138,19 @@ pub enum Token {
     Not,
     #[token("=>")]
     FatArrow,
+    #[token("+=")]
+    PlusEq,
+    #[token("-=")]
+    MinusEq,
+    #[token("*=")]
+    StarEq,
+    #[token("/=")]
+    SlashEq,
+    #[token("%=")]
+    PercentEq,
+    #[token("??")]
+    QuestionQuestion,
+
     #[token("@")]
     At,
 
@@ -201,12 +216,19 @@ impl std::fmt::Display for Token {
             Token::Minus => write!(f, "-"),
             Token::Star => write!(f, "*"),
             Token::Slash => write!(f, "/"),
+            Token::Percent => write!(f, "%"),
             Token::And => write!(f, "&&"),
             Token::Or => write!(f, "||"),
             Token::Pipe => write!(f, "|"),
             Token::Not => write!(f, "!"),
             Token::FatArrow => write!(f, "=>"),
             Token::At => write!(f, "@"),
+            Token::PlusEq => write!(f, "+="),
+            Token::MinusEq => write!(f, "-="),
+            Token::StarEq => write!(f, "*="),
+            Token::SlashEq => write!(f, "/="),
+            Token::PercentEq => write!(f, "%="),
+            Token::QuestionQuestion => write!(f, "??"),
             Token::Error(s) => write!(f, "<error: {}>", s),
         }
     }

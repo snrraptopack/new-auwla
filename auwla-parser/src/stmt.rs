@@ -197,14 +197,26 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                 )
             });
 
-        // Assignment: `target = value;`
+        // Assignment: `target = value;` or `target += value;`
         let assign_stmt = expr
             .clone()
-            .then_ignore(just(Token::Assign))
+            .then(
+                just(Token::Assign)
+                    .to(None)
+                    .or(just(Token::PlusEq).to(Some(auwla_ast::BinaryOp::Add)))
+                    .or(just(Token::MinusEq).to(Some(auwla_ast::BinaryOp::Sub)))
+                    .or(just(Token::StarEq).to(Some(auwla_ast::BinaryOp::Mul)))
+                    .or(just(Token::SlashEq).to(Some(auwla_ast::BinaryOp::Div)))
+                    .or(just(Token::PercentEq).to(Some(auwla_ast::BinaryOp::Mod))),
+            )
             .then(expr.clone())
             .then_ignore(just(Token::Semicolon))
-            .map_with_span(|(target, value), span| {
-                auwla_ast::Spanned::new(auwla_ast::StmtKind::Assign { target, value }, span)
+            .map_with_span(|((target, op_opt), value), span| {
+                if let Some(op) = op_opt {
+                    auwla_ast::Spanned::new(auwla_ast::StmtKind::CompoundAssign { target, op, value }, span)
+                } else {
+                    auwla_ast::Spanned::new(auwla_ast::StmtKind::Assign { target, value }, span)
+                }
             });
 
         let struct_decl = attributes

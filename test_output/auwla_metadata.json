@@ -1,93 +1,12 @@
 {
-  "array<Task>": [
+  "number": [
     {
       "type_params": null,
-      "name": "find_one",
+      "name": "abs",
       "is_static": false,
       "params": [
         [
           "self",
-          {
-            "Array": {
-              "Custom": "Task"
-            }
-          }
-        ],
-        [
-          "id",
-          {
-            "Basic": "number"
-          }
-        ]
-      ],
-      "return_ty": {
-        "Result": {
-          "ok_type": {
-            "Custom": "Task"
-          },
-          "err_type": {
-            "Basic": "string"
-          }
-        }
-      },
-      "attributes": [],
-      "origin": "User"
-    },
-    {
-      "type_params": null,
-      "name": "print_summary",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Array": {
-              "Custom": "Task"
-            }
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "void"
-      },
-      "attributes": [],
-      "origin": "User"
-    }
-  ],
-  "array<number>": [
-    {
-      "type_params": null,
-      "name": "reduce",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Array": {
-              "Basic": "number"
-            }
-          }
-        ],
-        [
-          "f",
-          {
-            "Function": [
-              [
-                {
-                  "Basic": "number"
-                },
-                {
-                  "Basic": "number"
-                }
-              ],
-              {
-                "Basic": "number"
-              }
-            ]
-          }
-        ],
-        [
-          "initial",
           {
             "Basic": "number"
           }
@@ -96,29 +15,18 @@
       "return_ty": {
         "Basic": "number"
       },
-      "attributes": [
-        {
-          "name": "external",
-          "args": [
-            "js",
-            "method",
-            "reduce"
-          ]
-        }
-      ],
+      "attributes": [],
       "origin": "Std"
     },
     {
       "type_params": null,
-      "name": "sum",
+      "name": "double",
       "is_static": false,
       "params": [
         [
           "self",
           {
-            "Array": {
-              "Basic": "number"
-            }
+            "Basic": "number"
           }
         ]
       ],
@@ -130,15 +38,13 @@
     },
     {
       "type_params": null,
-      "name": "max",
+      "name": "square",
       "is_static": false,
       "params": [
         [
           "self",
           {
-            "Array": {
-              "Basic": "number"
-            }
+            "Basic": "number"
           }
         ]
       ],
@@ -150,15 +56,13 @@
     },
     {
       "type_params": null,
-      "name": "min",
+      "name": "triple",
       "is_static": false,
       "params": [
         [
           "self",
           {
-            "Array": {
-              "Basic": "number"
-            }
+            "Basic": "number"
           }
         ]
       ],
@@ -170,15 +74,223 @@
     },
     {
       "type_params": null,
-      "name": "max",
+      "name": "minus",
       "is_static": false,
       "params": [
         [
           "self",
           {
-            "Array": {
-              "Basic": "number"
-            }
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": null,
+      "name": "by",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "number"
+          }
+        ],
+        [
+          "value",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": null,
+      "name": "add",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "number"
+          }
+        ],
+        [
+          "other",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": null,
+      "name": "sub",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "number"
+          }
+        ],
+        [
+          "other",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": null,
+      "name": "is_even",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "bool"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": null,
+      "name": "is_odd",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "bool"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": null,
+      "name": "is_positive",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "bool"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": null,
+      "name": "is_negative",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "bool"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": null,
+      "name": "is_zero",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "bool"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": null,
+      "name": "clamp",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "number"
+          }
+        ],
+        [
+          "low",
+          {
+            "Basic": "number"
+          }
+        ],
+        [
+          "high",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": null,
+      "name": "double",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "number"
           }
         ]
       ],
@@ -190,15 +302,13 @@
     },
     {
       "type_params": null,
-      "name": "sum",
+      "name": "square",
       "is_static": false,
       "params": [
         [
           "self",
           {
-            "Array": {
-              "Basic": "number"
-            }
+            "Basic": "number"
           }
         ]
       ],
@@ -207,34 +317,89 @@
       },
       "attributes": [],
       "origin": "User"
-    }
-  ],
-  "console": [
+    },
     {
       "type_params": null,
-      "name": "log",
-      "is_static": true,
+      "name": "triple",
+      "is_static": false,
       "params": [
         [
-          "msg",
+          "self",
           {
-            "Basic": "string"
+            "Basic": "number"
           }
         ]
       ],
       "return_ty": {
-        "Basic": "void"
+        "Basic": "number"
       },
-      "attributes": [
-        {
-          "name": "external",
-          "args": [
-            "js",
-            "method",
-            "log"
-          ]
-        }
+      "attributes": [],
+      "origin": "User"
+    },
+    {
+      "type_params": null,
+      "name": "by",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "number"
+          }
+        ],
+        [
+          "value",
+          {
+            "Basic": "number"
+          }
+        ]
       ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [],
+      "origin": "User"
+    },
+    {
+      "type_params": null,
+      "name": "double_then_square",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [],
+      "origin": "User"
+    },
+    {
+      "type_params": null,
+      "name": "add",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Basic": "number"
+          }
+        ],
+        [
+          "other",
+          {
+            "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [],
       "origin": "User"
     }
   ],
@@ -1029,21 +1194,56 @@
       "origin": "User"
     }
   ],
-  "User": [
+  "array<Task>": [
     {
       "type_params": null,
-      "name": "greet",
+      "name": "find_one",
       "is_static": false,
       "params": [
         [
           "self",
           {
-            "Custom": "User"
+            "Array": {
+              "Custom": "Task"
+            }
+          }
+        ],
+        [
+          "id",
+          {
+            "Basic": "number"
           }
         ]
       ],
       "return_ty": {
-        "Basic": "string"
+        "Result": {
+          "ok_type": {
+            "Custom": "Task"
+          },
+          "err_type": {
+            "Basic": "string"
+          }
+        }
+      },
+      "attributes": [],
+      "origin": "User"
+    },
+    {
+      "type_params": null,
+      "name": "print_summary",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Array": {
+              "Custom": "Task"
+            }
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "void"
       },
       "attributes": [],
       "origin": "User"
@@ -1439,112 +1639,71 @@
       "origin": "User"
     }
   ],
-  "number": [
+  "array<number>": [
     {
       "type_params": null,
-      "name": "abs",
+      "name": "reduce",
       "is_static": false,
       "params": [
         [
           "self",
           {
-            "Basic": "number"
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "number"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": null,
-      "name": "double",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Basic": "number"
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "number"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": null,
-      "name": "square",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Basic": "number"
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "number"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": null,
-      "name": "triple",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Basic": "number"
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "number"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": null,
-      "name": "minus",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Basic": "number"
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "number"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": null,
-      "name": "by",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Basic": "number"
+            "Array": {
+              "Basic": "number"
+            }
           }
         ],
         [
-          "value",
+          "f",
+          {
+            "Function": [
+              [
+                {
+                  "Basic": "number"
+                },
+                {
+                  "Basic": "number"
+                }
+              ],
+              {
+                "Basic": "number"
+              }
+            ]
+          }
+        ],
+        [
+          "initial",
           {
             "Basic": "number"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "method",
+            "reduce"
+          ]
+        }
+      ],
+      "origin": "Std"
+    },
+    {
+      "type_params": null,
+      "name": "sum",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Array": {
+              "Basic": "number"
+            }
           }
         ]
       ],
@@ -1556,19 +1715,15 @@
     },
     {
       "type_params": null,
-      "name": "add",
+      "name": "max",
       "is_static": false,
       "params": [
         [
           "self",
           {
-            "Basic": "number"
-          }
-        ],
-        [
-          "other",
-          {
-            "Basic": "number"
+            "Array": {
+              "Basic": "number"
+            }
           }
         ]
       ],
@@ -1580,19 +1735,15 @@
     },
     {
       "type_params": null,
-      "name": "sub",
+      "name": "min",
       "is_static": false,
       "params": [
         [
           "self",
           {
-            "Basic": "number"
-          }
-        ],
-        [
-          "other",
-          {
-            "Basic": "number"
+            "Array": {
+              "Basic": "number"
+            }
           }
         ]
       ],
@@ -1604,133 +1755,15 @@
     },
     {
       "type_params": null,
-      "name": "is_even",
+      "name": "max",
       "is_static": false,
       "params": [
         [
           "self",
           {
-            "Basic": "number"
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "bool"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": null,
-      "name": "is_odd",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Basic": "number"
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "bool"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": null,
-      "name": "is_positive",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Basic": "number"
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "bool"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": null,
-      "name": "is_negative",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Basic": "number"
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "bool"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": null,
-      "name": "is_zero",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Basic": "number"
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "bool"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": null,
-      "name": "clamp",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Basic": "number"
-          }
-        ],
-        [
-          "low",
-          {
-            "Basic": "number"
-          }
-        ],
-        [
-          "high",
-          {
-            "Basic": "number"
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "number"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": null,
-      "name": "double",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Basic": "number"
+            "Array": {
+              "Basic": "number"
+            }
           }
         ]
       ],
@@ -1742,97 +1775,15 @@
     },
     {
       "type_params": null,
-      "name": "square",
+      "name": "sum",
       "is_static": false,
       "params": [
         [
           "self",
           {
-            "Basic": "number"
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "number"
-      },
-      "attributes": [],
-      "origin": "User"
-    },
-    {
-      "type_params": null,
-      "name": "triple",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Basic": "number"
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "number"
-      },
-      "attributes": [],
-      "origin": "User"
-    },
-    {
-      "type_params": null,
-      "name": "by",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Basic": "number"
-          }
-        ],
-        [
-          "value",
-          {
-            "Basic": "number"
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "number"
-      },
-      "attributes": [],
-      "origin": "User"
-    },
-    {
-      "type_params": null,
-      "name": "double_then_square",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Basic": "number"
-          }
-        ]
-      ],
-      "return_ty": {
-        "Basic": "number"
-      },
-      "attributes": [],
-      "origin": "User"
-    },
-    {
-      "type_params": null,
-      "name": "add",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Basic": "number"
-          }
-        ],
-        [
-          "other",
-          {
-            "Basic": "number"
+            "Array": {
+              "Basic": "number"
+            }
           }
         ]
       ],
@@ -2984,6 +2935,55 @@
       ],
       "return_ty": null,
       "attributes": [],
+      "origin": "User"
+    }
+  ],
+  "User": [
+    {
+      "type_params": null,
+      "name": "greet",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Custom": "User"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "string"
+      },
+      "attributes": [],
+      "origin": "User"
+    }
+  ],
+  "console": [
+    {
+      "type_params": null,
+      "name": "log",
+      "is_static": true,
+      "params": [
+        [
+          "msg",
+          {
+            "Basic": "string"
+          }
+        ]
+      ],
+      "return_ty": {
+        "Basic": "void"
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "method",
+            "log"
+          ]
+        }
+      ],
       "origin": "User"
     }
   ]

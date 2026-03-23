@@ -531,6 +531,7 @@ fn expr_parser_inner(
                     choice((
                         just(Token::Star).to(BinaryOp::Mul),
                         just(Token::Slash).to(BinaryOp::Div),
+                        just(Token::Percent).to(BinaryOp::Mod),
                     ))
                     .then(postfix)
                     .repeated(),
@@ -607,14 +608,38 @@ fn expr_parser_inner(
                     })
                 });
 
+            // coalesce: ??
+            let coalesce = cmp
+                .clone()
+                .then(
+                    just(Token::QuestionQuestion)
+                        .to(BinaryOp::Coalesce)
+                        .then(cmp.clone())
+                        .repeated(),
+                )
+                .map(|(lhs, rhs_list): (Expr, Vec<(BinaryOp, Expr)>)| {
+                    rhs_list.into_iter().fold(lhs, |acc, (op, rhs)| {
+                        let start = acc.span.start;
+                        let end = rhs.span.end;
+                        auwla_ast::Spanned::new(
+                            auwla_ast::ExprKind::Binary {
+                                op,
+                                left: Box::new(acc),
+                                right: Box::new(rhs),
+                            },
+                            start..end,
+                        )
+                    })
+                });
+
             // range: expr..expr (inclusive) or expr..<expr (exclusive)
-            let range = cmp
+            let range = coalesce
                 .clone()
                 .then(
                     just(Token::DotDot)
                         .to(true) // inclusive
                         .or(just(Token::DotDotLt).to(false)) // exclusive
-                        .then(cmp.clone())
+                        .then(coalesce.clone())
                         .or_not(),
                 )
                 .map(|(lhs, rhs)| {
