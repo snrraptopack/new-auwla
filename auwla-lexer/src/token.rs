@@ -47,6 +47,8 @@ pub enum Token {
     From,
     #[token("extend")]
     Extend,
+    #[token("operator")]
+    Operator,
     #[token("type")]
     Type,
     #[token("array")]
@@ -189,6 +191,7 @@ impl std::fmt::Display for Token {
             Token::Export => write!(f, "export"),
             Token::From => write!(f, "from"),
             Token::Extend => write!(f, "extend"),
+            Token::Operator => write!(f, "operator"),
             Token::Type => write!(f, "type"),
             Token::Array => write!(f, "array"),
             Token::Step => write!(f, "step"),

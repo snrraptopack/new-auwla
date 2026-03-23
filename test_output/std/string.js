@@ -26,3 +26,7 @@ export function _ext_string__reverse(__self) {
   return result;
 }
 
+export function _ext_string__op_mul(__self, other) {
+  return __self.repeat(other);
+}
+

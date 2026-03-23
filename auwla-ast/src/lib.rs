@@ -5,7 +5,7 @@ pub mod types;
 pub use expr::{
     ArrayItem, BinaryOp, DictItem, Expr, ExprKind, MatchArm, Pattern, PatternKind, UnaryOp,
 };
-pub use stmt::{Attribute, ExtensionMethod, ExtensionOrigin, Method, Program, Stmt, StmtKind};
+pub use stmt::{Attribute, ExtensionMethod, ExtensionOrigin, Method, OperatorType, Program, Stmt, StmtKind};
 pub use types::Type;
 
 pub type Span = std::ops::Range<usize>;

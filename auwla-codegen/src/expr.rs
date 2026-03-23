@@ -32,6 +32,46 @@ impl JsEmitter {
                     self.write(")");
                     return;
                 }
+                
+                // Check if there's an operator overload for this operation
+                let left_type_key = self.infer_expr_type(left);
+                let operator_method = match op {
+                    BinaryOp::Add => Some("op_plus"),
+                    BinaryOp::Sub => Some("op_minus"),
+                    BinaryOp::Mul => Some("op_mul"),
+                    BinaryOp::Div => Some("op_div"),
+                    BinaryOp::Mod => Some("op_mod"),
+                    _ => None,
+                };
+                
+                // Try to find operator overload
+                if let (Some(type_key), Some(method_name)) = (&left_type_key, operator_method) {
+                    if let Some(methods) = self.ext_methods.get(type_key) {
+                        if methods.contains(method_name) {
+                            // Use operator overload
+                            let (origin_prefix, safe_link_type) =
+                                if let Some(m) = self.find_extension(type_key, method_name) {
+                                    let prefix = match m.origin {
+                                        auwla_ast::ExtensionOrigin::Std => "",
+                                        auwla_ast::ExtensionOrigin::User => "usr_",
+                                        auwla_ast::ExtensionOrigin::Package => "pkg_",
+                                    };
+                                    (prefix, type_key.clone())
+                                } else {
+                                    ("", type_key.clone())
+                                };
+                            let safe_type = self.type_key_ident(&safe_link_type);
+                            self.write(&format!("_ext_{}{}__{}(", origin_prefix, safe_type, method_name));
+                            self.emit_expr(left);
+                            self.write(", ");
+                            self.emit_expr(right);
+                            self.write(")");
+                            return;
+                        }
+                    }
+                }
+                
+                // Default: emit as built-in operator
                 self.write("(");
                 self.emit_expr(left);
                 let op_str = match op {
@@ -146,7 +186,38 @@ impl JsEmitter {
                 end,
                 inclusive,
             } => {
-                // Emit a helper that generates the range array
+                // Check if there's an operator overload for range
+                let start_type_key = self.infer_expr_type(start);
+                let method_name = if *inclusive { "op_range" } else { "op_range_exclusive" };
+                
+                // Try to find operator overload
+                if let Some(type_key) = &start_type_key {
+                    if let Some(methods) = self.ext_methods.get(type_key) {
+                        if methods.contains(method_name) {
+                            // Use operator overload
+                            let (origin_prefix, safe_link_type) =
+                                if let Some(m) = self.find_extension(type_key, method_name) {
+                                    let prefix = match m.origin {
+                                        auwla_ast::ExtensionOrigin::Std => "",
+                                        auwla_ast::ExtensionOrigin::User => "usr_",
+                                        auwla_ast::ExtensionOrigin::Package => "pkg_",
+                                    };
+                                    (prefix, type_key.clone())
+                                } else {
+                                    ("", type_key.clone())
+                                };
+                            let safe_type = self.type_key_ident(&safe_link_type);
+                            self.write(&format!("_ext_{}{}__{}(", origin_prefix, safe_type, method_name));
+                            self.emit_expr(start);
+                            self.write(", ");
+                            self.emit_expr(end);
+                            self.write(")");
+                            return;
+                        }
+                    }
+                }
+                
+                // Default: emit helper that generates the range array
                 self.write("__range(");
                 self.emit_expr(start);
                 self.write(", ");

@@ -131,6 +131,37 @@ impl Typechecker {
                         })?;
                 }
 
+                // Check for operator overloads BEFORE type unification
+                let operator_method = match op {
+                    auwla_ast::BinaryOp::Add => Some("op_plus"),
+                    auwla_ast::BinaryOp::Sub => Some("op_minus"),
+                    auwla_ast::BinaryOp::Mul => Some("op_mul"),
+                    auwla_ast::BinaryOp::Div => Some("op_div"),
+                    auwla_ast::BinaryOp::Mod => Some("op_mod"),
+                    _ => None,
+                };
+
+                if let Some(method_name) = operator_method {
+                    let left_base_key = left_ty.base_key();
+                    if let Some(methods) = self.extensions.get(&left_base_key) {
+                        if let Some(method_sig) = methods.iter().find(|m| m.name == method_name) {
+                            // Found operator overload! Type check it like a method call
+                            if method_sig.params.len() >= 2 {
+                                let param_ty = &method_sig.params[1].1; // Second param (first is self)
+                                // Check if right operand matches the parameter type
+                                self.assert_type_eq(param_ty, &right_ty).map_err(|msg| TypeError {
+                                    span: right.span.clone(),
+                                    message: format!("Operator overload type mismatch: {}", msg),
+                                })?;
+                                
+                                // Return the operator's return type
+                                return Ok(method_sig.return_ty.clone().unwrap_or(Type::Basic("void".to_string())));
+                            }
+                        }
+                    }
+                }
+
+                // No operator overload found, use default type checking
                 let mut unifier = crate::inference::unify::Unifier::new();
                 unifier.unify(&left_ty, &right_ty).map_err(|_| TypeError {
                     span: expr.span.clone(),

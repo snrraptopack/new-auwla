@@ -1,10 +1,8 @@
-type Result = T?E;
+let a = 1 .. 100;
+let b = a * 2;
 
 
-fn divide(f1:number,f2:number):Result{
-    if f2 == 0 { none("can't divide by 0");} else {some(f1/f2);}
-}
+let c = a + b;
 
-
-print(divide(10,0));
-print(divide(10,3));
+print(c);
+print(b);

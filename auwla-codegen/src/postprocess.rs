@@ -64,8 +64,14 @@ pub fn add_runtime_imports(js: &mut String, rel_prefix: &str) -> bool {
                             break;
                         }
                     }
+                    // Check if it's an operator method (op_plus, op_minus, etc.)
                     if !found_std && !type_prefix.is_empty() {
-                        needs_user_ext = true;
+                        // If it contains "op_", it might be a user-defined operator
+                        if after.contains("__op_") {
+                            needs_user_ext = true;
+                        } else {
+                            needs_user_ext = true;
+                        }
                     }
                 }
 

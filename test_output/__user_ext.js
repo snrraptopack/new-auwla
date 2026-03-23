@@ -126,6 +126,22 @@ export function _ext_usr_Vector2__add_vec(__self, other) {
   return { x: (__self.x + other.x), y: (__self.y + other.y) };
 }
 
+export function _ext_usr_Vector2__op_plus(__self, other) {
+  return { x: (__self.x + other.x), y: (__self.y + other.y) };
+}
+
+export function _ext_usr_Vector2__op_minus(__self, other) {
+  return { x: (__self.x - other.x), y: (__self.y - other.y) };
+}
+
+export function _ext_usr_Vector2__op_mul(__self, scalar) {
+  return { x: (__self.x * scalar), y: (__self.y * scalar) };
+}
+
+export function _ext_usr_Vector2__op_div(__self, divisor) {
+  return { x: (__self.x / divisor), y: (__self.y / divisor) };
+}
+
 export function _ext_usr_array__find_one(__self, id) {
   for (const t of __self) {
     if ((t.id === id)) {

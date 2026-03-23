@@ -139,6 +139,33 @@ pub struct Program {
     pub statements: Vec<Stmt>,
 }
 
+/// Operator types that can be overloaded
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum OperatorType {
+    Add,              // +
+    Sub,              // -
+    Mul,              // *
+    Div,              // /
+    Mod,              // %
+    Range,            // ..
+    RangeExclusive,   // ..<
+}
+
+impl OperatorType {
+    /// Get the method name suffix for this operator (e.g., "plus" for +)
+    pub fn method_suffix(&self) -> &'static str {
+        match self {
+            OperatorType::Add => "plus",
+            OperatorType::Sub => "minus",
+            OperatorType::Mul => "mul",
+            OperatorType::Div => "div",
+            OperatorType::Mod => "mod",
+            OperatorType::Range => "range",
+            OperatorType::RangeExclusive => "range_exclusive",
+        }
+    }
+}
+
 /// A method defined inside an `extend` block.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Method {
@@ -153,4 +180,6 @@ pub struct Method {
     pub is_static: bool,
     pub type_params: Option<Vec<String>>,
     pub span: crate::Span,
+    /// If this is an operator overload, specifies which operator
+    pub operator: Option<OperatorType>,
 }

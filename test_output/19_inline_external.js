@@ -1,6 +1,6 @@
 import { __print, __range } from './__util.js';
-import * as __std_array from './std/array.js';
 import * as __std_string from './std/string.js';
+import * as __std_array from './std/array.js';
 const greeting = "Hello World";
 const ch = greeting.charAt(0);
 __print(`First char: ${ch}`);

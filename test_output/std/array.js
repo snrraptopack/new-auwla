@@ -37,6 +37,20 @@ export function _ext_array__shuffle(__self) {
   }
 }
 
+export function _ext_array__op_mul(__self, times) {
+  let result = [];
+  let i = 0;
+  while ((i < times)) {
+    result = result.concat(__self);
+    i = (i + 1);
+  }
+  return result;
+}
+
+export function _ext_array__op_plus(__self, other) {
+  return __self.concat(other);
+}
+
 export function _ext_array__sum(__self) {
   return __self.reduce((acc, val) => (acc + val), 0);
 }

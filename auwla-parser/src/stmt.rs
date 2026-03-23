@@ -318,12 +318,30 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             .or_not()
             .map(|kw| kw.is_some());
 
+        // Parse operator symbol: +, -, *, /, %, .., ..<
+        let operator_symbol = choice((
+            just(Token::Plus).to(auwla_ast::OperatorType::Add),
+            just(Token::Minus).to(auwla_ast::OperatorType::Sub),
+            just(Token::Star).to(auwla_ast::OperatorType::Mul),
+            just(Token::Slash).to(auwla_ast::OperatorType::Div),
+            just(Token::Percent).to(auwla_ast::OperatorType::Mod),
+            just(Token::DotDotLt).to(auwla_ast::OperatorType::RangeExclusive),
+            just(Token::DotDot).to(auwla_ast::OperatorType::Range),
+        ));
+
         let method =
             attributes
                 .clone()
                 .then(static_kw)
-                .then_ignore(just(Token::Fn))
-                .then(select! { Token::Ident(name) => name })
+                .then(
+                    // Either "operator SYMBOL" or "fn name"
+                    just(Token::Operator)
+                        .ignore_then(operator_symbol)
+                        .map(|op| (Some(op), format!("op_{}", op.method_suffix())))
+                        .or(just(Token::Fn)
+                            .ignore_then(select! { Token::Ident(name) => name })
+                            .map(|name| (None, name)))
+                )
                 .then(generic_params.clone())
                 .then(
                     just(Token::Self_)
@@ -367,7 +385,7 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                         (
                             (
                                 (
-                                    ((Vec<auwla_ast::Attribute>, bool), String),
+                                    ((Vec<auwla_ast::Attribute>, bool), (Option<auwla_ast::OperatorType>, String)),
                                     Option<Vec<String>>,
                                 ),
                                 Vec<(String, Option<auwla_ast::Type>, bool)>,
@@ -378,10 +396,11 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                     ),
                      span: std::ops::Range<usize>| {
                         let (
-                            ((((attributes_and_static, name), type_params), params), return_ty),
+                            ((((attributes_and_static, operator_and_name), type_params), params), return_ty),
                             body,
                         ) = args;
                         let (attributes, is_static) = attributes_and_static;
+                        let (operator, name) = operator_and_name;
                         auwla_ast::Method {
                             name,
                             attributes,
@@ -391,6 +410,7 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                             is_static,
                             type_params,
                             span,
+                            operator,
                         }
                     },
                 );

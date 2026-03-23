@@ -1,10 +1,7 @@
-import { __print } from './__util.js';
-function divide(f1, f2) {
-  if ((f2 === 0)) {
-    ({ ok: false, value: "can't divide by 0" });
-  } else {
-    ({ ok: true, value: (f1 / f2) });
-  }
-}
-__print(divide(10, 0));
-__print(divide(10, 3));
+import { __print, __range } from './__util.js';
+import * as __std_array from './std/array.js';
+const a = __range(1, 100, true);
+const b = __std_array._ext_array__op_mul(a, 2);
+const c = __std_array._ext_array__op_plus(a, b);
+__print(c);
+__print(b);

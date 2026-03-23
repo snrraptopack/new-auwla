@@ -66,4 +66,8 @@ extend string {
         }
         return result;
     }
+
+    operator *(self, other: number): string {
+        return self.repeat(other);
+    }
 }

@@ -87,6 +87,22 @@ extend array<T> {
             self[random] = temp;
         }
     }
+
+    operator *(self, times: number): T[] {
+        var result: T[] = [];
+        var i = 0;
+        while i < times {
+            result = result.concat(self);
+            i = i + 1;
+        }
+        return result;
+    }
+
+    // This operator concatenates two arrays together.
+    operator +(self, other: T[]): T[] {
+        return self.concat(other);
+    }
+
 }
 
 extend array<number> {
@@ -114,4 +130,5 @@ extend array<number> {
         }
         return c_min;
     }
+
 }
