@@ -61,7 +61,10 @@ impl Typechecker {
                         other => {
                             return Err(TypeError {
                                 span: expr.span.clone(),
-                                message: format!("Type error: right side of 'in' operator must be a dict, got '{}'", other),
+                                message: format!(
+                                    "Type error: right side of 'in' operator must be a dict, got '{}'",
+                                    other
+                                ),
                             });
                         }
                     }
@@ -85,30 +88,36 @@ impl Typechecker {
                     let resolved_left = self.resolve_type(&left_ty);
                     match &resolved_left {
                         Type::Optional(inner) => {
-                            self.assert_type_eq(inner, &right_ty).map_err(|msg| TypeError {
-                                span: expr.span.clone(),
-                                message: msg,
-                            })?;
+                            self.assert_type_eq(inner, &right_ty)
+                                .map_err(|msg| TypeError {
+                                    span: expr.span.clone(),
+                                    message: msg,
+                                })?;
                             return Ok(inner.as_ref().clone());
                         }
                         Type::Result { ok_type, .. } => {
-                            self.assert_type_eq(ok_type, &right_ty).map_err(|msg| TypeError {
-                                span: expr.span.clone(),
-                                message: msg,
-                            })?;
+                            self.assert_type_eq(ok_type, &right_ty)
+                                .map_err(|msg| TypeError {
+                                    span: expr.span.clone(),
+                                    message: msg,
+                                })?;
                             return Ok(ok_type.as_ref().clone());
                         }
                         Type::Wrapper(inner) => {
-                            self.assert_type_eq(inner, &right_ty).map_err(|msg| TypeError {
-                                span: expr.span.clone(),
-                                message: msg,
-                            })?;
+                            self.assert_type_eq(inner, &right_ty)
+                                .map_err(|msg| TypeError {
+                                    span: expr.span.clone(),
+                                    message: msg,
+                                })?;
                             return Ok(inner.as_ref().clone());
                         }
                         other => {
                             return Err(TypeError {
                                 span: left.span.clone(),
-                                message: format!("Type error: coalesce operator '??' expects Optional or Result on the left, but got '{}'", other),
+                                message: format!(
+                                    "Type error: coalesce operator '??' expects Optional or Result on the left, but got '{}'",
+                                    other
+                                ),
                             });
                         }
                     }
@@ -245,10 +254,9 @@ impl Typechecker {
                             }
                         }
                         Type::Array(inner) => Type::Array(Box::new(instantiate(inner, env))),
-                        Type::Dict(k, v) => Type::Dict(
-                            Box::new(instantiate(k, env)),
-                            Box::new(instantiate(v, env)),
-                        ),
+                        Type::Dict(k, v) => {
+                            Type::Dict(Box::new(instantiate(k, env)), Box::new(instantiate(v, env)))
+                        }
                         Type::Optional(inner) => Type::Optional(Box::new(instantiate(inner, env))),
                         Type::Result { ok_type, err_type } => Type::Result {
                             ok_type: Box::new(instantiate(ok_type, env)),
@@ -381,7 +389,9 @@ impl Typechecker {
                 let mut has_none = false;
 
                 let is_primitive = match self.resolve_type(&result_ty) {
-                    Type::Basic(ref s) => s == "string" || s == "number" || s == "bool" || s == "char",
+                    Type::Basic(ref s) => {
+                        s == "string" || s == "number" || s == "bool" || s == "char"
+                    }
                     _ => false,
                 };
 
@@ -755,23 +765,35 @@ impl Typechecker {
                             let spread_ty = self.check_expr(e)?;
                             match self.resolve_type(&spread_ty) {
                                 Type::Dict(k, v) => ((*k).clone(), (*v).clone()),
-                                other => return Err(TypeError {
-                                    span: e.span.clone(),
-                                    message: format!("Type error: spread operator in dict literal expects a dict, got '{}'", other),
-                                }),
+                                other => {
+                                    return Err(TypeError {
+                                        span: e.span.clone(),
+                                        message: format!(
+                                            "Type error: spread operator in dict literal expects a dict, got '{}'",
+                                            other
+                                        ),
+                                    });
+                                }
                             }
                         }
                     };
-                    
+
                     self.assert_type_eq(&Type::Basic("string".to_string()), &first_k_ty)
-                        .or_else(|_| self.assert_type_eq(&Type::Basic("number".to_string()), &first_k_ty))
-                        .or_else(|_| self.assert_type_eq(&Type::Basic("char".to_string()), &first_k_ty))
+                        .or_else(|_| {
+                            self.assert_type_eq(&Type::Basic("number".to_string()), &first_k_ty)
+                        })
+                        .or_else(|_| {
+                            self.assert_type_eq(&Type::Basic("char".to_string()), &first_k_ty)
+                        })
                         .map_err(|_| TypeError {
                             span: match &pairs[0] {
                                 DictItem::KeyValuePair(k, _) => k.span.clone(),
                                 DictItem::Spread(e) => e.span.clone(),
                             },
-                            message: format!("Type error: dict keys must be string, number, or char, got '{}'", first_k_ty),
+                            message: format!(
+                                "Type error: dict keys must be string, number, or char, got '{}'",
+                                first_k_ty
+                            ),
                         })?;
 
                     for item in &pairs[1..] {
@@ -779,26 +801,45 @@ impl Typechecker {
                             DictItem::KeyValuePair(k, v) => {
                                 let k_ty = self.check_expr(k)?;
                                 let v_ty = self.check_expr(v)?;
-                                self.assert_type_eq(&first_k_ty, &k_ty).map_err(|msg| TypeError { span: k.span.clone(), message: msg })?;
-                                self.assert_type_eq(&first_v_ty, &v_ty).map_err(|msg| TypeError { span: v.span.clone(), message: msg })?;
+                                self.assert_type_eq(&first_k_ty, &k_ty).map_err(|msg| {
+                                    TypeError {
+                                        span: k.span.clone(),
+                                        message: msg,
+                                    }
+                                })?;
+                                self.assert_type_eq(&first_v_ty, &v_ty).map_err(|msg| {
+                                    TypeError {
+                                        span: v.span.clone(),
+                                        message: msg,
+                                    }
+                                })?;
                             }
                             DictItem::Spread(e) => {
                                 let spread_ty = self.check_expr(e)?;
                                 match self.resolve_type(&spread_ty) {
                                     Type::Dict(k, v) => {
-                                        self.assert_type_eq(&first_k_ty, &k).map_err(|msg| TypeError {
-                                            span: e.span.clone(),
-                                            message: msg,
+                                        self.assert_type_eq(&first_k_ty, &k).map_err(|msg| {
+                                            TypeError {
+                                                span: e.span.clone(),
+                                                message: msg,
+                                            }
                                         })?;
-                                        self.assert_type_eq(&first_v_ty, &v).map_err(|msg| TypeError {
-                                            span: e.span.clone(),
-                                            message: msg,
+                                        self.assert_type_eq(&first_v_ty, &v).map_err(|msg| {
+                                            TypeError {
+                                                span: e.span.clone(),
+                                                message: msg,
+                                            }
                                         })?;
                                     }
-                                    other => return Err(TypeError {
-                                        span: e.span.clone(),
-                                        message: format!("Type error: spread operator in dict literal expects a dict, got '{}'", other),
-                                    }),
+                                    other => {
+                                        return Err(TypeError {
+                                            span: e.span.clone(),
+                                            message: format!(
+                                                "Type error: spread operator in dict literal expects a dict, got '{}'",
+                                                other
+                                            ),
+                                        });
+                                    }
                                 }
                             }
                         }
@@ -824,10 +865,15 @@ impl Typechecker {
                             let spread_ty = self.check_expr(e)?;
                             match self.resolve_type(&spread_ty) {
                                 Type::Array(inner) => (*inner).clone(),
-                                other => return Err(TypeError {
-                                    span: e.span.clone(),
-                                    message: format!("Type error: spread operator in array literal expects an array, got '{}'", other),
-                                }),
+                                other => {
+                                    return Err(TypeError {
+                                        span: e.span.clone(),
+                                        message: format!(
+                                            "Type error: spread operator in array literal expects an array, got '{}'",
+                                            other
+                                        ),
+                                    });
+                                }
                             }
                         }
                     };
@@ -835,30 +881,35 @@ impl Typechecker {
                         match item {
                             ArrayItem::Normal(elem) => {
                                 let elem_ty = self.check_expr(elem)?;
-                                self.assert_type_eq(&first_ty, &elem_ty)
-                                    .map_err(|msg| TypeError {
+                                self.assert_type_eq(&first_ty, &elem_ty).map_err(|msg| {
+                                    TypeError {
                                         span: elem.span.clone(),
                                         message: msg,
-                                    })?;
+                                    }
+                                })?;
                             }
                             ArrayItem::Spread(e) => {
                                 let spread_ty = self.check_expr(e)?;
                                 match self.resolve_type(&spread_ty) {
                                     Type::Array(inner) => {
-                                        self.assert_type_eq(&first_ty, inner.as_ref()).map_err(|msg| {
-                                            TypeError {
+                                        self.assert_type_eq(&first_ty, inner.as_ref()).map_err(
+                                            |msg| TypeError {
                                                 span: e.span.clone(),
                                                 message: msg,
-                                            }
-                                        })?;
+                                            },
+                                        )?;
                                     }
-                                    other => return Err(TypeError {
-                                        span: e.span.clone(),
-                                        message: format!("Type error: spread operator in array literal expects an array, got '{}'", other),
-                                    }),
+                                    other => {
+                                        return Err(TypeError {
+                                            span: e.span.clone(),
+                                            message: format!(
+                                                "Type error: spread operator in array literal expects an array, got '{}'",
+                                                other
+                                            ),
+                                        });
+                                    }
                                 }
                             }
-
                         }
                     }
                     Ok(Type::Array(Box::new(first_ty)))
@@ -872,6 +923,12 @@ impl Typechecker {
                 let idx_ty = self.check_expr(index)?;
                 match expr_ty {
                     Type::Array(inner) => {
+                        if self.current_origin == auwla_ast::ExtensionOrigin::User {
+                            return Err(TypeError {
+                                span: expr.span.clone(),
+                                message: "Type error: array indexing is restricted to the standard library. Use '.get(index)' instead.".to_string(),
+                            });
+                        }
                         self.assert_type_eq(&Type::Basic("number".to_string()), &idx_ty)
                             .map_err(|msg| TypeError {
                                 span: index.span.clone(),
@@ -880,11 +937,16 @@ impl Typechecker {
                         Ok(*inner)
                     }
                     Type::Dict(k, v) => {
-                        self.assert_type_eq(&k, &idx_ty)
-                            .map_err(|msg| TypeError {
-                                span: index.span.clone(),
-                                message: msg,
-                            })?;
+                        if self.current_origin == auwla_ast::ExtensionOrigin::User {
+                            return Err(TypeError {
+                                span: expr.span.clone(),
+                                message: "Type error: dictionary indexing is restricted to the standard library. Use '.get(key)' instead.".to_string(),
+                            });
+                        }
+                        self.assert_type_eq(&k, &idx_ty).map_err(|msg| TypeError {
+                            span: index.span.clone(),
+                            message: msg,
+                        })?;
                         Ok(*v)
                     }
                     other => Err(TypeError {
@@ -1096,33 +1158,25 @@ impl Typechecker {
                         });
                     }
                     other => {
-                        let mut keys = vec![self.type_to_key(&expr_ty)];
-                        if let Type::Array(_) = expr_ty {
-                            keys.push("array".to_string());
-                        }
-                        if let Type::Generic(name, _) = &expr_ty {
-                            keys.push(name.clone());
-                        }
-                        for key in keys {
-                            if let Some(methods) = self.extensions.get(&key) {
-                                for method in methods {
-                                    if let Some(attr) =
-                                        method.attributes.iter().find(|a| a.name == "external")
+                        let base_key = expr_ty.base_key();
+                        if let Some(methods) = self.extensions.get(&base_key) {
+                            for method in methods {
+                                if let Some(attr) =
+                                    method.attributes.iter().find(|a| a.name == "external")
+                                {
+                                    if attr.args.get(0).map(|s| s.as_str()) == Some("js")
+                                        && attr.args.get(1).map(|s| s.as_str())
+                                            == Some("property")
                                     {
-                                        if attr.args.get(0).map(|s| s.as_str()) == Some("js")
-                                            && attr.args.get(1).map(|s| s.as_str())
-                                                == Some("property")
-                                        {
-                                            let target = attr
-                                                .args
-                                                .get(2)
-                                                .map(|s| s.as_str())
-                                                .unwrap_or(method.name.as_str());
-                                            if target == property {
-                                                return Ok(method.return_ty.clone().unwrap_or(
-                                                    Type::Basic("unknown".to_string()),
-                                                ));
-                                            }
+                                        let target = attr
+                                            .args
+                                            .get(2)
+                                            .map(|s| s.as_str())
+                                            .unwrap_or(method.name.as_str());
+                                        if target == property {
+                                            return Ok(method.return_ty.clone().unwrap_or(
+                                                Type::Basic("unknown".to_string()),
+                                            ));
                                         }
                                     }
                                 }
@@ -1146,24 +1200,17 @@ impl Typechecker {
             } => {
                 let expr_ty = self.check_expr(expr)?;
                 // Resolve the type name for lookup in the extension registry
-                let mut keys = vec![self.type_to_key(&expr_ty)];
-                if let Type::Array(_) = expr_ty {
-                    keys.push("array".to_string());
-                }
-                if let Type::Generic(name, _) = &expr_ty {
-                    keys.push(name.clone());
-                }
+                let base_key = expr_ty.base_key();
+
                 let mut found_method = None;
-                for key in keys {
-                    if let Some(sigs) = self.extensions.get(&key) {
-                        if let Some(method_sig) =
-                            sigs.iter().find(|m| m.name == method.as_str()).cloned()
-                        {
-                            found_method = Some(method_sig);
-                            break;
-                        }
+                if let Some(sigs) = self.extensions.get(&base_key) {
+                    if let Some(method_sig) =
+                        sigs.iter().find(|m| m.name == method.as_str()).cloned()
+                    {
+                        found_method = Some(method_sig);
                     }
                 }
+                
                 if let Some(method_sig) = found_method {
                     if method_sig.is_static {
                         return Err(TypeError {
@@ -1240,6 +1287,9 @@ impl Typechecker {
                                 }
                             }
                             Type::Array(inner) => Type::Array(Box::new(instantiate(inner, env))),
+                            Type::Dict(k, v) => {
+                                Type::Dict(Box::new(instantiate(k, env)), Box::new(instantiate(v, env)))
+                            }
                             Type::Optional(inner) => {
                                 Type::Optional(Box::new(instantiate(inner, env)))
                             }
@@ -1248,7 +1298,10 @@ impl Typechecker {
                                 err_type: Box::new(instantiate(err_type, env)),
                             },
                             Type::Function(p, r) => {
-                                let inst_p = p.iter().map(|(p_ty, p_vararg)| (instantiate(p_ty, env), *p_vararg)).collect();
+                                let inst_p = p
+                                    .iter()
+                                    .map(|(p_ty, p_vararg)| (instantiate(p_ty, env), *p_vararg))
+                                    .collect();
                                 let inst_r = Box::new(instantiate(r, env));
                                 Type::Function(inst_p, inst_r)
                             }
@@ -1347,12 +1400,14 @@ impl Typechecker {
                             (&inst_params[i].0, inst_params[i].1)
                         };
 
-                        let arg_ty = self.check_expr_expected(arg_expr, Some(param_ty))?;
-                        unifier.unify(param_ty, &arg_ty).map_err(|_| TypeError {
+                        let resolved_param_ty = unifier.resolve(param_ty);
+
+                        let arg_ty = self.check_expr_expected(arg_expr, Some(&resolved_param_ty))?;
+                        unifier.unify(&resolved_param_ty, &arg_ty).map_err(|_| TypeError {
                             span: arg_expr.span.clone(),
                             message: format!(
                                 "Type Mismatch: expected {}, found {}",
-                                unifier.resolve(param_ty),
+                                unifier.resolve(&resolved_param_ty),
                                 unifier.resolve(&arg_ty)
                             ),
                         })?;
@@ -1441,7 +1496,11 @@ impl Typechecker {
                     });
                 };
 
-                let is_vararg = method_sig.params.last().map(|(_, _, v)| *v).unwrap_or(false);
+                let is_vararg = method_sig
+                    .params
+                    .last()
+                    .map(|(_, _, v)| *v)
+                    .unwrap_or(false);
                 if is_vararg {
                     if args.len() < method_sig.params.len() - 1 {
                         let expected_sig: Vec<String> = method_sig

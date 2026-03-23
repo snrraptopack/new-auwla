@@ -17,9 +17,9 @@ extend array<T> {
 extend array<number>{
     fn max(self):number{
         var c_max = 0;
-        for i in self.low() ..< self.high(){
-            if self[i] > c_max{
-                c_max = self[i];
+        for i in self{
+            if i > c_max{
+                c_max = i;
             }
         }
         return c_max;

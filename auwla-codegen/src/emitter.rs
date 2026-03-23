@@ -294,7 +294,7 @@ impl JsEmitter {
     pub(crate) fn infer_expr_type(&self, expr: &auwla_ast::expr::Expr) -> Option<String> {
         // High-reliability source: Inferred types from the typechecker
         if let Some(ty) = self.node_types.get(&expr.span) {
-            return Some(self.type_to_key(ty));
+            return Some(ty.base_key());
         }
 
         // Minimal fallback for unreachable cases or std-discovery where typechecker isn't run.
@@ -307,10 +307,9 @@ impl JsEmitter {
             ExprKind::BoolLit(_) => Some("bool".to_string()),
             ExprKind::CharLit(_) => Some("char".to_string()),
             ExprKind::StructInit { name, .. } => Some(name.clone()),
-            ExprKind::Some(inner) => {
-                let inner_ty = self.infer_expr_type(inner).unwrap_or("unknown".to_string());
-                Some(format!("{}?", inner_ty))
-            }
+            ExprKind::Array(_) => Some("array".to_string()),
+            ExprKind::Dict(_) => Some("dict".to_string()),
+            ExprKind::Some(_) | ExprKind::None(_) => Some("optional".to_string()),
             _ => None,
         }
     }

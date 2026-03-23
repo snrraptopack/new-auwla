@@ -115,49 +115,22 @@ fn register_export(map: &mut ExportMap, stmt: &Stmt) {
         // nested export (shouldn't occur but handle gracefully)
         auwla_ast::StmtKind::Export { stmt: inner } => register_export(map, inner),
         auwla_ast::StmtKind::Extend {
-            type_name,
             type_params,
-            type_args,
+            target_type,
             methods,
         } => {
-            // In Auwla, extensions are currently public/global by default if the file is imported.
-            // (Similar to how we bundle all extensions into __runtime.js)
-            // We'll collect them into the ExportMap so the typechecker can see them.
-            let type_key = extend_key_simple(type_name, type_args);
-            let mut method_sigs = Vec::new();
+            // Derive the key directly from the base type constructor
+            let type_key = target_type.base_key();
 
             let mut base_tps = Vec::new();
             if let Some(tps) = type_params.as_ref() {
                 base_tps.extend(tps.clone());
             }
 
-            // We need a way to determine the 'self' type for the signature
-            let self_type = if let Some(args) = type_args {
-                if type_name == "array" {
-                    if let Some(first) = args.first() {
-                        Type::Array(Box::new(first.clone()))
-                    } else {
-                        Type::Array(Box::new(Type::Basic("unknown".to_string())))
-                    }
-                } else {
-                    Type::Generic(type_name.clone(), args.clone())
-                }
-            } else if type_name == "array" {
-                if let Some(tps) = type_params {
-                    if let Some(tp) = tps.first() {
-                        Type::Array(Box::new(Type::TypeVar(tp.clone())))
-                    } else {
-                        Type::Array(Box::new(Type::Basic("unknown".to_string())))
-                    }
-                } else {
-                    Type::Array(Box::new(Type::Basic("unknown".to_string())))
-                }
-            } else {
-                match type_name.as_str() {
-                    "number" | "string" | "boolean" | "bool" => Type::Basic(type_name.clone()),
-                    _ => Type::Custom(type_name.clone()),
-                }
-            };
+            // self_type is the target itself (already has TypeVars from parser)
+            let self_type = target_type.clone();
+
+            let mut method_sigs = Vec::new();
 
             for method in methods {
                 let mut method_tps = base_tps.clone();
@@ -239,11 +212,4 @@ fn register_export(map: &mut ExportMap, stmt: &Stmt) {
     }
 }
 
-fn extend_key_simple(type_name: &str, type_args: &Option<Vec<Type>>) -> String {
-    if let Some(args) = type_args {
-        let parts: Vec<String> = args.iter().map(|a| format!("{}", a)).collect();
-        format!("{}<{}>", type_name, parts.join(", "))
-    } else {
-        type_name.to_string()
-    }
-}
+

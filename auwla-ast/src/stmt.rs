@@ -111,12 +111,12 @@ pub enum StmtKind {
     Import { names: Vec<String>, path: String },
     /// export fn / export let / export struct / export enum
     Export { stmt: Box<Stmt> },
-    /// extend<T> TypeName { fn method(self, ...) { ... } }
+    /// extend number? { fn val_or(...) } or extend Optional<T> { ... }
     Extend {
+        /// Generic type parameters declared on the extend block, e.g. `T`, `E`
         type_params: Option<Vec<String>>,
-        type_args: Option<Vec<Type>>,
-        /// The type being extended — can be a built-in ("number", "string") or a custom struct name.
-        type_name: String,
+        /// The full type being extended — can be number?, T?E, array<T>, a custom name, etc.
+        target_type: Type,
         methods: Vec<Method>,
     },
     /// type Name<T> = Result<T, string>;

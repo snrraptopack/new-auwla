@@ -1,12 +1,15 @@
 import { __print } from './__util.js';
+import * as __std_array from './std/array.js';
+import * as __std_dict from './std/dict.js';
+import * as __std_optional from './std/optional.js';
 function two_sum(nums, target) {
   const num_map = {  };
   for (let i = 0; i <= nums.length; i += 1) {
-    const complement = (target - nums[i]);
+    const complement = (target - __std_optional._ext_optional__val_or(__std_array._ext_array__get(nums, i), 0));
     if ((complement in num_map)) {
-      return [num_map[complement], i];
+      return [__std_optional._ext_optional__val_or(__std_dict._ext_dict__get(num_map, complement), 0), i];
     }
-    num_map[nums[i]] = i;
+    __std_dict._ext_dict__set(num_map, __std_optional._ext_optional__val_or(__std_array._ext_array__get(nums, i), 0), i);
   }
   return [];
 }
@@ -27,7 +30,7 @@ function is_valid_parentheses(s) {
   const pairs = { ")": "(", "]": "[", "}": "{" };
   for (const ch of s) {
     if ((ch in pairs)) {
-      if (((stack.length === 0) || (stack[(stack.length - 1)] !== pairs[ch]))) {
+      if (((stack.length === 0) || (__std_optional._ext_optional__val_or(__std_array._ext_array__get(stack, (stack.length - 1)), " ") !== __std_optional._ext_optional__val_or(__std_dict._ext_dict__get(pairs, ch), " ")))) {
         return false;
       }
       ((_r) => _r != null ? { ok: true, value: _r } : { ok: false })(stack.pop());
@@ -50,11 +53,11 @@ function max_subarray_sum(arr, k) {
   let max_sum = 0;
   let window_sum = 0;
   for (let i = 0; i <= k; i += 1) {
-    window_sum = (window_sum + arr[i]);
+    window_sum = (window_sum + __std_optional._ext_optional__val_or(__std_array._ext_array__get(arr, i), 0));
   }
   max_sum = window_sum;
   for (let i = k; i <= arr.length; i += 1) {
-    window_sum = ((window_sum - arr[(i - k)]) + arr[i]);
+    window_sum = ((window_sum - __std_optional._ext_optional__val_or(__std_array._ext_array__get(arr, (i - k)), 0)) + __std_optional._ext_optional__val_or(__std_array._ext_array__get(arr, i), 0));
     if ((window_sum > max_sum)) {
       max_sum = window_sum;
     }
@@ -73,9 +76,9 @@ function reverse_string(s) {
   let left = 0;
   let right = (chars.length - 1);
   while ((left < right)) {
-    const temp = chars[left];
-    chars[left] = chars[right];
-    chars[right] = temp;
+    const temp = __std_optional._ext_optional__val_or(__std_array._ext_array__get(chars, left), "");
+    __std_array._ext_array__set(chars, left, __std_optional._ext_optional__val_or(__std_array._ext_array__get(chars, right), ""));
+    __std_array._ext_array__set(chars, right, temp);
     left = (left + 1);
     right = (right - 1);
   }

@@ -33,6 +33,24 @@ pub enum Type {
     Wrapper(Box<Type>),
 }
 
+impl Type {
+    /// Returns the core type constructor name for grouping extensions.
+    /// This prevents string-matching hacks like "array<T>" vs "array<number>".
+    pub fn base_key(&self) -> String {
+        match self {
+            Type::Basic(name) | Type::Custom(name) | Type::TypeVar(name) | Type::Generic(name, _) => name.clone(),
+            Type::Array(_) => "array".to_string(),
+            Type::Dict(_, _) => "dict".to_string(),
+            Type::Optional(_) => "optional".to_string(),
+            Type::Result { .. } => "result".to_string(),
+            Type::Function(_, _) => "fn".to_string(),
+            Type::InferenceVar(id) => format!("_{}", id),
+            Type::SelfType => "Self".to_string(),
+            Type::Wrapper(inner) => format!("wrapper<{}>", inner.base_key()),
+        }
+    }
+}
+
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

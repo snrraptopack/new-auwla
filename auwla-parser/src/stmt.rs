@@ -439,56 +439,101 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                 },
             );
 
-        // extend TypeName { fn method(self, ...) => expr; }
-        let extend_type_args = ty
-            .clone()
-            .separated_by(just(Token::Comma))
-            .delimited_by(just(Token::Lt), just(Token::Gt))
-            .or_not();
+        // extend number? { ... }  |  extend Optional<T> { ... }  |  extend T?E { ... }
+        // The target must be a full type expression; single-uppercase-letter bare names
+        // within it (T, E, K, V …) are treated as generic type-params for the block.
+
+        // Helper: collect all single-uppercase-letter Custom names from a type tree
+        fn collect_type_vars(ty: &auwla_ast::Type, out: &mut Vec<String>) {
+            match ty {
+                auwla_ast::Type::Custom(name)
+                    if name.len() <= 2
+                        && name.chars().all(|c| c.is_ascii_uppercase()) =>
+                {
+                    if !out.contains(name) {
+                        out.push(name.clone());
+                    }
+                }
+                auwla_ast::Type::Optional(inner) => collect_type_vars(inner, out),
+                auwla_ast::Type::Result { ok_type, err_type } => {
+                    collect_type_vars(ok_type, out);
+                    collect_type_vars(err_type, out);
+                }
+                auwla_ast::Type::Array(inner) => collect_type_vars(inner, out),
+                auwla_ast::Type::Dict(k, v) => {
+                    collect_type_vars(k, out);
+                    collect_type_vars(v, out);
+                }
+                auwla_ast::Type::Generic(_, args) => {
+                    for a in args {
+                        collect_type_vars(a, out);
+                    }
+                }
+                auwla_ast::Type::Function(params, ret) => {
+                    for (p, _) in params {
+                        collect_type_vars(p, out);
+                    }
+                    collect_type_vars(ret, out);
+                }
+                _ => {}
+            }
+        }
+
+        // Helper: replace Custom(name) with TypeVar(name) when name is in type_params
+        fn parameterise(ty: auwla_ast::Type, tps: &[String]) -> auwla_ast::Type {
+            match ty {
+                auwla_ast::Type::Custom(ref name) if tps.contains(name) => {
+                    auwla_ast::Type::TypeVar(name.clone())
+                }
+                auwla_ast::Type::Optional(inner) => {
+                    auwla_ast::Type::Optional(Box::new(parameterise(*inner, tps)))
+                }
+                auwla_ast::Type::Result { ok_type, err_type } => auwla_ast::Type::Result {
+                    ok_type: Box::new(parameterise(*ok_type, tps)),
+                    err_type: Box::new(parameterise(*err_type, tps)),
+                },
+                auwla_ast::Type::Array(inner) => {
+                    auwla_ast::Type::Array(Box::new(parameterise(*inner, tps)))
+                }
+                auwla_ast::Type::Dict(k, v) => auwla_ast::Type::Dict(
+                    Box::new(parameterise(*k, tps)),
+                    Box::new(parameterise(*v, tps)),
+                ),
+                auwla_ast::Type::Generic(name, args) => auwla_ast::Type::Generic(
+                    name,
+                    args.into_iter().map(|a| parameterise(a, tps)).collect(),
+                ),
+                other => other,
+            }
+        }
 
         let extend_decl = attributes
             .clone()
             .then_ignore(just(Token::Extend))
+            .then(ty.clone()) // ← full type: number?, T?E, Optional<T>, …
             .then(
-                select! { Token::Ident(name) => name }
-                    .or(just(Token::Array).to("array".to_string())),
-            )
-            .then(extend_type_args)
-            .then(
-                #[allow(clippy::redundant_clone)] // method is used multiple times
+                #[allow(clippy::redundant_clone)]
                 method
                     .clone()
                     .repeated()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace)),
             )
-            .map_with_span(|(((_attributes, type_name), type_args_raw), methods), span| {
-                let (type_params, type_args) = if let Some(args) = type_args_raw {
-                    let is_type_params = args.iter().all(|t| {
-                        matches!(t, auwla_ast::Type::Custom(name) if name.len() == 1 && name.chars().all(|c| c.is_ascii_uppercase()))
-                    });
-                    if is_type_params {
-                        let params = args
-                            .into_iter()
-                            .map(|t| match t {
-                                auwla_ast::Type::Custom(name) => name,
-                                _ => String::new(),
-                            })
-                            .collect();
-                        (Some(params), None)
-                    } else {
-                        (None, Some(args))
-                    }
+            .map_with_span(|((_attributes, raw_target), methods), span| {
+                // Collect single-uppercase-letter customs → type params
+                let mut tps: Vec<String> = Vec::new();
+                collect_type_vars(&raw_target, &mut tps);
+
+                let (type_params, target_type) = if tps.is_empty() {
+                    (None, raw_target)
                 } else {
-                    (None, None)
+                    let parameterised = parameterise(raw_target, &tps);
+                    (Some(tps), parameterised)
                 };
-                // Note: We currently don't store attributes on Extend in AST, but we could.
-                // For now, these attributes on 'Extend' will be ignored if the AST doesn't have them.
-                // Actually, let's keep them if we can.
+
                 auwla_ast::Spanned::new(
                     StmtKind::Extend {
                         type_params,
-                        type_args,
-                        type_name,
+                        target_type,
                         methods,
                     },
                     span,

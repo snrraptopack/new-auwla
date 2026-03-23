@@ -20,6 +20,8 @@ pub struct Typechecker {
     pub node_types: HashMap<std::ops::Range<usize>, Type>,
     /// Mapping from name to its declaration token span for go-to-definition
     pub definitions: HashMap<String, Span>,
+    /// Origin of the current source being checked
+    pub current_origin: auwla_ast::ExtensionOrigin,
 }
 
 impl Default for Typechecker {
@@ -42,6 +44,7 @@ impl Typechecker {
             type_attributes: HashMap::new(),
             node_types: HashMap::new(),
             definitions: HashMap::new(),
+            current_origin: auwla_ast::ExtensionOrigin::User,
         }
     }
 

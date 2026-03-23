@@ -61,23 +61,21 @@ extend array<T> {
     @external("js", "static", "Array", "isArray")
     static fn is_array(val: T[]): bool;
 
+    fn get(self, index: number): T? {
+        if index < 0 || index >= self.len() {
+            return none;
+        }
+        return some(self[index]);
+    }
+
+    fn set(self,index:number,value:T):void;
+
     // --- Pure Auwla methods (no JS equivalent) ---
     fn low(self): number => 0;
     fn high(self): number => self.len();
 
-    fn last(self): T? {
-        if self.len() > 0 {
-            return some(self[self.len() - 1]);
-        }
-        return none;
-    }
-
-    fn first(self): T? {
-        if self.len() > 0 {
-            return some(self[0]);
-        }
-        return none;
-    }
+    fn last(self): T? => self.get(self.len() - 1);
+    fn first(self): T? => self.get(0);
 
     fn is_empty(self): bool => self.len() == 0;
 
@@ -92,8 +90,6 @@ extend array<T> {
 }
 
 extend array<number> {
-    @external("js", "method", "reduce")
-    fn reduce(self, f: (number, number) => number, initial: number): number;
 
     fn sum(self): number {
         return self.reduce((acc: number, val: number) => acc + val, 0);

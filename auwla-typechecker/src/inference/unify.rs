@@ -98,6 +98,11 @@ impl Unifier {
         match (t1, t2) {
             (Type::InferenceVar(id1), Type::InferenceVar(id2)) => self.unify_vars(*id1, *id2),
             (Type::InferenceVar(id), other) | (other, Type::InferenceVar(id)) => {
+                if let Type::Basic(n) = other {
+                    if n == "unknown" {
+                        return Ok(());
+                    }
+                }
                 self.bind(*id, other)
             }
             (Type::Basic(n1), Type::Basic(n2)) if n1 == n2 => Ok(()),
@@ -116,6 +121,10 @@ impl Unifier {
                 self.unify(e1, e2)
             }
             (Type::Array(i1), Type::Array(i2)) => self.unify(i1, i2),
+            (Type::Dict(k1, v1), Type::Dict(k2, v2)) => {
+                self.unify(k1, k2)?;
+                self.unify(v1, v2)
+            }
             (Type::Optional(i1), Type::Optional(i2)) => self.unify(i1, i2),
             (Type::Function(p1, r1), Type::Function(p2, r2)) => {
                 if p1.len() != p2.len() {

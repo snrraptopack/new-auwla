@@ -2,7 +2,7 @@ import { __print, __range } from './__util.js';
 import * as __std_array from './std/array.js';
 function main() {
   const arr = [1, 2, 3];
-  __print(`the max value : ${_ext_array_number__max(arr)}`);
+  __print(`the max value : ${__std_array._ext_array__max(arr)}`);
   __print(`Length: ${arr.length}`);
   arr.push(4);
   __print(`New length: ${arr.length}`);

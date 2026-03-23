@@ -24,9 +24,9 @@ function stress_main() {
   __print(`Extended Add (10 + 1,2,3,4) = ${final_val}`);
   __print(`Is ${final_val} multiple of 5? ${__user._ext_usr_number__is_multiple_of(final_val, 5)}`);
   const numbers = [1, 2, 3, 4, 5, 6, 7, 8];
-  const evens = __user._ext_usr_array_number__filter_even_nums(numbers);
+  const evens = __user._ext_usr_array__filter_even_nums(numbers);
   __print(`Evens count: ${evens.length}`);
-  __print(`Sum of evens: ${__user._ext_usr_array_number__sum_items(evens)}`);
+  __print(`Sum of evens: ${__user._ext_usr_array__sum_items(evens)}`);
   const v1 = { x: 3, y: 4 };
   const v2 = { x: 7, y: 6 };
   const v3 = __user._ext_usr_Vector2__add_vec(v1, v2);

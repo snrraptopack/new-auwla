@@ -176,17 +176,34 @@ impl JsEmitter {
                     inclusive,
                 } = &iterable.node
                 {
-                    // Optimized number range loop
-                    let binding = &bindings[0];
-                    self.write_indent();
-                    let start_str = self.emit_expr_to_string(start);
-                    let end_str = self.emit_expr_to_string(end);
-                    let op = if *inclusive { "<=" } else { "<" };
-                    let step_str = step.as_ref().map(|s| self.emit_expr_to_string(s)).unwrap_or("1".to_string());
-                    self.write(&format!(
-                        "for (let {} = {}; {} {} {}; {} += {}) {{\n",
-                        binding, start_str, binding, op, end_str, binding, step_str
-                    ));
+                    // Check if this is a char range (char literals)
+                    let is_char_range = matches!(&start.node, auwla_ast::ExprKind::CharLit(_))
+                        || matches!(&end.node, auwla_ast::ExprKind::CharLit(_));
+
+                    if is_char_range {
+                        // For char ranges, use __range and for-of loop
+                        let binding = &bindings[0];
+                        self.write_indent();
+                        self.write(&format!("for (const {} of __range(", binding));
+                        self.emit_expr(start);
+                        self.write(", ");
+                        self.emit_expr(end);
+                        self.write(", ");
+                        self.write(if *inclusive { "true" } else { "false" });
+                        self.write(")) {\n");
+                    } else {
+                        // Optimized number range loop
+                        let binding = &bindings[0];
+                        self.write_indent();
+                        let start_str = self.emit_expr_to_string(start);
+                        let end_str = self.emit_expr_to_string(end);
+                        let op = if *inclusive { "<=" } else { "<" };
+                        let step_str = step.as_ref().map(|s| self.emit_expr_to_string(s)).unwrap_or("1".to_string());
+                        self.write(&format!(
+                            "for (let {} = {}; {} {} {}; {} += {}) {{\n",
+                            binding, start_str, binding, op, end_str, binding, step_str
+                        ));
+                    }
                 } else {
                     // For-of loop: try to infer element type from iterable
                     self.write_indent();
@@ -262,12 +279,12 @@ impl JsEmitter {
                 }
             }
             auwla_ast::StmtKind::Extend {
-                type_name,
-                type_args,
+                target_type,
                 methods,
                 ..
             } => {
-                let type_key = self.extend_key(type_name, type_args);
+                // Use base_key for extension method emission to match the typechecker's registry
+                let type_key = target_type.base_key();
                 self.emit_method_block(&type_key, methods, true);
             }
             auwla_ast::StmtKind::TypeDecl { name, methods, .. } => {
@@ -284,7 +301,7 @@ impl JsEmitter {
         &mut self,
         kw: &str,
         name: &str,
-        ty: &Option<auwla_ast::Type>,
+        _ty: &Option<auwla_ast::Type>,
         initializer: &auwla_ast::expr::Expr,
         export: bool,
     ) {

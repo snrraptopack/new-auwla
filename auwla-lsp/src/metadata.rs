@@ -86,9 +86,10 @@ impl MetadataCache {
 
         for stmt in &ast.statements {
             if let StmtKind::Extend {
-                type_name, methods, ..
+                target_type, methods, ..
             } = &stmt.node
             {
+                let type_key = target_type.base_key();
                 for method in methods {
                     // Convert AST Method to ExtensionMethod manually
                     let params = method
@@ -115,7 +116,7 @@ impl MetadataCache {
                     };
 
                     extracted
-                        .entry(type_name.clone())
+                        .entry(type_key.clone())
                         .or_insert_with(Vec::new)
                         .push(ext_method);
                 }

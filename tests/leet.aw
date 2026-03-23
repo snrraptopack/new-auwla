@@ -8,15 +8,15 @@ fn two_sum(nums: number[], target: number): number[] {
     let num_map: dict<number, number> = {};
 
     for i in 0..nums.len() {
-        let complement = target - nums[i];
+        let complement = target - nums.get(i).val_or(0);
 
         // Check if complement exists in map
         if complement in num_map {
-            return [num_map[complement], i];
+            return [num_map.get(complement).val_or(0), i];
         }
 
         // Store current number and its index
-        num_map[nums[i]] = i;
+        num_map.set(nums.get(i).val_or(0), i);
     }
 
     // Return empty array if no solution found
@@ -52,7 +52,7 @@ fn is_valid_parentheses(s: string): bool {
     for ch in s {
         if ch in pairs {
             // Closing bracket
-            if stack.len() == 0 || stack[stack.len() - 1] != pairs[ch] {
+            if stack.len() == 0 || stack.get(stack.len() - 1).val_or(' ') != pairs.get(ch).val_or(' ') {
                 return false;
             }
             stack.pop();
@@ -85,13 +85,13 @@ fn max_subarray_sum(arr: number[], k: number): number {
     var window_sum = 0;
 
     for i in 0..k {
-        window_sum = window_sum + arr[i];
+        window_sum = window_sum + arr.get(i).val_or(0);
     }
     max_sum = window_sum;
 
     // Slide the window
     for i in k..arr.len() {
-        window_sum = window_sum - arr[i - k] + arr[i];
+        window_sum = window_sum - arr.get(i - k).val_or(0) + arr.get(i).val_or(0);
         if window_sum > max_sum {
             max_sum = window_sum;
         }
@@ -117,9 +117,9 @@ fn reverse_string(s: string): string {
     var right = chars.len() - 1;
 
     while left < right {
-        let temp = chars[left];
-        chars[left] = chars[right];
-        chars[right] = temp;
+        let temp = chars.get(left).val_or("");
+        chars.set(left, chars.get(right).val_or(""));
+        chars.set(right, temp);
         left = left + 1;
         right = right - 1;
     }
@@ -146,8 +146,3 @@ print("\nFactorial Tests:");
 print("factorial(5) = {factorial(5)}"); // Should print 120
 print("factorial(0) = {factorial(0)}"); // Should print 1
 print("factorial(7) = {factorial(7)}"); // Should print 5040
-
-
-extend string{
-    fn ones(self):string => self;
-}

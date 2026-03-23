@@ -9,16 +9,13 @@ export function _ext_usr_User__greet(__self) {
 
 export function _ext_usr_array__last(__self) {
   if ((__self.length > 0)) {
-    return ({ ok: true, value: __self[(__self.length - 1)] });
+    return _ext_array__get(__self, (__self.length - 1));
   }
   return ({ ok: false });
 }
 
 export function _ext_usr_array__first(__self) {
-  if ((__self.length > 0)) {
-    return ({ ok: true, value: __self[0] });
-  }
-  return ({ ok: false });
+  return _ext_array__get(__self, 0);
 }
 
 export function _ext_usr_array__low(__self) {
@@ -29,11 +26,11 @@ export function _ext_usr_array__high(__self) {
   return __self.length;
 }
 
-export function _ext_usr_array_number__max(__self) {
+export function _ext_usr_array__max(__self) {
   let c_max = 0;
-  for (let i = _ext_array__low(__self); i < _ext_array__high(__self); i += 1) {
-    if ((__self[i] > c_max)) {
-      c_max = __self[i];
+  for (const i of __self) {
+    if ((i > c_max)) {
+      c_max = i;
     }
   }
   return c_max;
@@ -79,15 +76,6 @@ export function _ext_usr_string__first_n(__self, n) {
   return result;
 }
 
-export function _ext_usr_array__shuffle(__self) {
-  for (let i = 0; i < __self.length; i += 1) {
-    const random = Math.floor((Math.random() * __self.length));
-    const temp = __self[i];
-    __self[i] = __self[random];
-    __self[random] = temp;
-  }
-}
-
 export function _ext_usr_number__multi_add(__self, ...others) {
   let res = __self;
   for (const o of others) {
@@ -110,7 +98,7 @@ export function _ext_usr_number__is_multiple_of(__self, n) {
   return (rem === 0);
 }
 
-export function _ext_usr_array_number__sum_items(__self) {
+export function _ext_usr_array__sum_items(__self) {
   let total = 0;
   for (const n of __self) {
     total += n;
@@ -118,7 +106,7 @@ export function _ext_usr_array_number__sum_items(__self) {
   return total;
 }
 
-export function _ext_usr_array_number__filter_even_nums(__self) {
+export function _ext_usr_array__filter_even_nums(__self) {
   let res = [];
   for (const n of __self) {
     const div = Math.floor((n / 2));
@@ -138,11 +126,7 @@ export function _ext_usr_Vector2__add_vec(__self, other) {
   return { x: (__self.x + other.x), y: (__self.y + other.y) };
 }
 
-export function _ext_usr_string__ones(__self) {
-  return __self;
-}
-
-export function _ext_usr_array_Task__find_one(__self, id) {
+export function _ext_usr_array__find_one(__self, id) {
   for (const t of __self) {
     if ((t.id === id)) {
       return ({ ok: true, value: t });
@@ -151,7 +135,7 @@ export function _ext_usr_array_Task__find_one(__self, id) {
   return ({ ok: false, value: "id not found" });
 }
 
-export function _ext_usr_array_Task__print_summary(__self) {
+export function _ext_usr_array__print_summary(__self) {
   __print(`Summary of ${__self.length} tasks:`);
   for (const t of __self) {
     const __match_0 = t.status;
@@ -171,7 +155,7 @@ export function _ext_usr_array_Task__print_summary(__self) {
   }
 }
 
-export function _ext_usr_array_number__sum(__self) {
+export function _ext_usr_array__sum(__self) {
   let total = 0;
   for (const x of __self) {
     total = (total + x);

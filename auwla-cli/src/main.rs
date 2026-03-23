@@ -16,6 +16,9 @@ const STD_STRING: &str = include_str!("../../std/string.aw");
 const STD_ARRAY: &str = include_str!("../../std/array.aw");
 const STD_NUMBER: &str = include_str!("../../std/number.aw");
 const STD_MATH: &str = include_str!("../../std/math.aw");
+const STD_OPTIONAL: &str = include_str!("../../std/optional.aw");
+const STD_RESULT: &str = include_str!("../../std/result.aw");
+const STD_DICT: &str = include_str!("../../std/dict.aw");
 
 /// Embedded std module: (module_name, source_code)
 const STD_MODULES: &[(&str, &str)] = &[
@@ -23,6 +26,9 @@ const STD_MODULES: &[(&str, &str)] = &[
     ("array", STD_ARRAY),
     ("number", STD_NUMBER),
     ("math", STD_MATH),
+    ("optional", STD_OPTIONAL),
+    ("result", STD_RESULT),
+    ("dict", STD_DICT),
 ];
 
 /// Parse all embedded std sources, collect their extensions, and tag each
@@ -552,6 +558,7 @@ fn compile_directory_as_module(
             let mut typechecker = Typechecker::new();
             // Inject all discovered extensions into the typechecker
             typechecker.extensions = merged_extensions.clone();
+            typechecker.current_origin = auwla_ast::ExtensionOrigin::User; // Modules are always user code
 
             match typechecker.check_program_with_imports(ast, &import_ctx) {
                 Ok(_) => {
@@ -724,6 +731,7 @@ fn compile_file_standalone(
     }
 
     let mut typechecker = Typechecker::new();
+    typechecker.current_origin = auwla_ast::ExtensionOrigin::User;
     typechecker.extensions = global_extensions.clone();
 
     match typechecker.check_program(&ast) {

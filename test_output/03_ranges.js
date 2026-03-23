@@ -5,7 +5,7 @@ for (let x = 1; x <= 5; x += 1) {
 for (let y = 1; y < 5; y += 1) {
   __print(`Exclusive: ${y}`);
 }
-for (let c = "a"; c <= "d"; c += 1) {
+for (const c of __range("a", "d", true)) {
   __print(`Char: ${c}`);
 }
 const a = __range("a", "z", true);

@@ -9,6 +9,9 @@ const STD_TYPE_MODULES: &[(&str, &str)] = &[
     ("string", "string"),
     ("array", "array"),
     ("number", "number"),
+    ("optional", "optional"),
+    ("result", "result"),
+    ("dict", "dict"),
     ("Math", "math"),
 ];
 

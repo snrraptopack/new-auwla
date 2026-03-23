@@ -4,16 +4,13 @@ extend array<T> {
 
     fn last(self): T? {
         if self.length > 0 {
-            return some(self[self.len() - 1]);
+            return self.get(self.len() - 1);
         }
         return none;
     }
 
     fn first(self): T? {
-        if self.length > 0 {
-            return some(self[0]);
-        }
-        return none;
+        return self.get(0);
     }
 }
 

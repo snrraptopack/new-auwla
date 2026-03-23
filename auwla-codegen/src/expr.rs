@@ -195,16 +195,10 @@ impl JsEmitter {
 
                 let mut resolved_key: Option<String> = None;
                 if let Some(tk) = receiver_type_key.as_ref() {
-                    let mut keys = vec![tk.clone()];
-                    if let Some(idx) = tk.find('<') {
-                        keys.push(tk[..idx].to_string());
-                    }
-                    for key in keys {
-                        if let Some(methods) = self.ext_methods.get(&key) {
-                            if methods.contains(method) {
-                                resolved_key = Some(key);
-                                break;
-                            }
+                    // tk is now a base_key like "array", "optional", "CustomName"
+                    if let Some(methods) = self.ext_methods.get(tk) {
+                        if methods.contains(method) {
+                            resolved_key = Some(tk.clone());
                         }
                     }
                 }

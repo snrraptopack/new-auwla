@@ -614,68 +614,28 @@ impl Typechecker {
             // Export is transparent — the inner stmt is what matters for type-checking.
             auwla_ast::StmtKind::Export { stmt: inner } => self.check_stmt(inner),
             auwla_ast::StmtKind::Extend {
-                type_name,
                 type_params,
-                type_args,
+                target_type,
                 methods,
-                ..
             } => {
-                let self_type = if type_name == "array" || type_name == "Array" {
-                    if let Some(args) = type_args {
-                        if let Some(first) = args.first() {
-                            Type::Array(Box::new(first.clone()))
-                        } else {
-                            Type::Array(Box::new(Type::Basic("unknown".to_string())))
-                        }
-                    } else if let Some(tps) = type_params {
-                        if let Some(tp) = tps.first() {
-                            Type::Array(Box::new(Type::TypeVar(tp.clone())))
-                        } else {
-                            Type::Array(Box::new(Type::Basic("unknown".to_string())))
-                        }
-                    } else {
-                        Type::Array(Box::new(Type::Basic("unknown".to_string())))
-                    }
-                } else if type_name == "dict" || type_name == "Dict" {
-                    if let Some(args) = type_args {
-                        if args.len() == 2 {
-                            Type::Dict(Box::new(args[0].clone()), Box::new(args[1].clone()))
-                        } else {
-                            Type::Dict(
-                                Box::new(Type::Basic("unknown".to_string())),
-                                Box::new(Type::Basic("unknown".to_string())),
-                            )
-                        }
-                    } else if let Some(tps) = type_params {
-                        if tps.len() == 2 {
-                            Type::Dict(
-                                Box::new(Type::TypeVar(tps[0].clone())),
-                                Box::new(Type::TypeVar(tps[1].clone())),
-                            )
-                        } else {
-                            Type::Dict(
-                                Box::new(Type::Basic("unknown".to_string())),
-                                Box::new(Type::Basic("unknown".to_string())),
-                            )
-                        }
-                    } else {
-                        Type::Dict(
-                            Box::new(Type::Basic("unknown".to_string())),
-                            Box::new(Type::Basic("unknown".to_string())),
-                        )
-                    }
-                } else if let Some(args) = type_args {
-                    Type::Generic(type_name.clone(), args.clone())
-                } else {
-                    match type_name.as_str() {
-                        "number" | "string" | "boolean" | "bool" => Type::Basic(type_name.clone()),
-                        _ => Type::Custom(type_name.clone()),
-                    }
-                };
-                let mut base_tps = Vec::new();
+                // Collect all type-param names so we can genericise the target
+                let mut base_tps: Vec<String> = Vec::new();
                 if let Some(tps) = type_params.as_ref() {
                     base_tps.extend(tps.clone());
                 }
+
+                // The `self_type` is the target with TypeVars already baked in
+                // (the parser already converted single-upper Custom → TypeVar).
+                // We just need to genericize it with respect to base_tps so that
+                // TypeVar("T") is preserved correctly during method registration.
+                let self_type = self.genericize_type(target_type, &base_tps);
+
+                // Derive the extension registry base key from the self type.
+                // e.g. Optional<T> / number? / T?E all map to their respective base keys ("optional", "result")
+                let ext_key = self_type.base_key();
+
+                // Derive a display name for error messages
+                let type_display = format!("{}", self_type);
 
                 let mut method_sigs = Vec::new();
                 let mut method_infos: Vec<(&auwla_ast::Method, Vec<(String, Type, bool)>, Option<Type>)> =
@@ -686,7 +646,6 @@ impl Typechecker {
                         method_tps.extend(mtps.clone());
                     }
 
-                    // Build fully-typed params: inject self type for instance methods
                     let full_params: Vec<(String, Type, bool)> = method
                         .params
                         .iter()
@@ -731,7 +690,6 @@ impl Typechecker {
                     });
                     method_infos.push((method, full_params, return_ty_gen));
                 }
-                let ext_key = self.extend_key(type_name, type_args);
                 self.extensions
                     .entry(ext_key)
                     .or_default()
@@ -741,7 +699,8 @@ impl Typechecker {
                     let saved_return = self.current_return_type.take();
                     let saved_fn = self.current_function_name.take();
                     self.current_return_type = Some(return_ty_gen);
-                    self.current_function_name = Some(format!("{}::{}", type_name, method.name));
+                    self.current_function_name =
+                        Some(format!("{}::{}", type_display, method.name));
                     for (pname, pty, _) in &full_params {
                         self.declare_variable(
                             stmt.span.clone(),
