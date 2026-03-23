@@ -193,8 +193,16 @@ fn try_scope_hover(typechecker: &auwla_typechecker::Typechecker, word: &str) -> 
                 .as_ref()
                 .map(|r| typechecker.type_to_key(r))
                 .unwrap_or_else(|| "void".to_string());
-            let params_str: Vec<String> =
-                params.iter().map(|p| typechecker.type_to_key(p)).collect();
+            let params_str: Vec<String> = params
+                .iter()
+                .map(|(ty, is_vararg)| {
+                    if *is_vararg {
+                        format!("...{}", typechecker.type_to_key(ty))
+                    } else {
+                        typechecker.type_to_key(ty)
+                    }
+                })
+                .collect();
             let markdown = format!(
                 "```auwla\nfn {}({}) -> {}\n```\n",
                 word,

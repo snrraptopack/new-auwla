@@ -126,7 +126,7 @@ impl Unifier {
                     ));
                 }
                 for (arg1, arg2) in p1.iter().zip(p2.iter()) {
-                    self.unify(arg1, arg2)?;
+                    self.unify(&arg1.0, &arg2.0)?;
                 }
                 self.unify(r1, r2)
             }
@@ -184,7 +184,10 @@ impl Unifier {
                 err_type: Box::new(self.resolve(err_type)),
             },
             Type::Function(params, ret) => {
-                let resolved_params = params.iter().map(|p| self.resolve(p)).collect();
+                let resolved_params = params
+                    .iter()
+                    .map(|(p, is_v)| (self.resolve(p), *is_v))
+                    .collect();
                 Type::Function(resolved_params, Box::new(self.resolve(ret)))
             }
             Type::Generic(name, args) => {

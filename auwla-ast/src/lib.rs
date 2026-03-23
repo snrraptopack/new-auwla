@@ -2,7 +2,9 @@ pub mod expr;
 pub mod stmt;
 pub mod types;
 
-pub use expr::{BinaryOp, Expr, ExprKind, MatchArm, Pattern, PatternKind, UnaryOp};
+pub use expr::{
+    ArrayItem, BinaryOp, DictItem, Expr, ExprKind, MatchArm, Pattern, PatternKind, UnaryOp,
+};
 pub use stmt::{Attribute, ExtensionMethod, ExtensionOrigin, Method, Program, Stmt, StmtKind};
 pub use types::Type;
 

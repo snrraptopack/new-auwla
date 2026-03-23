@@ -25,7 +25,7 @@ export function _ext_array__is_empty(__self) {
 }
 
 export function _ext_array__shuffle(__self) {
-  for (let i = 0; i < __self.length; i++) {
+  for (let i = 0; i < __self.length; i += 1) {
     const random = Math.floor((Math.random() * __self.length));
     const temp = __self[i];
     __self[i] = __self[random];
@@ -39,7 +39,7 @@ export function _ext_array_number__sum(__self) {
 
 export function _ext_array_number__max(__self) {
   let c_max = __self[0];
-  for (let i = 1; i < __self.length; i++) {
+  for (let i = 1; i < __self.length; i += 1) {
     if ((__self[i] > c_max)) {
       c_max = __self[i];
     }
@@ -49,7 +49,7 @@ export function _ext_array_number__max(__self) {
 
 export function _ext_array_number__min(__self) {
   let c_min = __self[0];
-  for (let i = 1; i < __self.length; i++) {
+  for (let i = 1; i < __self.length; i += 1) {
     if ((__self[i] < c_min)) {
       c_min = __self[i];
     }

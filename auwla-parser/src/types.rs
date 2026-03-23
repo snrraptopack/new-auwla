@@ -12,7 +12,7 @@ pub fn type_parser() -> impl Parser<Token, Type, Error = Simple<Token>> + Clone 
                     .or_not(),
             )
             .map(|(name, args)| {
-                if name == "array" {
+                if name == "array" || name == "Array" {
                     if let Some(mut args) = args {
                         if args.len() == 1 {
                             Type::Array(Box::new(args.pop().unwrap()))
@@ -23,7 +23,7 @@ pub fn type_parser() -> impl Parser<Token, Type, Error = Simple<Token>> + Clone 
                     } else {
                         Type::Custom(name)
                     }
-                } else if name == "dict" {
+                } else if name == "dict" || name == "Dict" {
                     if let Some(mut args) = args {
                         if args.len() == 2 {
                             let v = args.pop().unwrap();
@@ -52,7 +52,10 @@ pub fn type_parser() -> impl Parser<Token, Type, Error = Simple<Token>> + Clone 
             .delimited_by(just(Token::LParen), just(Token::RParen))
             .then_ignore(just(Token::FatArrow))
             .then(ty.clone())
-            .map(|(params, ret)| Type::Function(params, Box::new(ret)));
+            .map(|(params, ret)| {
+                let params_with_vararg = params.into_iter().map(|p| (p, false)).collect();
+                Type::Function(params_with_vararg, Box::new(ret))
+            });
 
         let array_keyword = just(Token::Array)
             .then(

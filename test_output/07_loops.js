@@ -8,6 +8,6 @@ const items = ["apple", "banana", "cherry"];
 for (const item of items) {
   __print(`For Loop item: ${item}`);
 }
-for (let num = 5; num <= 7; num++) {
+for (let num = 5; num <= 7; num += 1) {
   __print(`For Loop range: ${num}`);
 }

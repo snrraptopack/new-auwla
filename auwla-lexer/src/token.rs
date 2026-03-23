@@ -11,6 +11,8 @@ pub enum Token {
     Var,
     #[token("fn")]
     Fn,
+    #[token("self")]
+    Self_,
     #[token("return")]
     Return,
     #[token("if")]
@@ -49,6 +51,8 @@ pub enum Token {
     Type,
     #[token("array")]
     Array,
+    #[token("step")]
+    Step,
 
     // Identifiers
     #[regex("[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
@@ -150,6 +154,8 @@ pub enum Token {
     PercentEq,
     #[token("??")]
     QuestionQuestion,
+    #[token("...")]
+    Ellipsis,
 
     #[token("@")]
     At,
@@ -165,6 +171,7 @@ impl std::fmt::Display for Token {
             Token::Let => write!(f, "let"),
             Token::Var => write!(f, "var"),
             Token::Fn => write!(f, "fn"),
+            Token::Self_ => write!(f, "self"),
             Token::Return => write!(f, "return"),
             Token::If => write!(f, "if"),
             Token::Else => write!(f, "else"),
@@ -184,6 +191,7 @@ impl std::fmt::Display for Token {
             Token::Extend => write!(f, "extend"),
             Token::Type => write!(f, "type"),
             Token::Array => write!(f, "array"),
+            Token::Step => write!(f, "step"),
             Token::Ident(name) => write!(f, "{}", name),
             Token::StringLit(s) => write!(f, "\"{}\"", s),
             Token::InterpStart => write!(f, "interp_start"),
@@ -229,6 +237,7 @@ impl std::fmt::Display for Token {
             Token::SlashEq => write!(f, "/="),
             Token::PercentEq => write!(f, "%="),
             Token::QuestionQuestion => write!(f, "??"),
+            Token::Ellipsis => write!(f, "..."),
             Token::Error(s) => write!(f, "<error: {}>", s),
         }
     }

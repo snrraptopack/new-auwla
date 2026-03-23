@@ -94,10 +94,11 @@ impl MetadataCache {
                     let params = method
                         .params
                         .iter()
-                        .map(|(n, t)| {
+                        .map(|(n, t, is_v)| {
                             (
                                 n.clone(),
                                 t.clone().unwrap_or(auwla_ast::Type::InferenceVar(0)),
+                                *is_v,
                             )
                         })
                         .collect();

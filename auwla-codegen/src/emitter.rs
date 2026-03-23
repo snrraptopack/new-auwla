@@ -11,8 +11,16 @@ pub fn emit_js(
     extensions: &HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
     enums: &HashSet<String>,
     type_attributes: &HashMap<String, Vec<Attribute>>,
+    node_types: &HashMap<auwla_ast::Span, auwla_ast::Type>,
+    current_origin: auwla_ast::ExtensionOrigin,
 ) -> (String, String) {
-    let mut emitter = JsEmitter::new(extensions.clone(), enums.clone(), type_attributes.clone());
+    let mut emitter = JsEmitter::new(
+        extensions.clone(),
+        enums.clone(),
+        type_attributes.clone(),
+        node_types.clone(),
+        current_origin,
+    );
     emitter.emit_program(program);
     (emitter.out.into_string(), emitter.ext.into_string())
 }
@@ -24,8 +32,10 @@ pub(crate) struct JsEmitter {
     pub(crate) ext: CodeWriter,
     /// Counter for generating unique temp variable names (e.g. __match_0, __match_1)
     pub(crate) temp_counter: usize,
-    /// variable name -> type name, for resolving extension call sites
-    pub(crate) var_types: HashMap<String, String>,
+    /// Inferred types for nodes from the typechecker
+    pub(crate) node_types: HashMap<auwla_ast::Span, auwla_ast::Type>,
+    /// Currently active extension receiver type (e.g. "string" for 'extend string')
+    pub(crate) current_receiver_type: Option<String>,
     /// type_name -> set of extension method names (for fast lookup)
     pub(crate) ext_methods: HashMap<String, HashSet<String>>,
     /// Flag to trigger `self` -> `__self` rewriting
@@ -39,6 +49,8 @@ pub(crate) struct JsEmitter {
     /// Type-level attributes (e.g., @external("namespace"), @external("class"))
     #[allow(dead_code)]
     pub(crate) type_attributes: HashMap<String, Vec<Attribute>>,
+    /// Origin of the current source file being emitted (Std or User)
+    pub(crate) current_origin: auwla_ast::ExtensionOrigin,
 }
 
 impl JsEmitter {
@@ -46,6 +58,8 @@ impl JsEmitter {
         extensions: HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
         enums: HashSet<String>,
         type_attributes: HashMap<String, Vec<Attribute>>,
+        node_types: HashMap<auwla_ast::Span, auwla_ast::Type>,
+        current_origin: auwla_ast::ExtensionOrigin,
     ) -> Self {
         let ext_methods = extensions
             .iter()
@@ -58,13 +72,15 @@ impl JsEmitter {
             out: CodeWriter::new(),
             ext: CodeWriter::new(),
             temp_counter: 0,
-            var_types: HashMap::new(),
             ext_methods,
             in_extension_method: false,
             extensions,
             is_statement_context: false,
             enums,
             type_attributes,
+            current_origin,
+            node_types,
+            current_receiver_type: None,
         }
     }
 
@@ -236,15 +252,36 @@ impl JsEmitter {
         type_key: &str,
         method_name: &str,
     ) -> Option<(auwla_ast::Attribute, Option<Type>)> {
-        // Check the exact key first, then try the base type name
-        let keys_to_try = [type_key.to_string()];
-        for key in &keys_to_try {
-            if let Some(methods) = self.extensions.get(key) {
+        if let Some(m) = self.find_extension(type_key, method_name) {
+            if let Some(attr) = m.attributes.iter().find(|a| a.name == "external") {
+                return Some((attr.clone(), m.return_ty.clone()));
+            }
+        }
+        None
+    }
+
+    /// Find the ExtensionMethod object for a given type and method name.
+    /// Safely handles generic type strings (e.g., "array<number>" -> "array").
+    pub(crate) fn find_extension(
+        &self,
+        type_key: &str,
+        method_name: &str,
+    ) -> Option<&auwla_ast::ExtensionMethod> {
+        // Try the full key (including generics)
+        if let Some(methods) = self.extensions.get(type_key) {
+            for m in methods {
+                if m.name == method_name {
+                    return Some(m);
+                }
+            }
+        }
+        // Try the base type if the full key failed
+        if let Some(idx) = type_key.find('<') {
+            let base = &type_key[..idx];
+            if let Some(methods) = self.extensions.get(base) {
                 for m in methods {
                     if m.name == method_name {
-                        if let Some(attr) = m.attributes.iter().find(|a| a.name == "external") {
-                            return Some((attr.clone(), m.return_ty.clone()));
-                        }
+                        return Some(m);
                     }
                 }
             }
@@ -255,143 +292,26 @@ impl JsEmitter {
     /// Recursively infer the type key of an expression for extension method resolution.
     /// Used for chaining (e.g., `self.double().square()` — need to know `double()` returns `number`).
     pub(crate) fn infer_expr_type(&self, expr: &auwla_ast::expr::Expr) -> Option<String> {
+        // High-reliability source: Inferred types from the typechecker
+        if let Some(ty) = self.node_types.get(&expr.span) {
+            return Some(self.type_to_key(ty));
+        }
+
+        // Minimal fallback for unreachable cases or std-discovery where typechecker isn't run.
         match &expr.node {
-            ExprKind::Identifier(name) => self.var_types.get(name).cloned(),
+            ExprKind::Identifier(name) if name == "self" || name == "__self" => {
+                self.current_receiver_type.clone()
+            }
             ExprKind::StringLit(_) | ExprKind::Interpolation(_) => Some("string".to_string()),
             ExprKind::NumberLit(_) => Some("number".to_string()),
             ExprKind::BoolLit(_) => Some("bool".to_string()),
-            ExprKind::Array(elems) => self.array_literal_type_key(elems),
-            ExprKind::Range { .. } => Some("array<number>".to_string()),
-            ExprKind::MethodCall {
-                expr: recv, method, ..
-            } => {
-                // Look up the receiver type, then find the method's return type
-                let recv_type = self.infer_expr_type(recv)?;
-                let keys_to_try: Vec<String> = {
-                    let mut ks = vec![recv_type.clone()];
-                    if let Some(idx) = recv_type.find('<') {
-                        ks.push(recv_type[..idx].to_string());
-                    }
-                    ks
-                };
-                for key in &keys_to_try {
-                    if let Some(methods) = self.extensions.get(key) {
-                        for m in methods {
-                            if m.name == method.as_str() {
-                                if let Some(ref ret_ty) = m.return_ty {
-                                    return Some(self.type_to_key(ret_ty));
-                                }
-                            }
-                        }
-                    }
-                }
-                None
-            }
-            ExprKind::StaticMethodCall {
-                type_name,
-                type_args,
-                method,
-                ..
-            } => {
-                let type_key = self.extend_key(type_name, type_args);
-                let keys_to_try = [type_key.clone(), type_name.clone()];
-                for key in &keys_to_try {
-                    if let Some(methods) = self.extensions.get(key) {
-                        for m in methods {
-                            if m.name == method.as_str() && m.is_static {
-                                if let Some(ref ret_ty) = m.return_ty {
-                                    return Some(self.type_to_key(ret_ty));
-                                }
-                            }
-                        }
-                    }
-                }
-                None
-            }
-            ExprKind::Dict(pairs) => {
-                if pairs.is_empty() {
-                    Some("dict".to_string())
-                } else {
-                    let k = self.infer_expr_type(&pairs[0].0).unwrap_or_else(|| "unknown".to_string());
-                    let v = self.infer_expr_type(&pairs[0].1).unwrap_or_else(|| "unknown".to_string());
-                    Some(format!("dict<{}, {}>", k, v))
-                }
-            }
             ExprKind::CharLit(_) => Some("char".to_string()),
-            ExprKind::Index { expr: rec, .. } => {
-                let rec_ty = self.infer_expr_type(rec)?;
-                if rec_ty.starts_with("dict<") {
-                    // Extract V from dict<K, V>
-                    if let Some(comma_idx) = rec_ty.find(',') {
-                        let mut v_part = rec_ty[comma_idx + 1..].trim();
-                        if v_part.ends_with('>') {
-                            v_part = &v_part[..v_part.len() - 1];
-                        }
-                        return Some(v_part.trim().to_string());
-                    }
-                } else if rec_ty.starts_with("array<") {
-                    // Extract V from array<V>
-                    let inner = &rec_ty[6..rec_ty.len() - 1];
-                    return Some(inner.to_string());
-                }
-                None
-            }
-            ExprKind::Binary { op, left, .. } => {
-                use auwla_ast::BinaryOp;
-                match op {
-                    BinaryOp::Eq
-                    | BinaryOp::Neq
-                    | BinaryOp::Lt
-                    | BinaryOp::Gt
-                    | BinaryOp::Lte
-                    | BinaryOp::Gte
-                    | BinaryOp::In
-                    | BinaryOp::And
-                    | BinaryOp::Or => Some("bool".to_string()),
-                    _ => self.infer_expr_type(left),
-                }
+            ExprKind::StructInit { name, .. } => Some(name.clone()),
+            ExprKind::Some(inner) => {
+                let inner_ty = self.infer_expr_type(inner).unwrap_or("unknown".to_string());
+                Some(format!("{}?", inner_ty))
             }
             _ => None,
-        }
-    }
-
-    pub(crate) fn array_literal_type_key(&self, elems: &[Expr]) -> Option<String> {
-        if elems.is_empty() {
-            return None;
-        }
-        let mut kind: Option<String> = None;
-        for e in elems {
-            let k = match &e.node {
-                ExprKind::NumberLit(_) => "number".to_string(),
-                ExprKind::StringLit(_) => "string".to_string(),
-                ExprKind::BoolLit(_) => "bool".to_string(),
-                ExprKind::CharLit(_) => "char".to_string(),
-                ExprKind::StructInit { name, .. } => name.clone(),
-                _ => return None,
-            };
-            if let Some(prev) = kind.as_ref() {
-                if prev != &k {
-                    return None;
-                }
-            } else {
-                kind = Some(k);
-            }
-        }
-        kind.map(|k| format!("array<{}>", k))
-    }
-
-    /// Register a variable's type from an explicit annotation or by
-    /// inferring from the initializer expression.
-    pub(crate) fn register_var_type(
-        &mut self,
-        name: &str,
-        ty: &Option<Type>,
-        initializer: &auwla_ast::expr::Expr,
-    ) {
-        if let Some(t) = ty {
-            self.var_types.insert(name.to_string(), self.type_to_key(t));
-        } else if let Some(key) = self.infer_expr_type(initializer) {
-            self.var_types.insert(name.to_string(), key);
         }
     }
 

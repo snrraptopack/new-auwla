@@ -1,0 +1,289 @@
+﻿cargo :     Checking auwla-parser v0.1.0 
+(C:\Users\babyface\Desktop\coding\new-auwla\auwla-parser)
+At line:1 char:1
++ cargo check --all-targets 2>&1 | tee 
+cargo_check_output.txt
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (    Checking  
+   au...a\auwla-parser):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    Checking auwla-typechecker v0.1.0 (C:\Users\babyface\De
+sktop\coding\new-auwla\auwla-typechecker)
+    Checking auwla-codegen v0.1.0 
+(C:\Users\babyface\Desktop\coding\new-auwla\auwla-codegen)
+warning: unused imports: `ArrayItem` and `DictItem`
+ --> auwla-parser\src\expr.rs:1:17
+  |
+1 | use auwla_ast::{ArrayItem, BinaryOp, DictItem, Expr, 
+MatchArm, Stmt, UnaryOp};
+  |                 ^^^^^^^^^            ^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of 
+`#[warn(unused)]`) on by default
+
+warning: unused imports: `ArrayItem` and `DictItem`
+ --> auwla-codegen\src\emitter.rs:3:17
+  |
+3 | use auwla_ast::{ArrayItem, Attribute, DictItem, 
+ExprKind, Program, Type};
+  |                 ^^^^^^^^^             ^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of 
+`#[warn(unused)]`) on by default
+
+warning: unused imports: `ArrayItem`, `DictItem`, and 
+`ExprKind`
+ --> auwla-codegen\src\expr.rs:2:17
+  |
+2 | use auwla_ast::{ArrayItem, BinaryOp, DictItem, Expr, 
+ExprKind, Type, UnaryOp};
+  |                 ^^^^^^^^^            ^^^^^^^^        
+^^^^^^^^
+
+error[E0277]: a value of type `Vec<(Type, bool)>` cannot 
+be built from an iterator over elements of type `((Type, 
+bool), bool)`
+    --> auwla-typechecker\src\expr.rs:38:78
+     |
+  38 |                     let param_types = 
+params.into_iter().map(|p| (p, false)).collect();
+     |                                                     
+                         ^^^^^^^ value of type `Vec<(Type, 
+bool)>` cannot be built from 
+`std::iter::Iterator<Item=((Type, bool), bool)>`
+     |
+help: the trait `FromIterator<((Type, bool), _)>` is not 
+implemented for `Vec<(Type, bool)>`
+      but trait `FromIterator<(Type, _)>` is implemented 
+for it
+    --> C:\Users\babyface\.rustup\toolchains\stable-x86_64-
+pc-windows-msvc\lib/rustlib/src/rust\library\alloc\src\vec\
+mod.rs:3721:1
+     |
+3721 | impl<T> FromIterator<T> for Vec<T> {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     = help: for that trait implementation, expected 
+`Type`, found `(Type, bool)`
+note: the method call chain might not have had the 
+expected associated types
+    --> auwla-typechecker\src\expr.rs:38:58
+     |
+  38 |                     let param_types = 
+params.into_iter().map(|p| (p, false)).collect();
+     |                                       ------ 
+----------- ^^^^^^^^^^^^^^^^^^^ `Iterator::Item` changed 
+to `((Type, bool), bool)` here
+     |                                       |      |
+     |                                       |      
+`Iterator::Item` is `(Type, bool)` here
+     |                                       this 
+expression has type `Vec<(Type, bool)>`
+note: required by a bound in `collect`
+    --> C:\Users\babyface\.rustup\toolchains\stable-x86_64-
+pc-windows-msvc\lib/rustlib/src/rust\library\core\src\iter\
+traits\iterator.rs:2015:19
+     |
+2015 |     fn collect<B: FromIterator<Self::Item>>(self) 
+-> B
+     |                   ^^^^^^^^^^^^^^^^^^^^^^^^ required 
+by this bound in `Iterator::collect`
+
+error[E0308]: mismatched types
+   --> auwla-codegen\src\stmt.rs:349:17
+    |
+349 |             for (param_name, ty_opt) in 
+&method.params {
+    |                 ^^^^^^^^^^^^^^^^^^^^    
+-------------- this is an iterator with items of type 
+`&(String, Option<Type>, bool)`
+    |                 |
+    |                 expected a tuple with 3 elements, 
+found one with 2 elements
+    |
+    = note: expected tuple `(String, Option<Type>, bool)`
+               found tuple `(_, _)`
+
+error[E0308]: mismatched types
+   --> auwla-codegen\src\stmt.rs:369:25
+    |
+369 |                 for (i, (pname, _)) in 
+params.iter().enumerate() {
+    |                         ^^^^^^^^^^     
+------------------------- this is an iterator with items 
+of type `(usize, &&(String, Option<Type>, bool))`
+    |                         |
+    |                         expected a tuple with 3 
+elements, found one with 2 elements
+    |
+    = note: expected tuple `(String, Option<Type>, bool)`
+               found tuple `(_, _)`
+
+error[E0308]: mismatched types
+   --> auwla-codegen\src\stmt.rs:382:64
+    |
+382 |                 for (pname, _) in 
+method.params.iter().filter(|(n, _)| n != "self") {
+    |                                                      
+          ^^^^^^
+    |                                                      
+          |
+    |                                                      
+          expected a tuple with 3 elements, found one with 
+2 elements
+    |                                                      
+          expected due to this
+    |
+    = note: expected tuple `(String, Option<Type>, bool)`
+               found tuple `(_, _)`
+
+error[E0308]: mismatched types
+   --> auwla-codegen\src\stmt.rs:382:21
+    |
+382 |                 for (pname, _) in 
+method.params.iter().filter(|(n, _)| n != "self") {
+    |                     ^^^^^^^^^^    
+------------------------------------------------- this is 
+an iterator with items of type `&(String, Option<Type>, 
+bool)`
+    |                     |
+    |                     expected a tuple with 3 
+elements, found one with 2 elements
+    |
+    = note: expected tuple `(String, Option<Type>, bool)`
+               found tuple `(_, _)`
+
+error[E0308]: mismatched types
+   --> auwla-typechecker\src\expr.rs:789:74
+    |
+789 | ...                   
+self.assert_type_eq(&first_k_ty, k).map_err(|msg| 
+TypeError { span: e.span.clone(), message: msg })?;
+    |                            --------------            
+  ^ expected `&Type`, found `Box<Type>`
+    |                            |
+    |                            arguments to this method 
+are incorrect
+    |
+    = note: expected reference `&Type`
+                  found struct `Box<Type>`
+note: method defined here
+   --> auwla-typechecker\src\checker.rs:415:19
+    |
+415 |     pub(crate) fn assert_type_eq(&self, expected: 
+&Type, actual: &Type) -> Result<(), String> {
+    |                   ^^^^^^^^^^^^^^                     
+    -------------
+help: consider borrowing here
+    |
+789 |                                         
+self.assert_type_eq(&first_k_ty, &k).map_err(|msg| 
+TypeError { span: e.span.clone(), message: msg })?;
+    |                                                      
+                    +
+
+error[E0308]: mismatched types
+   --> auwla-typechecker\src\expr.rs:790:74
+    |
+790 | ...                   
+self.assert_type_eq(&first_v_ty, v).map_err(|msg| 
+TypeError { span: e.span.clone(), message: msg })?;
+    |                            --------------            
+  ^ expected `&Type`, found `Box<Type>`
+    |                            |
+    |                            arguments to this method 
+are incorrect
+    |
+    = note: expected reference `&Type`
+                  found struct `Box<Type>`
+note: method defined here
+   --> auwla-typechecker\src\checker.rs:415:19
+    |
+415 |     pub(crate) fn assert_type_eq(&self, expected: 
+&Type, actual: &Type) -> Result<(), String> {
+    |                   ^^^^^^^^^^^^^^                     
+    -------------
+help: consider borrowing here
+    |
+790 |                                         
+self.assert_type_eq(&first_v_ty, &v).map_err(|msg| 
+TypeError { span: e.span.clone(), message: msg })?;
+    |                                                      
+                    +
+
+For more information about this error, try `rustc 
+--explain E0308`.
+warning: `auwla-codegen` (lib) generated 2 warnings
+error: could not compile `auwla-codegen` (lib) due to 4 
+previous errors; 2 warnings emitted
+warning: build failed, waiting for other jobs to finish...
+error[E0499]: cannot borrow `*self` as mutable more than 
+once at a time
+   --> auwla-typechecker\src\stmt.rs:364:21
+    |
+361 |                 self.declare_function(
+    |                 ---- ---------------- first borrow 
+later used by call
+    |                 |
+    |                 first mutable borrow occurs here
+...
+364 |                     self.register_function(
+    |                     ^^^^ second mutable borrow 
+occurs here
+    |
+help: try adding a local storing this argument...
+   --> auwla-typechecker\src\stmt.rs:364:21
+    |
+364 | /                     self.register_function(
+365 | |                         name.clone(),
+366 | |                         type_params.clone(),
+367 | |                         param_types.clone(),
+368 | |                         return_ty_gen.clone(),
+369 | |                     ),
+    | |_____________________^
+help: ...and then using that local as the argument to this 
+call
+   --> auwla-typechecker\src\stmt.rs:361:17
+    |
+361 | /                 self.declare_function(
+362 | |                     stmt.span.clone(),
+363 | |                     name.clone(),
+364 | |                     self.register_function(
+...   |
+369 | |                     ),
+370 | |                 );
+    | |_________________^
+
+Some errors have detailed explanations: E0277, E0308, 
+E0499.
+For more information about an error, try `rustc --explain 
+E0277`.
+error: could not compile `auwla-typechecker` (lib) due to 
+4 previous errors
+error[E0308]: mismatched types
+  --> auwla-parser\src\types.rs:55:49
+   |
+55 |             .map(|(params, ret)| 
+Type::Function(params, Box::new(ret)));
+   |                                  -------------- 
+^^^^^^ expected `Vec<(Type, bool)>`, found `Vec<Type>`
+   |                                  |
+   |                                  arguments to this 
+enum variant are incorrect
+   |
+   = note: expected struct `Vec<(auwla_ast::Type, bool)>`
+              found struct `Vec<auwla_ast::Type>`
+note: tuple variant defined here
+  --> C:\Users\babyface\Desktop\coding\new-auwla\auwla-ast\
+src\types.rs:21:5
+   |
+21 |     Function(Vec<(Type, bool)>, Box<Type>),
+   |     ^^^^^^^^
+
+warning: `auwla-parser` (lib) generated 1 warning (1 
+duplicate)
+error: could not compile `auwla-parser` (lib) due to 1 
+previous error; 1 warning emitted
+warning: `auwla-parser` (lib test) generated 1 warning
+error: could not compile `auwla-parser` (lib test) due to 
+1 previous error; 1 warning emitted

@@ -48,18 +48,22 @@ pub fn add_runtime_imports(js: &mut String, rel_prefix: &str) -> bool {
             while let Some(pos) = line[search_from..].find("_ext_") {
                 let abs_pos = search_from + pos;
                 let after = &line[abs_pos + 5..]; // skip "_ext_"
-                let type_prefix = after.split("__").next().unwrap_or("");
-
-                let mut found_std = false;
-                for (prefix, module) in STD_TYPE_MODULES {
-                    if type_prefix == *prefix || type_prefix.starts_with(prefix) {
-                        needed_std_modules.insert(*module);
-                        found_std = true;
-                        break;
-                    }
-                }
-                if !found_std && !type_prefix.is_empty() {
+                if after.starts_with("usr_") || after.starts_with("pkg_") {
                     needs_user_ext = true;
+                } else {
+                    let type_prefix = after.split("__").next().unwrap_or("");
+
+                    let mut found_std = false;
+                    for (prefix, module) in STD_TYPE_MODULES {
+                        if type_prefix == *prefix || type_prefix.starts_with(prefix) {
+                            needed_std_modules.insert(*module);
+                            found_std = true;
+                            break;
+                        }
+                    }
+                    if !found_std && !type_prefix.is_empty() {
+                        needs_user_ext = true;
+                    }
                 }
 
                 search_from = abs_pos + 5;

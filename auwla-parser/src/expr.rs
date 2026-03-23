@@ -87,9 +87,17 @@ fn expr_parser_inner(
                 auwla_ast::Spanned::new(auwla_ast::ExprKind::CharLit(c), span)
             });
 
-            // Array literal: [expr, expr, ...]
-            let array_lit = expr
-                .clone()
+            // Array literal: [1, 2, ...arr]
+            let array_lit = just(Token::Ellipsis)
+                .or_not()
+                .then(expr.clone())
+                .map(|(ellipsis, e)| {
+                    if ellipsis.is_some() {
+                        auwla_ast::ArrayItem::Spread(e)
+                    } else {
+                        auwla_ast::ArrayItem::Normal(e)
+                    }
+                })
                 .separated_by(just(Token::Comma))
                 .allow_trailing()
                 .delimited_by(just(Token::LBracket), just(Token::RBracket))
@@ -97,16 +105,24 @@ fn expr_parser_inner(
                     auwla_ast::Spanned::new(auwla_ast::ExprKind::Array(inner), span)
                 });
 
-            // Dictionary literal: { key: value, ... }
-            let dict_lit = expr
+            // Dictionary literal: { key: value, ...dict }
+            let dict_pair = expr
                 .clone()
                 .then_ignore(just(Token::Colon))
                 .then(expr.clone())
+                .map(|(k, v)| auwla_ast::DictItem::KeyValuePair(k, v));
+
+            let dict_spread = just(Token::Ellipsis)
+                .ignore_then(expr.clone())
+                .map(auwla_ast::DictItem::Spread);
+
+            let dict_lit = dict_pair
+                .or(dict_spread)
                 .separated_by(just(Token::Comma))
                 .allow_trailing()
                 .delimited_by(just(Token::LBrace), just(Token::RBrace))
-                .map_with_span(|pairs, span| {
-                    auwla_ast::Spanned::new(auwla_ast::ExprKind::Dict(pairs), span)
+                .map_with_span(|inner, span| {
+                    auwla_ast::Spanned::new(auwla_ast::ExprKind::Dict(inner), span)
                 });
 
             // String interpolation: InterpStart (StringFragment | expr)* InterpEnd
@@ -140,6 +156,10 @@ fn expr_parser_inner(
                 .map_with_span(|inner, span| {
                     auwla_ast::Spanned::new(auwla_ast::ExprKind::None(inner.map(Box::new)), span)
                 });
+
+            let self_expr = just(Token::Self_).map_with_span(|_, span| {
+                auwla_ast::Spanned::new(auwla_ast::ExprKind::Identifier("self".to_string()), span)
+            });
 
             // StaticMethodCall: TypeName::<T>::method(arg1, arg2)
             let static_method_call = select! { Token::Ident(name) => name }
@@ -197,6 +217,7 @@ fn expr_parser_inner(
                         .ignore_then(crate::types::type_parser())
                         .or_not(),
                 )
+                .map(|(n, t)| (n, t, false))
                 .separated_by(just(Token::Comma))
                 .delimited_by(just(Token::LParen), just(Token::RParen));
 
@@ -249,7 +270,8 @@ fn expr_parser_inner(
             };
 
             // Build match expression parser conditionally
-            let base_atom = closure
+            let base_atom = self_expr
+                .or(closure)
                 .or(bool_lit.clone())
                 .or(some_expr)
                 .or(none_expr)

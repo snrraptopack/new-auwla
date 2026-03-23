@@ -82,9 +82,12 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             .then_ignore(just(Token::Semicolon))
             .map_with_span(|inner, span| auwla_ast::Spanned::new(StmtKind::Return(inner), span));
 
-        let param = select! { Token::Ident(name) => name }
+        let param = just(Token::Ellipsis)
+            .or_not()
+            .then(select! { Token::Ident(name) => name })
             .then_ignore(just(Token::Colon))
-            .then(ty.clone());
+            .then(ty.clone())
+            .map(|((ellipsis, name), ty)| (name, ty, ellipsis.is_some()));
 
         let generic_params = select! { Token::Ident(name) => name }
             .separated_by(just(Token::Comma))
@@ -177,20 +180,27 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                 auwla_ast::Spanned::new(auwla_ast::StmtKind::While { condition, body }, span)
             });
 
+        let for_binding = select! { Token::Ident(name) => vec![name] }
+            .or(select! { Token::Ident(name) => name }
+                .separated_by(just(Token::Comma))
+                .delimited_by(just(Token::LParen), just(Token::RParen)));
+
         let for_stmt = just(Token::For)
-            .ignore_then(select! { Token::Ident(name) => name })
+            .ignore_then(for_binding)
             .then_ignore(just(Token::In))
             .then(expr.clone())
+            .then(just(Token::Step).ignore_then(expr.clone()).or_not())
             .then(
                 stmt.clone()
                     .repeated()
                     .delimited_by(just(Token::LBrace), just(Token::RBrace)),
             )
-            .map_with_span(|((binding, iterable), body), span| {
+            .map_with_span(|(((bindings, iterable), step), body), span| {
                 auwla_ast::Spanned::new(
                     auwla_ast::StmtKind::For {
-                        binding,
+                        bindings,
                         iterable,
+                        step,
                         body,
                     },
                     span,
@@ -316,8 +326,14 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                 .then(select! { Token::Ident(name) => name })
                 .then(generic_params.clone())
                 .then(
-                    select! { Token::Ident(name) => name }
+                    just(Token::Self_)
                         .then(just(Token::Colon).ignore_then(ty.clone()).or_not())
+                        .map(|(_, t)| ("self".to_string(), t, false))
+                        .or(just(Token::Ellipsis)
+                            .or_not()
+                            .then(select! { Token::Ident(name) => name })
+                            .then(just(Token::Colon).ignore_then(ty.clone()).or_not())
+                            .map(|((ellipsis, n), t)| (n, t, ellipsis.is_some())))
                         .separated_by(just(Token::Comma))
                         .delimited_by(just(Token::LParen), just(Token::RParen)),
                 )
@@ -354,7 +370,7 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                                     ((Vec<auwla_ast::Attribute>, bool), String),
                                     Option<Vec<String>>,
                                 ),
-                                Vec<(String, Option<auwla_ast::Type>)>,
+                                Vec<(String, Option<auwla_ast::Type>, bool)>,
                             ),
                             Option<auwla_ast::Type>,
                         ),

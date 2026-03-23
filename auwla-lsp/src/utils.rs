@@ -25,7 +25,16 @@ pub fn format_type(ty: &auwla_ast::Type) -> String {
             format!("{}< {}>", name, parts.join(", "))
         }
         auwla_ast::Type::Function(params, ret) => {
-            let ps: Vec<String> = params.iter().map(format_type).collect();
+            let ps: Vec<String> = params
+                .iter()
+                .map(|(ty, is_vararg)| {
+                    if *is_vararg {
+                        format!("...{}", format_type(ty))
+                    } else {
+                        format_type(ty)
+                    }
+                })
+                .collect();
             format!("fn({}) -> {}", ps.join(", "), format_type(ret))
         }
         auwla_ast::Type::TypeVar(name) => name.clone(),
@@ -41,7 +50,13 @@ pub fn format_method_signature(method: &auwla_ast::ExtensionMethod) -> String {
     let params_str: Vec<String> = method
         .params
         .iter()
-        .map(|(name, ty)| format!("{}: {}", name, format_type(ty)))
+        .map(|(name, ty, is_vararg)| {
+            if *is_vararg {
+                format!("...{}: {}", name, format_type(ty))
+            } else {
+                format!("{}: {}", name, format_type(ty))
+            }
+        })
         .collect();
     let ret_str = method
         .return_ty

@@ -29,7 +29,7 @@ pub struct ExtensionMethod {
     pub type_params: Option<Vec<String>>,
     pub name: String,
     pub is_static: bool,
-    pub params: Vec<(String, Type)>,
+    pub params: Vec<(String, Type, bool)>,
     pub return_ty: Option<Type>,
     pub attributes: Vec<Attribute>,
     #[serde(skip, default = "default_span")]
@@ -69,7 +69,7 @@ pub enum StmtKind {
     Fn {
         name: String,
         type_params: Option<Vec<String>>,
-        params: Vec<(String, Type)>, // name, type
+        params: Vec<(String, Type, bool)>, // name, type, is_vararg
         return_ty: Option<Type>,
         body: Vec<Stmt>,
         attributes: Vec<Attribute>,
@@ -86,10 +86,11 @@ pub enum StmtKind {
     Expr(Expr),
     /// while condition { body }
     While { condition: Expr, body: Vec<Stmt> },
-    /// for binding in iterable { body }
+    /// for binding in iterable step 2 { body }
     For {
-        binding: String,
+        bindings: Vec<String>,
         iterable: Expr,
+        step: Option<Expr>,
         body: Vec<Stmt>,
     },
     /// struct Name<T> { field: T, ... }
@@ -145,7 +146,7 @@ pub struct Method {
     pub attributes: Vec<Attribute>,
     /// Parameters — `self` appears as the first param for instance methods.
     /// The typechecker injects the correct type for `self`.
-    pub params: Vec<(String, Option<Type>)>,
+    pub params: Vec<(String, Option<Type>, bool)>,
     pub return_ty: Option<Type>,
     pub body: Vec<Stmt>,
     /// true when the first param is NOT `self` (static method)

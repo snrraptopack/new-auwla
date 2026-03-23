@@ -1,11 +1,11 @@
 import { __print, __range } from './__util.js';
-for (let x = 1; x <= 5; x++) {
+for (let x = 1; x <= 5; x += 1) {
   __print(`Inclusive: ${x}`);
 }
-for (let y = 1; y < 5; y++) {
+for (let y = 1; y < 5; y += 1) {
   __print(`Exclusive: ${y}`);
 }
-for (let c = "a"; c <= "d"; c++) {
+for (let c = "a"; c <= "d"; c += 1) {
   __print(`Char: ${c}`);
 }
 const a = __range("a", "z", true);

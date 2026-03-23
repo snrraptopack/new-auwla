@@ -181,15 +181,24 @@ impl Typechecker {
         &mut self,
         span: Span,
         name: String,
-        type_params: Option<Vec<String>>,
-        params: Vec<Type>,
-        ret: Option<Type>,
+        signature: (Option<Vec<String>>, Vec<(Type, bool)>, Option<Type>),
     ) {
-        let current_scope = self.scopes.last_mut().unwrap();
-        current_scope
+        self.scopes
+            .last_mut()
+            .unwrap()
             .functions
-            .insert(name.clone(), (type_params, params, ret));
+            .insert(name.clone(), signature);
         self.definitions.insert(name, span);
+    }
+
+    pub(crate) fn register_function(
+        &mut self,
+        _name: String,
+        type_params: Option<Vec<String>>,
+        param_sigs: Vec<(Type, bool)>,
+        return_ty_gen: Option<Type>,
+    ) -> (Option<Vec<String>>, Vec<(Type, bool)>, Option<Type>) {
+        (type_params, param_sigs, return_ty_gen)
     }
 
     pub(crate) fn is_mutable(&self, name: &str) -> bool {
@@ -213,7 +222,7 @@ impl Typechecker {
     pub(crate) fn lookup_function(
         &self,
         name: &str,
-    ) -> Option<(Option<Vec<String>>, Vec<Type>, Option<Type>)> {
+    ) -> Option<(Option<Vec<String>>, Vec<(Type, bool)>, Option<Type>)> {
         for scope in self.scopes.iter().rev() {
             if let Some(sig) = scope.functions.get(name) {
                 return Some(sig.clone());
@@ -250,9 +259,7 @@ impl Typechecker {
                         self.declare_function(
                             stmt.span.clone(),
                             name.clone(),
-                            sig.0.clone(),
-                            sig.1.clone(),
-                            sig.2.clone(),
+                            sig.clone(),
                         );
                     } else if let Some(ty) = export_map.variables.get(name) {
                         self.declare_variable(
@@ -349,7 +356,7 @@ impl Typechecker {
             Type::Function(params, ret) => {
                 let gen_params = params
                     .iter()
-                    .map(|p| self.genericize_type(p, type_params))
+                    .map(|(p, is_v)| (self.genericize_type(p, type_params), *is_v))
                     .collect();
                 Type::Function(gen_params, Box::new(self.genericize_type(ret, type_params)))
             }
@@ -390,7 +397,7 @@ impl Typechecker {
             Type::Function(params, ret) => {
                 let sub_params = params
                     .iter()
-                    .map(|p| self.substitute_type_var(p, var_name, replacement))
+                    .map(|(p, is_v)| (self.substitute_type_var(p, var_name, replacement), *is_v))
                     .collect();
                 Type::Function(
                     sub_params,
@@ -462,7 +469,19 @@ impl Typechecker {
             (Type::Wrapper(w1), Type::Wrapper(w2)) => {
                 return self.assert_type_eq(w1, w2);
             }
-
+            (Type::Function(p1, r1), Type::Function(p2, r2)) => {
+                if p1.len() != p2.len() {
+                    return Err(format!("Arg count mismatch: {} vs {}", p1.len(), p2.len()));
+                }
+                for (a, b) in p1.iter().zip(p2.iter()) {
+                    self.assert_type_eq(&a.0, &b.0)?;
+                    if a.1 != b.1 {
+                        return Err("Vararg mismatch".to_string());
+                    }
+                }
+                self.assert_type_eq(r1, r2)?;
+                return Ok(());
+            }
             (Type::Dict(e_k, e_v), Type::Dict(a_k, a_v)) => {
                 if self.assert_type_eq(e_k, a_k).is_ok() {
                     if self.assert_type_eq(e_v, a_v).is_ok() {
@@ -495,7 +514,7 @@ impl Typechecker {
             }
             Type::Generic(_, args) => args.iter().any(|a| self.contains_unknown(a)),
             Type::Function(params, ret) => {
-                params.iter().any(|p| self.contains_unknown(p)) || self.contains_unknown(ret)
+                params.iter().any(|(p, _)| self.contains_unknown(p)) || self.contains_unknown(ret)
             }
             _ => false,
         }

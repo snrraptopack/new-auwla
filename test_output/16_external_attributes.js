@@ -29,6 +29,6 @@ else if (!__match_1.ok) {
 main();
 __print("hello".repeat(10));
 const nums = __range(1, 100, true);
-for (let i = __std_array._ext_array__low(nums); i <= __std_array._ext_array__high(nums); i++) {
+for (let i = __std_array._ext_array__low(nums); i <= __std_array._ext_array__high(nums); i += 1) {
   __print(`the current number is : ${i}`);
 }

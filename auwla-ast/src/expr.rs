@@ -36,6 +36,18 @@ pub struct MatchArm {
     pub result: Option<Box<Expr>>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum ArrayItem {
+    Normal(Expr),
+    Spread(Expr),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DictItem {
+    KeyValuePair(Expr, Expr),
+    Spread(Expr),
+}
+
 pub type Expr = Spanned<ExprKind>;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -75,10 +87,10 @@ pub enum ExprKind {
         expr: Box<Expr>,
         arms: Vec<MatchArm>,
     },
-    /// Array literal: [1, 2, 3]
-    Array(Vec<Expr>),
-    /// A dictionary literal `{ key: value, ... }`
-    Dict(Vec<(Expr, Expr)>),
+    /// Array literal: [1, 2, ...arr]
+    Array(Vec<ArrayItem>),
+    /// A dictionary literal `{ key: value, ...dict }`
+    Dict(Vec<DictItem>),
     /// Array indexing: arr[0]
     Index { expr: Box<Expr>, index: Box<Expr> },
     /// Range: 1..10 (inclusive) or 1..<10 (exclusive), also 'a'..'z'
@@ -125,7 +137,7 @@ pub enum ExprKind {
     },
     Closure {
         type_params: Option<Vec<String>>,
-        params: Vec<(crate::Spanned<String>, Option<crate::types::Type>)>,
+        params: Vec<(crate::Spanned<String>, Option<crate::types::Type>, bool)>,
         return_ty: Option<crate::types::Type>,
         body: Box<Expr>,
     },

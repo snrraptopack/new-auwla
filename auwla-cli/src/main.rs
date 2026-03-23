@@ -155,7 +155,14 @@ fn main() {
     fs::create_dir_all(&std_output_dir).ok();
 
     for (module_name, ast) in &std_parsed_modules {
-        let (_, ext_js) = emit_js(ast, &global_extensions, &global_enums, &HashMap::new());
+        let (_, ext_js) = emit_js(
+            ast,
+            &global_extensions,
+            &global_enums,
+            &HashMap::new(),
+            &HashMap::new(),
+            auwla_ast::ExtensionOrigin::Std,
+        );
         if !ext_js.is_empty() {
             let mut final_js = String::new();
 
@@ -207,7 +214,14 @@ fn main() {
         }
         if let Ok(source) = fs::read_to_string(p) {
             if let Ok((ast, _)) = parse_source(&source, p) {
-                let (_, ext_js) = emit_js(&ast, &global_extensions, &global_enums, &HashMap::new());
+                let (_, ext_js) = emit_js(
+                    &ast,
+                    &global_extensions,
+                    &global_enums,
+                    &HashMap::new(),
+                    &HashMap::new(),
+                    auwla_ast::ExtensionOrigin::User,
+                );
                 if !ext_js.is_empty() {
                     user_extensions_js.push_str(&ext_js);
                     if ext_js.contains("__print(") || ext_js.contains("__range(") {
@@ -547,6 +561,8 @@ fn compile_directory_as_module(
                         typechecker.get_extensions(),
                         &merged_enums,
                         &typechecker.type_attributes,
+                        &typechecker.node_types,
+                        auwla_ast::ExtensionOrigin::User,
                     );
                     module_extensions.push_str(&ext_output);
 
@@ -719,6 +735,8 @@ fn compile_file_standalone(
                 typechecker.get_extensions(),
                 &all_enums,
                 &typechecker.type_attributes,
+                &typechecker.node_types,
+                auwla_ast::ExtensionOrigin::User,
             );
 
             let rel_prefix = get_relative_import_path(

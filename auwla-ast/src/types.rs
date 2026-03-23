@@ -17,8 +17,8 @@ pub enum Type {
     Custom(String),
     /// Dictionary mapping: `dict<K, V>`
     Dict(Box<Type>, Box<Type>),
-    /// Function type: `(string, number) => bool`
-    Function(Vec<Type>, Box<Type>),
+    /// Function type: `(string, ...number) => bool`
+    Function(Vec<(Type, bool)>, Box<Type>),
     /// Optional type: `string?`, `number?`
     Optional(Box<Type>),
     /// A generic type instantiation: `Result<T, string>`
@@ -46,9 +46,12 @@ impl fmt::Display for Type {
             Type::Result { ok_type, err_type } => write!(f, "{}?{}", ok_type, err_type),
             Type::Function(params, ret) => {
                 write!(f, "(")?;
-                for (i, p) in params.iter().enumerate() {
+                for (i, (p, is_vararg)) in params.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
+                    }
+                    if *is_vararg {
+                        write!(f, "...")?;
                     }
                     write!(f, "{}", p)?;
                 }

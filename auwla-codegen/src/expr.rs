@@ -101,24 +101,37 @@ impl JsEmitter {
             }
             auwla_ast::ExprKind::Array(elements) => {
                 self.write("[");
-                for (i, elem) in elements.iter().enumerate() {
+                for (i, item) in elements.iter().enumerate() {
                     if i > 0 {
                         self.write(", ");
                     }
-                    self.emit_expr(elem);
+                    match item {
+                        auwla_ast::ArrayItem::Normal(e) => self.emit_expr(e),
+                        auwla_ast::ArrayItem::Spread(e) => {
+                            self.write("...");
+                            self.emit_expr(e);
+                        }
+                    }
                 }
                 self.write("]");
             }
             auwla_ast::ExprKind::Dict(pairs) => {
                 self.write("{ ");
-                for (i, (k, v)) in pairs.iter().enumerate() {
+                for (i, item) in pairs.iter().enumerate() {
                     if i > 0 {
                         self.write(", ");
                     }
-                    self.write("[");
-                    self.emit_expr(k);
-                    self.write("]: ");
-                    self.emit_expr(v);
+                    match item {
+                        auwla_ast::DictItem::KeyValuePair(k, v) => {
+                            self.emit_expr(k);
+                            self.write(": ");
+                            self.emit_expr(v);
+                        }
+                        auwla_ast::DictItem::Spread(e) => {
+                            self.write("...");
+                            self.emit_expr(e);
+                        }
+                    }
                 }
                 self.write(" }");
             }
@@ -257,8 +270,19 @@ impl JsEmitter {
                             }
                         } else {
                             // Non-JS @external — use _ext_ wrapper
-                            let safe_type = self.type_key_ident(&type_name);
-                            self.write(&format!("_ext_{}__{}(", safe_type, method));
+                            let (origin_prefix, safe_link_type) =
+                                if let Some(m) = self.find_extension(&type_name, method) {
+                                    let prefix = match m.origin {
+                                        auwla_ast::ExtensionOrigin::Std => "",
+                                        auwla_ast::ExtensionOrigin::User => "usr_",
+                                        auwla_ast::ExtensionOrigin::Package => "pkg_",
+                                    };
+                                    (prefix, type_name.clone())
+                                } else {
+                                    ("", type_name.clone())
+                                };
+                            let safe_type = self.type_key_ident(&safe_link_type);
+                            self.write(&format!("_ext_{}{}__{}(", origin_prefix, safe_type, method));
                             self.emit_expr(expr);
                             for arg in args {
                                 self.write(", ");
@@ -268,8 +292,19 @@ impl JsEmitter {
                         }
                     } else {
                         // Pure Auwla extension method — use _ext_ wrapper
-                        let safe_type = self.type_key_ident(&type_name);
-                        self.write(&format!("_ext_{}__{}(", safe_type, method));
+                        let (origin_prefix, safe_link_type) =
+                            if let Some(m) = self.find_extension(&type_name, method) {
+                                let prefix = match m.origin {
+                                    auwla_ast::ExtensionOrigin::Std => "",
+                                    auwla_ast::ExtensionOrigin::User => "usr_",
+                                    auwla_ast::ExtensionOrigin::Package => "pkg_",
+                                };
+                                (prefix, type_name.clone())
+                            } else {
+                                ("", type_name.clone())
+                            };
+                        let safe_type = self.type_key_ident(&safe_link_type);
+                        self.write(&format!("_ext_{}{}__{}(", origin_prefix, safe_type, method));
                         self.emit_expr(expr);
                         for arg in args {
                             self.write(", ");
@@ -395,8 +430,21 @@ impl JsEmitter {
                                 }
                                 _ => {
                                     // Fallback to _ext_ wrapper
-                                    let safe_type = self.type_key_ident(&type_key);
-                                    self.write(&format!("_ext_{}__{}(", safe_type, method));
+                                    let (origin_prefix, safe_link_type) = if let Some(m) =
+                                        self.find_extension(&type_key, method)
+                                    {
+                                        let prefix = match m.origin {
+                                            auwla_ast::ExtensionOrigin::Std => "",
+                                            auwla_ast::ExtensionOrigin::User => "usr_",
+                                            auwla_ast::ExtensionOrigin::Package => "pkg_",
+                                        };
+                                        (prefix, type_key.clone())
+                                    } else {
+                                        ("", type_key.clone())
+                                    };
+
+                                    let safe_type = self.type_key_ident(&safe_link_type);
+                                    self.write(&format!("_ext_{}{}__{}(", origin_prefix, safe_type, method));
                                     for (i, arg) in args.iter().enumerate() {
                                         if i > 0 {
                                             self.write(", ");
@@ -408,8 +456,19 @@ impl JsEmitter {
                             }
                         } else {
                             // Unknown @external target — use _ext_ wrapper
-                            let safe_type = self.type_key_ident(&type_key);
-                            self.write(&format!("_ext_{}__{}(", safe_type, method));
+                            let (origin_prefix, safe_link_type) =
+                                if let Some(m) = self.find_extension(&type_key, method) {
+                                    let prefix = match m.origin {
+                                        auwla_ast::ExtensionOrigin::Std => "",
+                                        auwla_ast::ExtensionOrigin::User => "usr_",
+                                        auwla_ast::ExtensionOrigin::Package => "pkg_",
+                                    };
+                                    (prefix, type_key.clone())
+                                } else {
+                                    ("", type_key.clone())
+                                };
+                            let safe_type = self.type_key_ident(&safe_link_type);
+                            self.write(&format!("_ext_{}{}__{}(", origin_prefix, safe_type, method));
                             for (i, arg) in args.iter().enumerate() {
                                 if i > 0 {
                                     self.write(", ");
@@ -420,8 +479,19 @@ impl JsEmitter {
                         }
                     } else {
                         // No @external — pure Auwla static, use _ext_ wrapper
-                        let safe_type = self.type_key_ident(&type_key);
-                        self.write(&format!("_ext_{}__{}(", safe_type, method));
+                        let (origin_prefix, safe_link_type) =
+                            if let Some(m) = self.find_extension(&type_key, method) {
+                                let prefix = match m.origin {
+                                    auwla_ast::ExtensionOrigin::Std => "",
+                                    auwla_ast::ExtensionOrigin::User => "usr_",
+                                    auwla_ast::ExtensionOrigin::Package => "pkg_",
+                                };
+                                (prefix, type_key.clone())
+                            } else {
+                                ("", type_key.clone())
+                            };
+                        let safe_type = self.type_key_ident(&safe_link_type);
+                        self.write(&format!("_ext_{}{}__{}(", origin_prefix, safe_type, method));
                         for (i, arg) in args.iter().enumerate() {
                             if i > 0 {
                                 self.write(", ");
@@ -462,7 +532,7 @@ impl JsEmitter {
             }
             auwla_ast::ExprKind::Closure { params, body, .. } => {
                 self.write("(");
-                for (i, (name, _)) in params.iter().enumerate() {
+                for (i, (name, _, _)) in params.iter().enumerate() {
                     if i > 0 {
                         self.write(", ");
                     }

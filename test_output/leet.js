@@ -1,7 +1,7 @@
 import { __print } from './__util.js';
 function two_sum(nums, target) {
   const num_map = {  };
-  for (let i = 0; i <= nums.length; i++) {
+  for (let i = 0; i <= nums.length; i += 1) {
     const complement = (target - nums[i]);
     if ((complement in num_map)) {
       return [num_map[complement], i];
@@ -24,7 +24,7 @@ const result3 = two_sum(nums3, target3);
 __print(`Two Sum Test 3: ${result3}`);
 function is_valid_parentheses(s) {
   const stack = [];
-  const pairs = { [")"]: "(", ["]"]: "[", ["}"]: "{" };
+  const pairs = { ")": "(", "]": "[", "}": "{" };
   for (const ch of s) {
     if ((ch in pairs)) {
       if (((stack.length === 0) || (stack[(stack.length - 1)] !== pairs[ch]))) {
@@ -49,11 +49,11 @@ function max_subarray_sum(arr, k) {
   }
   let max_sum = 0;
   let window_sum = 0;
-  for (let i = 0; i <= k; i++) {
+  for (let i = 0; i <= k; i += 1) {
     window_sum = (window_sum + arr[i]);
   }
   max_sum = window_sum;
-  for (let i = k; i <= arr.length; i++) {
+  for (let i = k; i <= arr.length; i += 1) {
     window_sum = ((window_sum - arr[(i - k)]) + arr[i]);
     if ((window_sum > max_sum)) {
       max_sum = window_sum;

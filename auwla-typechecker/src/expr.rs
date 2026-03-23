@@ -34,7 +34,9 @@ impl Typechecker {
                     Ok(ty)
                 } else if let Some((_, params, ret)) = self.lookup_function(name) {
                     let ret_ty = ret.unwrap_or(Type::Basic("void".to_string()));
-                    Ok(Type::Function(params, Box::new(ret_ty)))
+                    // Convert Vec<Type> to Vec<(Type, bool)> for function type
+                    let param_types = params.clone();
+                    Ok(Type::Function(param_types, Box::new(ret_ty)))
                 } else {
                     Err(TypeError {
                         span: expr.span.clone(),
@@ -253,7 +255,10 @@ impl Typechecker {
                             err_type: Box::new(instantiate(err_type, env)),
                         },
                         Type::Function(p, r) => {
-                            let inst_p = p.iter().map(|p| instantiate(p, env)).collect();
+                            let inst_p = p
+                                .iter()
+                                .map(|(p, is_v)| (instantiate(p, env), *is_v))
+                                .collect();
                             let inst_r = Box::new(instantiate(r, env));
                             Type::Function(inst_p, inst_r)
                         }
@@ -265,11 +270,26 @@ impl Typechecker {
                     }
                 }
 
-                let inst_params: Vec<Type> =
-                    params.iter().map(|p| instantiate(p, &type_env)).collect();
+                let inst_params: Vec<(Type, bool)> = params
+                    .iter()
+                    .map(|(p, is_v)| (instantiate(p, &type_env), *is_v))
+                    .collect();
                 let inst_return_ty = return_ty.map(|r| instantiate(&r, &type_env));
 
-                if inst_params.len() != args.len() {
+                let is_vararg = inst_params.last().map(|(_, v)| *v).unwrap_or(false);
+                if is_vararg {
+                    if args.len() < inst_params.len() - 1 {
+                        return Err(TypeError {
+                            span: expr.span.clone(),
+                            message: format!(
+                                "Function '{}' expects at least {} arguments, but {} were provided",
+                                name,
+                                inst_params.len() - 1,
+                                args.len()
+                            ),
+                        });
+                    }
+                } else if inst_params.len() != args.len() {
                     return Err(TypeError {
                         span: expr.span.clone(),
                         message: format!(
@@ -281,7 +301,23 @@ impl Typechecker {
                     });
                 }
 
-                for (param_ty, arg_expr) in inst_params.iter().zip(args) {
+                let num_normal = if is_vararg {
+                    inst_params.len() - 1
+                } else {
+                    inst_params.len()
+                };
+
+                for (i, arg_expr) in args.iter().enumerate() {
+                    let param_ty = if is_vararg && i >= num_normal {
+                        let (var_ty, _) = inst_params.last().unwrap();
+                        match var_ty {
+                            Type::Array(inner) => inner.as_ref(),
+                            _ => var_ty,
+                        }
+                    } else {
+                        &inst_params[i].0
+                    };
+
                     let arg_ty = self.check_expr_expected(arg_expr, Some(param_ty))?;
                     unifier.unify(param_ty, &arg_ty).map_err(|_| TypeError {
                         span: arg_expr.span.clone(),
@@ -712,22 +748,60 @@ impl Typechecker {
                         ))
                     }
                 } else {
-                    let first_k_ty = self.check_expr(&pairs[0].0)?;
-                    let first_v_ty = self.check_expr(&pairs[0].1)?;
+                    use auwla_ast::DictItem;
+                    let (first_k_ty, first_v_ty) = match &pairs[0] {
+                        DictItem::KeyValuePair(k, v) => (self.check_expr(k)?, self.check_expr(v)?),
+                        DictItem::Spread(e) => {
+                            let spread_ty = self.check_expr(e)?;
+                            match self.resolve_type(&spread_ty) {
+                                Type::Dict(k, v) => ((*k).clone(), (*v).clone()),
+                                other => return Err(TypeError {
+                                    span: e.span.clone(),
+                                    message: format!("Type error: spread operator in dict literal expects a dict, got '{}'", other),
+                                }),
+                            }
+                        }
+                    };
                     
                     self.assert_type_eq(&Type::Basic("string".to_string()), &first_k_ty)
                         .or_else(|_| self.assert_type_eq(&Type::Basic("number".to_string()), &first_k_ty))
                         .or_else(|_| self.assert_type_eq(&Type::Basic("char".to_string()), &first_k_ty))
                         .map_err(|_| TypeError {
-                            span: pairs[0].0.span.clone(),
+                            span: match &pairs[0] {
+                                DictItem::KeyValuePair(k, _) => k.span.clone(),
+                                DictItem::Spread(e) => e.span.clone(),
+                            },
                             message: format!("Type error: dict keys must be string, number, or char, got '{}'", first_k_ty),
                         })?;
 
-                    for (k, v) in &pairs[1..] {
-                        let k_ty = self.check_expr(k)?;
-                        let v_ty = self.check_expr(v)?;
-                        self.assert_type_eq(&first_k_ty, &k_ty).map_err(|msg| TypeError { span: k.span.clone(), message: msg })?;
-                        self.assert_type_eq(&first_v_ty, &v_ty).map_err(|msg| TypeError { span: v.span.clone(), message: msg })?;
+                    for item in &pairs[1..] {
+                        match item {
+                            DictItem::KeyValuePair(k, v) => {
+                                let k_ty = self.check_expr(k)?;
+                                let v_ty = self.check_expr(v)?;
+                                self.assert_type_eq(&first_k_ty, &k_ty).map_err(|msg| TypeError { span: k.span.clone(), message: msg })?;
+                                self.assert_type_eq(&first_v_ty, &v_ty).map_err(|msg| TypeError { span: v.span.clone(), message: msg })?;
+                            }
+                            DictItem::Spread(e) => {
+                                let spread_ty = self.check_expr(e)?;
+                                match self.resolve_type(&spread_ty) {
+                                    Type::Dict(k, v) => {
+                                        self.assert_type_eq(&first_k_ty, &k).map_err(|msg| TypeError {
+                                            span: e.span.clone(),
+                                            message: msg,
+                                        })?;
+                                        self.assert_type_eq(&first_v_ty, &v).map_err(|msg| TypeError {
+                                            span: e.span.clone(),
+                                            message: msg,
+                                        })?;
+                                    }
+                                    other => return Err(TypeError {
+                                        span: e.span.clone(),
+                                        message: format!("Type error: spread operator in dict literal expects a dict, got '{}'", other),
+                                    }),
+                                }
+                            }
+                        }
                     }
                     Ok(Type::Dict(Box::new(first_k_ty), Box::new(first_v_ty)))
                 }
@@ -743,14 +817,49 @@ impl Typechecker {
                         Ok(Type::Array(Box::new(Type::Basic("unknown".to_string()))))
                     }
                 } else {
-                    let first_ty = self.check_expr(&elements[0])?;
-                    for elem in &elements[1..] {
-                        let elem_ty = self.check_expr(elem)?;
-                        self.assert_type_eq(&first_ty, &elem_ty)
-                            .map_err(|msg| TypeError {
-                                span: elem.span.clone(),
-                                message: msg,
-                            })?;
+                    use auwla_ast::ArrayItem;
+                    let first_ty = match &elements[0] {
+                        ArrayItem::Normal(e) => self.check_expr(e)?,
+                        ArrayItem::Spread(e) => {
+                            let spread_ty = self.check_expr(e)?;
+                            match self.resolve_type(&spread_ty) {
+                                Type::Array(inner) => (*inner).clone(),
+                                other => return Err(TypeError {
+                                    span: e.span.clone(),
+                                    message: format!("Type error: spread operator in array literal expects an array, got '{}'", other),
+                                }),
+                            }
+                        }
+                    };
+                    for item in &elements[1..] {
+                        match item {
+                            ArrayItem::Normal(elem) => {
+                                let elem_ty = self.check_expr(elem)?;
+                                self.assert_type_eq(&first_ty, &elem_ty)
+                                    .map_err(|msg| TypeError {
+                                        span: elem.span.clone(),
+                                        message: msg,
+                                    })?;
+                            }
+                            ArrayItem::Spread(e) => {
+                                let spread_ty = self.check_expr(e)?;
+                                match self.resolve_type(&spread_ty) {
+                                    Type::Array(inner) => {
+                                        self.assert_type_eq(&first_ty, inner.as_ref()).map_err(|msg| {
+                                            TypeError {
+                                                span: e.span.clone(),
+                                                message: msg,
+                                            }
+                                        })?;
+                                    }
+                                    other => return Err(TypeError {
+                                        span: e.span.clone(),
+                                        message: format!("Type error: spread operator in array literal expects an array, got '{}'", other),
+                                    }),
+                                }
+                            }
+
+                        }
                     }
                     Ok(Type::Array(Box::new(first_ty)))
                 }
@@ -1067,15 +1176,15 @@ impl Typechecker {
                         });
                     }
                     // method_sig.params[0] is self — skip when validating explicit args
-                    let explicit_params = if method_sig
+                    let explicit_params: Vec<&(String, Type, bool)> = if method_sig
                         .params
                         .first()
-                        .map(|(n, _)| n == "self")
+                        .map(|(n, _, _)| n == "self")
                         .unwrap_or(false)
                     {
-                        &method_sig.params[1..]
+                        method_sig.params[1..].iter().collect()
                     } else {
-                        &method_sig.params[..]
+                        method_sig.params.iter().collect()
                     };
 
                     let mut unifier = crate::inference::unify::Unifier::new();
@@ -1139,7 +1248,7 @@ impl Typechecker {
                                 err_type: Box::new(instantiate(err_type, env)),
                             },
                             Type::Function(p, r) => {
-                                let inst_p = p.iter().map(|p| instantiate(p, env)).collect();
+                                let inst_p = p.iter().map(|(p_ty, p_vararg)| (instantiate(p_ty, env), *p_vararg)).collect();
                                 let inst_r = Box::new(instantiate(r, env));
                                 Type::Function(inst_p, inst_r)
                             }
@@ -1151,19 +1260,44 @@ impl Typechecker {
                         }
                     }
 
-                    let inst_params: Vec<Type> = explicit_params
+                    let inst_params: Vec<(Type, bool)> = explicit_params
                         .iter()
-                        .map(|(_, p)| instantiate(p, &type_env))
+                        .map(|(_, p, v)| (instantiate(p, &type_env), *v))
                         .collect();
                     let inst_return_ty = method_sig
                         .return_ty
                         .as_ref()
                         .map(|r| instantiate(r, &type_env));
 
-                    if inst_params.len() != args.len() {
+                    let is_vararg = inst_params.last().map(|(_, v)| *v).unwrap_or(false);
+                    if is_vararg {
+                        if args.len() < inst_params.len() - 1 {
+                            let expected_sig: Vec<String> = explicit_params
+                                .iter()
+                                .map(|(name, ty, _)| format!("{}: {}", name, self.type_to_key(ty)))
+                                .collect();
+                            let ret_str = method_sig
+                                .return_ty
+                                .as_ref()
+                                .map(|r| format!(" -> {}", self.type_to_key(r)))
+                                .unwrap_or_default();
+                            return Err(TypeError {
+                                span: expr.span.clone(),
+                                message: format!(
+                                    "Method '{}' expects at least {} argument(s) (varargs), but got {}.\nExpected signature: fn {}({}){}",
+                                    method,
+                                    inst_params.len() - 1,
+                                    args.len(),
+                                    method,
+                                    expected_sig.join(", "),
+                                    ret_str
+                                ),
+                            });
+                        }
+                    } else if inst_params.len() != args.len() {
                         let expected_sig: Vec<String> = explicit_params
                             .iter()
-                            .map(|(name, ty)| format!("{}: {}", name, self.type_to_key(ty)))
+                            .map(|(name, ty, _)| format!("{}: {}", name, self.type_to_key(ty)))
                             .collect();
                         let ret_str = method_sig
                             .return_ty
@@ -1196,7 +1330,23 @@ impl Typechecker {
                         }
                     }
 
-                    for (param_ty, arg_expr) in inst_params.iter().zip(args) {
+                    let num_normal = if is_vararg {
+                        inst_params.len() - 1
+                    } else {
+                        inst_params.len()
+                    };
+
+                    for (i, arg_expr) in args.iter().enumerate() {
+                        let (param_ty, _) = if is_vararg && i >= num_normal {
+                            let (v_ty, _) = inst_params.last().unwrap();
+                            match v_ty {
+                                Type::Array(inner) => (inner.as_ref(), true),
+                                _ => (v_ty, true),
+                            }
+                        } else {
+                            (&inst_params[i].0, inst_params[i].1)
+                        };
+
                         let arg_ty = self.check_expr_expected(arg_expr, Some(param_ty))?;
                         unifier.unify(param_ty, &arg_ty).map_err(|_| TypeError {
                             span: arg_expr.span.clone(),
@@ -1291,11 +1441,37 @@ impl Typechecker {
                     });
                 };
 
-                if args.len() != method_sig.params.len() {
+                let is_vararg = method_sig.params.last().map(|(_, _, v)| *v).unwrap_or(false);
+                if is_vararg {
+                    if args.len() < method_sig.params.len() - 1 {
+                        let expected_sig: Vec<String> = method_sig
+                            .params
+                            .iter()
+                            .map(|(name, ty, _)| format!("{}: {}", name, self.type_to_key(ty)))
+                            .collect();
+                        let ret_str = method_sig
+                            .return_ty
+                            .as_ref()
+                            .map(|r| format!(" -> {}", self.type_to_key(r)))
+                            .unwrap_or_default();
+                        return Err(TypeError {
+                            span: expr.span.clone(),
+                            message: format!(
+                                "Static method '{}' expects at least {} argument(s) (varargs), but got {}.\nExpected signature: fn {}({}){}",
+                                method,
+                                method_sig.params.len() - 1,
+                                args.len(),
+                                method,
+                                expected_sig.join(", "),
+                                ret_str
+                            ),
+                        });
+                    }
+                } else if args.len() != method_sig.params.len() {
                     let expected_sig: Vec<String> = method_sig
                         .params
                         .iter()
-                        .map(|(name, ty)| format!("{}: {}", name, self.type_to_key(ty)))
+                        .map(|(name, ty, _)| format!("{}: {}", name, self.type_to_key(ty)))
                         .collect();
                     let ret_str = method_sig
                         .return_ty
@@ -1316,11 +1492,27 @@ impl Typechecker {
                     });
                 }
 
-                for (arg, (_, expected_param_ty)) in args.iter().zip(method_sig.params.iter()) {
-                    let arg_ty = self.check_expr_expected(arg, Some(expected_param_ty))?;
+                let num_normal = if is_vararg {
+                    method_sig.params.len() - 1
+                } else {
+                    method_sig.params.len()
+                };
+
+                for (i, arg_expr) in args.iter().enumerate() {
+                    let expected_param_ty = if is_vararg && i >= num_normal {
+                        let (_, v_ty, _) = method_sig.params.last().unwrap();
+                        match v_ty {
+                            Type::Array(inner) => inner.as_ref(),
+                            _ => v_ty,
+                        }
+                    } else {
+                        &method_sig.params[i].1
+                    };
+
+                    let arg_ty = self.check_expr_expected(arg_expr, Some(expected_param_ty))?;
                     self.assert_type_eq(expected_param_ty, &arg_ty)
                         .map_err(|msg| TypeError {
-                            span: arg.span.clone(),
+                            span: arg_expr.span.clone(),
                             message: msg,
                         })?;
                 }
@@ -1349,44 +1541,37 @@ impl Typechecker {
                 Ok(ty)
             }
             auwla_ast::ExprKind::Closure {
+                type_params,
                 params,
                 return_ty,
                 body,
-                ..
             } => {
+                let mut all_tps = Vec::new();
+                if let Some(tps) = type_params {
+                    all_tps.extend(tps.clone());
+                }
+
+                self.enter_scope();
                 let mut param_types = Vec::new();
+                for (annotated_name, annotated_ty, _is_v) in params {
+                    let ty = annotated_ty
+                        .clone()
+                        .unwrap_or(Type::Basic("unknown".to_string()));
+                    let gen_ty = self.genericize_type(&ty, &all_tps);
+                    self.declare_variable(
+                        annotated_name.span.clone(),
+                        annotated_name.node.clone(),
+                        gen_ty.clone(),
+                        Mutability::Immutable,
+                    )?;
+                    param_types.push((gen_ty, false)); // Closures don't support varargs yet
+                }
 
                 // Try to glean expected function signature parameters and return type
-                let (expected_params, expected_ret) = match expected_ty {
+                let (_expected_params, expected_ret) = match expected_ty {
                     Some(Type::Function(p, r)) => (Some(p.clone()), Some(*r.clone())),
                     _ => (None, None),
                 };
-
-                self.enter_scope();
-                for (i, (name_spanned, ty_opt)) in params.iter().enumerate() {
-                    let name = &name_spanned.node;
-                    let inferred_ty = expected_params.as_ref().and_then(|ep| ep.get(i).cloned());
-
-                    let ty = ty_opt.clone().or_else(|| inferred_ty).ok_or_else(|| TypeError {
-                        span: name_spanned.span.clone(),
-                        message: format!(
-                            "Type error: parameter '{}' must have a type annotation (could not infer type contextually)",
-                            name
-                        ),
-                    })?;
-                    param_types.push(ty.clone());
-
-                    // Insert parameter type into Language Server nodes map for hover capabilities
-                    self.node_types
-                        .insert(name_spanned.span.clone(), ty.clone());
-
-                    self.declare_variable(
-                        name_spanned.span.clone(),
-                        name.clone(),
-                        ty,
-                        Mutability::Immutable,
-                    )?;
-                }
 
                 // If no explicitly annotated return_ty is provided, we use the expected_ret.
                 let effective_return_ty = return_ty.clone().or(expected_ret);

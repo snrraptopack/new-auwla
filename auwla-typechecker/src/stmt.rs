@@ -350,21 +350,22 @@ impl Typechecker {
                     all_tps.extend(tps.clone());
                 }
 
-                let param_types: Vec<Type> = params
+                let param_types: Vec<(Type, bool)> = params
                     .iter()
-                    .map(|(_, ty)| self.genericize_type(ty, &all_tps))
+                    .map(|(_, ty, is_v)| (self.genericize_type(ty, &all_tps), *is_v))
                     .collect();
                 let return_ty_gen = return_ty
                     .as_ref()
                     .map(|ty| self.genericize_type(ty, &all_tps));
 
-                self.declare_function(
-                    stmt.span.clone(),
+                let signature = self.register_function(
                     name.clone(),
                     type_params.clone(),
                     param_types.clone(),
                     return_ty_gen.clone(),
                 );
+
+                self.declare_function(stmt.span.clone(), name.clone(), signature);
 
                 let prev_return = self.current_return_type.take();
                 let prev_func_name = self.current_function_name.take();
@@ -372,13 +373,13 @@ impl Typechecker {
                 self.current_function_name = Some(name.clone());
 
                 self.enter_scope();
-                // Fn params are always mutable within their scope
-                for ((param_name, _), ty) in params.iter().zip(param_types) {
+                // Fn params are always immutable within their scope
+                for ((param_name, _, _), (ty, _)) in params.iter().zip(param_types) {
                     self.declare_variable(
                         stmt.span.clone(),
                         param_name.clone(),
                         ty.clone(),
-                        Mutability::Mutable,
+                        Mutability::Immutable,
                     )?;
                 }
                 for body_stmt in body {
@@ -483,31 +484,78 @@ impl Typechecker {
                 Ok(())
             }
             auwla_ast::StmtKind::For {
-                binding,
+                bindings,
                 iterable,
+                step,
                 body,
             } => {
                 let iter_ty = self.check_expr(iterable)?;
-                let elem_ty = match iter_ty {
-                    Type::Array(inner) => *inner,
-                    Type::Basic(name) if name == "string" => Type::Basic("char".to_string()),
+                if let Some(s_expr) = step {
+                    let s_ty = self.check_expr(s_expr)?;
+                    self.assert_type_eq(&Type::Basic("number".to_string()), &s_ty)
+                        .map_err(|msg| TypeError { span: s_expr.span.clone(), message: msg })?;
+                }
+                let (key_ty, val_ty) = match iter_ty {
+                    Type::Array(inner) => (None, Some(*inner)),
+                    Type::Basic(name) if name == "string" => {
+                        (None, Some(Type::Basic("char".to_string())))
+                    }
+                    Type::Dict(k, v) => (Some(*k), Some(*v)),
                     other => {
                         return self.error(
                             iterable.span.clone(),
                             format!(
-                                "Type error: 'for..in' requires an array, range, or string, but got '{}'",
+                                "Type error: 'for..in' requires an array, range, string, or dict, but got '{}'",
                                 other
                             ),
                         );
                     }
                 };
+
                 self.enter_scope();
-                self.declare_variable(
-                    stmt.span.clone(),
-                    binding.clone(),
-                    elem_ty,
-                    Mutability::Immutable,
-                )?;
+                if bindings.len() == 1 {
+                    if let Some(v_ty) = val_ty {
+                        self.declare_variable(
+                            stmt.span.clone(),
+                            bindings[0].clone(),
+                            v_ty,
+                            Mutability::Immutable,
+                        )?;
+                    } else if let Some(k_ty) = key_ty {
+                        self.declare_variable(
+                            stmt.span.clone(),
+                            bindings[0].clone(),
+                            k_ty,
+                            Mutability::Immutable,
+                        )?;
+                    }
+                } else if bindings.len() == 2 {
+                    if let (Some(k_ty), Some(v_ty)) = (key_ty, val_ty) {
+                        self.declare_variable(
+                            stmt.span.clone(),
+                            bindings[0].clone(),
+                            k_ty,
+                            Mutability::Immutable,
+                        )?;
+                        self.declare_variable(
+                            stmt.span.clone(),
+                            bindings[1].clone(),
+                            v_ty,
+                            Mutability::Immutable,
+                        )?;
+                    } else {
+                        return self.error(
+                            stmt.span.clone(),
+                            "Type error: 'for (k, v)' destructuring only supported for dictionaries"
+                                .to_string(),
+                        );
+                    }
+                } else {
+                    return self.error(
+                        stmt.span.clone(),
+                        "Type error: too many bindings in 'for' loop".to_string(),
+                    );
+                }
                 for stmt in body {
                     self.check_stmt(stmt)?;
                 }
@@ -572,18 +620,14 @@ impl Typechecker {
                 methods,
                 ..
             } => {
-                let self_type = if let Some(args) = type_args {
-                    if type_name == "array" {
+                let self_type = if type_name == "array" || type_name == "Array" {
+                    if let Some(args) = type_args {
                         if let Some(first) = args.first() {
                             Type::Array(Box::new(first.clone()))
                         } else {
                             Type::Array(Box::new(Type::Basic("unknown".to_string())))
                         }
-                    } else {
-                        Type::Generic(type_name.clone(), args.clone())
-                    }
-                } else if type_name == "array" {
-                    if let Some(tps) = type_params {
+                    } else if let Some(tps) = type_params {
                         if let Some(tp) = tps.first() {
                             Type::Array(Box::new(Type::TypeVar(tp.clone())))
                         } else {
@@ -592,6 +636,36 @@ impl Typechecker {
                     } else {
                         Type::Array(Box::new(Type::Basic("unknown".to_string())))
                     }
+                } else if type_name == "dict" || type_name == "Dict" {
+                    if let Some(args) = type_args {
+                        if args.len() == 2 {
+                            Type::Dict(Box::new(args[0].clone()), Box::new(args[1].clone()))
+                        } else {
+                            Type::Dict(
+                                Box::new(Type::Basic("unknown".to_string())),
+                                Box::new(Type::Basic("unknown".to_string())),
+                            )
+                        }
+                    } else if let Some(tps) = type_params {
+                        if tps.len() == 2 {
+                            Type::Dict(
+                                Box::new(Type::TypeVar(tps[0].clone())),
+                                Box::new(Type::TypeVar(tps[1].clone())),
+                            )
+                        } else {
+                            Type::Dict(
+                                Box::new(Type::Basic("unknown".to_string())),
+                                Box::new(Type::Basic("unknown".to_string())),
+                            )
+                        }
+                    } else {
+                        Type::Dict(
+                            Box::new(Type::Basic("unknown".to_string())),
+                            Box::new(Type::Basic("unknown".to_string())),
+                        )
+                    }
+                } else if let Some(args) = type_args {
+                    Type::Generic(type_name.clone(), args.clone())
                 } else {
                     match type_name.as_str() {
                         "number" | "string" | "boolean" | "bool" => Type::Basic(type_name.clone()),
@@ -604,7 +678,7 @@ impl Typechecker {
                 }
 
                 let mut method_sigs = Vec::new();
-                let mut method_infos: Vec<(&auwla_ast::Method, Vec<(String, Type)>, Option<Type>)> =
+                let mut method_infos: Vec<(&auwla_ast::Method, Vec<(String, Type, bool)>, Option<Type>)> =
                     Vec::new();
                 for method in methods {
                     let mut method_tps = base_tps.clone();
@@ -613,10 +687,10 @@ impl Typechecker {
                     }
 
                     // Build fully-typed params: inject self type for instance methods
-                    let full_params: Vec<(String, Type)> = method
+                    let full_params: Vec<(String, Type, bool)> = method
                         .params
                         .iter()
-                        .map(|(n, ty_opt)| {
+                        .map(|(n, ty_opt, is_vararg)| {
                             let t = if n == "self" {
                                 if let Some(explicit_ty) = ty_opt {
                                     let generic_ty = self.genericize_type(explicit_ty, &method_tps);
@@ -630,7 +704,7 @@ impl Typechecker {
                                 let generic_ty = self.genericize_type(&ty, &method_tps);
                                 self.resolve_self_type(&generic_ty, &self_type)
                             };
-                            (n.clone(), t)
+                            (n.clone(), t, *is_vararg)
                         })
                         .collect();
 
@@ -668,7 +742,7 @@ impl Typechecker {
                     let saved_fn = self.current_function_name.take();
                     self.current_return_type = Some(return_ty_gen);
                     self.current_function_name = Some(format!("{}::{}", type_name, method.name));
-                    for (pname, pty) in &full_params {
+                    for (pname, pty, _) in &full_params {
                         self.declare_variable(
                             stmt.span.clone(),
                             pname.clone(),
@@ -694,17 +768,17 @@ impl Typechecker {
                 self.type_attributes
                     .insert(name.clone(), attributes.clone());
                 let mut method_sigs = Vec::new();
-                let mut method_infos: Vec<(&auwla_ast::Method, Vec<(String, Type)>, Option<Type>)> =
+                let mut method_infos: Vec<(&auwla_ast::Method, Vec<(String, Type, bool)>, Option<Type>)> =
                     Vec::new();
                 for method in methods {
                     let custom_type = Type::Custom(name.clone());
-                    let full_params: Vec<(String, Type)> = method
+                    let full_params: Vec<(String, Type, bool)> = method
                         .params
                         .iter()
-                        .map(|(n, ty_opt)| {
+                        .map(|(n, ty_opt, is_vararg)| {
                             let ty = ty_opt.clone().unwrap_or(Type::Basic("unknown".to_string()));
                             let resolved = self.resolve_self_type(&ty, &custom_type);
-                            (n.clone(), resolved)
+                            (n.clone(), resolved, *is_vararg)
                         })
                         .collect();
 
@@ -737,7 +811,7 @@ impl Typechecker {
                     let saved_fn = self.current_function_name.take();
                     self.current_return_type = Some(ret);
                     self.current_function_name = Some(format!("{}::{}", name, method.name));
-                    for (pname, pty) in &full_params {
+                    for (pname, pty, _) in &full_params {
                         self.declare_variable(
                             stmt.span.clone(),
                             pname.clone(),

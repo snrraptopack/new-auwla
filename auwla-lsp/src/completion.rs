@@ -236,7 +236,13 @@ fn handle_general_completion(backend: &Backend, content: &str, items: &mut Vec<C
                         "fn({}) -> {}",
                         params
                             .iter()
-                            .map(|p| typechecker.type_to_key(p))
+                            .map(|(ty, is_vararg)| {
+                                if *is_vararg {
+                                    format!("...{}", typechecker.type_to_key(ty))
+                                } else {
+                                    typechecker.type_to_key(ty)
+                                }
+                            })
                             .collect::<Vec<_>>()
                             .join(", "),
                         ret_str

@@ -54,7 +54,7 @@ impl JsEmitter {
                     .get(3)
                     .map(|s| s.as_str())
                     .expect("Missing JS static member name in @external attribute");
-                let args: Vec<&str> = method.params.iter().map(|(n, _)| n.as_str()).collect();
+                let args: Vec<&str> = method.params.iter().map(|(n, _, _)| n.as_str()).collect();
                 let call = format!("{}.{}({})", obj, target, args.join(", "));
                 self.emit_external_return(&call, needs_optional_wrap);
             }
@@ -83,8 +83,8 @@ impl JsEmitter {
         method
             .params
             .iter()
-            .filter(|(n, _)| n != "self")
-            .map(|(n, _)| n.as_str())
+            .filter(|(n, _, _)| n != "self")
+            .map(|(n, _, _)| n.as_str())
             .collect()
     }
 }

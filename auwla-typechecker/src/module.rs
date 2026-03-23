@@ -6,8 +6,8 @@ use std::collections::HashMap;
 /// resolving `import { ... } from '...'` statements in other files.
 #[derive(Debug, Clone, Default)]
 pub struct ExportMap {
-    /// Exported top-level functions: name -> (type_params, param_types, return_type)
-    pub functions: HashMap<String, (Option<Vec<String>>, Vec<Type>, Option<Type>)>,
+    /// Exported top-level functions: name -> (type_params, param_types (type, is_vararg), return_type)
+    pub functions: HashMap<String, (Option<Vec<String>>, Vec<(Type, bool)>, Option<Type>)>,
     /// Exported variables / constants: name -> type
     pub variables: HashMap<String, Type>,
     /// Exported struct declarations: name -> field list
@@ -57,7 +57,7 @@ fn register_export(map: &mut ExportMap, stmt: &Stmt) {
             return_ty,
             ..
         } => {
-            let param_types: Vec<Type> = params.iter().map(|(_, t)| t.clone()).collect();
+            let param_types: Vec<(Type, bool)> = params.iter().map(|(_, t, v)| (t.clone(), *v)).collect();
             map.functions.insert(
                 name.clone(),
                 (type_params.clone(), param_types, return_ty.clone()),
@@ -84,9 +84,9 @@ fn register_export(map: &mut ExportMap, stmt: &Stmt) {
             } = &initializer.node
             {
                 // No annotation, but initializer is a closure — register as a function
-                let param_types: Vec<Type> = params
+                let param_types: Vec<(Type, bool)> = params
                     .iter()
-                    .map(|(_, t)| t.clone().unwrap_or(Type::Basic("unknown".to_string())))
+                    .map(|(_, t, _)| (t.clone().unwrap_or(Type::Basic("unknown".to_string())), false))
                     .collect();
                 map.functions.insert(
                     name.clone(),
@@ -165,16 +165,17 @@ fn register_export(map: &mut ExportMap, stmt: &Stmt) {
                     method_tps.extend(mtps.clone());
                 }
 
-                let full_params: Vec<(String, Type)> = method
+                let full_params: Vec<(String, Type, bool)> = method
                     .params
                     .iter()
-                    .map(|(n, ty_opt)| {
+                    .map(|(n, ty_opt, is_v)| {
                         if n == "self" {
-                            (n.clone(), self_type.clone())
+                            (n.clone(), self_type.clone(), *is_v)
                         } else {
                             (
                                 n.clone(),
                                 ty_opt.clone().unwrap_or(Type::Basic("unknown".to_string())),
+                                *is_v,
                             )
                         }
                     })
@@ -209,13 +210,14 @@ fn register_export(map: &mut ExportMap, stmt: &Stmt) {
             map.type_attributes.insert(name.clone(), attributes.clone());
             let mut method_sigs = Vec::new();
             for method in methods {
-                let full_params: Vec<(String, Type)> = method
+                let full_params: Vec<(String, Type, bool)> = method
                     .params
                     .iter()
-                    .map(|(n, ty_opt)| {
+                    .map(|(n, ty_opt, is_v)| {
                         (
                             n.clone(),
                             ty_opt.clone().unwrap_or(Type::Basic("unknown".to_string())),
+                            *is_v,
                         )
                     })
                     .collect();

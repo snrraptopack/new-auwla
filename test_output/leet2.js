@@ -21,7 +21,7 @@ function test_nested_collections() {
 function test_mutability_in_loops() {
   __print("\n--- Test 2: Mutability in Loops ---");
   let sum = 0;
-  for (let i = 1; i <= 5; i++) {
+  for (let i = 1; i <= 5; i += 1) {
     const square = (i * i);
     let running_avg = (square + sum);
     if (((i % 2) === 0)) {
@@ -33,7 +33,7 @@ function test_mutability_in_loops() {
 }
 function test_dict_composition() {
   __print("\n--- Test 3: Dictionary Composition ---");
-  const initial_data = { ["apple"]: 10, ["banana"]: 5, ["cherry"]: 20 };
+  const initial_data = { "apple": 10, "banana": 5, "cherry": 20 };
   let inventory = initial_data;
   inventory["date"] = 15;
   let count = 0;

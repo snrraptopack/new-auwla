@@ -72,28 +72,26 @@ impl JsEmitter {
                 self.write(";\n");
             }
             auwla_ast::StmtKind::Fn {
-                name, params, body, ..
+                name,
+                params,
+                body,
+                ..
             } => {
-                for (param_name, ty) in params {
-                    let type_name = match ty {
-                        auwla_ast::Type::Custom(n) => n.clone(),
-                        auwla_ast::Type::Basic(n) => n.clone(),
-                        auwla_ast::Type::Array(_) => "array".to_string(),
-                        auwla_ast::Type::Optional(_) => "optional".to_string(),
-                        _ => format!("{:?}", ty),
-                    };
-                    self.var_types.insert(param_name.clone(), type_name);
-                }
                 self.write_indent();
                 if export {
                     self.write("export ");
                 }
-                let param_names: Vec<&str> = params.iter().map(|(n, _)| n.as_str()).collect();
-                self.write(&format!(
-                    "function {}({}) {{\n",
-                    name,
-                    param_names.join(", ")
-                ));
+                self.write(&format!("function {}(", name));
+                for (i, (name, _, is_vararg)) in params.iter().enumerate() {
+                    if i > 0 {
+                        self.write(", ");
+                    }
+                    if *is_vararg {
+                        self.write("...");
+                    }
+                    self.write(name);
+                }
+                self.write(") {\n");
                 self.out.indent();
                 for s in body {
                     self.emit_stmt(s);
@@ -167,8 +165,9 @@ impl JsEmitter {
                 self.writeln("}");
             }
             auwla_ast::StmtKind::For {
-                binding,
+                bindings,
                 iterable,
+                step,
                 body,
             } => {
                 if let auwla_ast::ExprKind::Range {
@@ -178,31 +177,36 @@ impl JsEmitter {
                 } = &iterable.node
                 {
                     // Optimized number range loop
-                    self.var_types.insert(binding.clone(), "number".to_string());
+                    let binding = &bindings[0];
                     self.write_indent();
                     let start_str = self.emit_expr_to_string(start);
                     let end_str = self.emit_expr_to_string(end);
                     let op = if *inclusive { "<=" } else { "<" };
+                    let step_str = step.as_ref().map(|s| self.emit_expr_to_string(s)).unwrap_or("1".to_string());
                     self.write(&format!(
-                        "for (let {} = {}; {} {} {}; {}++) {{\n",
-                        binding, start_str, binding, op, end_str, binding
+                        "for (let {} = {}; {} {} {}; {} += {}) {{\n",
+                        binding, start_str, binding, op, end_str, binding, step_str
                     ));
                 } else {
                     // For-of loop: try to infer element type from iterable
-                    if let Some(iter_type) = self.infer_expr_type(iterable) {
-                        // If iterable is array<T>, element type is T
-                        if iter_type.starts_with("array<") && iter_type.ends_with('>') {
-                            let elem_type = &iter_type[6..iter_type.len() - 1];
-                            self.var_types
-                                .insert(binding.clone(), elem_type.to_string());
-                        } else if iter_type == "string" {
-                            self.var_types.insert(binding.clone(), "char".to_string());
-                        }
-                    }
                     self.write_indent();
-                    self.write(&format!("for (const {} of ", binding));
-                    self.emit_expr(iterable);
-                    self.write(") {\n");
+                    if bindings.len() == 1 {
+                        let binding = &bindings[0];
+                        self.write(&format!("for (const {} of ", binding));
+                        self.emit_expr(iterable);
+                        self.write(") {\n");
+                    } else if bindings.len() == 2 {
+                        let k_binding = &bindings[0];
+                        let v_binding = &bindings[1];
+                        self.write(&format!("for (const [{}, {}] of Object.entries(", k_binding, v_binding));
+                        self.emit_expr(iterable);
+                        self.write(")) {\n");
+                    } else {
+                        // Should be caught by typechecker, but fallback
+                        self.write("for (const _ of ");
+                        self.emit_expr(iterable);
+                        self.write(") {\n");
+                    }
                 }
                 self.out.indent();
                 for s in body {
@@ -284,8 +288,6 @@ impl JsEmitter {
         initializer: &auwla_ast::expr::Expr,
         export: bool,
     ) {
-        // Register the variable's type for extension method resolution.
-        self.register_var_type(name, ty, initializer);
 
         // Special-case: match-as-initializer
         if let auwla_ast::ExprKind::Match { expr, arms } = &initializer.node {
@@ -336,30 +338,33 @@ impl JsEmitter {
                 }
             }
 
-            // Register method parameters in var_types
-            for (param_name, ty_opt) in &method.params {
-                if param_name == "self" {
-                    self.var_types
-                        .insert("__self".to_string(), type_key.to_string());
-                    self.var_types
-                        .insert("self".to_string(), type_key.to_string());
-                } else if let Some(ty) = ty_opt {
-                    let t_name = self.type_to_key(ty);
-                    self.var_types.insert(param_name.clone(), t_name);
+            // Register method parameters (now just setting current_receiver_type)
+            for (param_name, _ty_opt, _) in &method.params {
+                if param_name == "self" || param_name == "__self" {
+                    self.current_receiver_type = Some(type_key.to_string());
                 }
             }
+
+            let origin_prefix = match self.current_origin {
+                auwla_ast::ExtensionOrigin::Std => "",
+                auwla_ast::ExtensionOrigin::User => "usr_",
+                auwla_ast::ExtensionOrigin::Package => "pkg_",
+            };
 
             // Emit function signature
             if method.is_static {
                 self.write_indent_ext();
                 self.write_ext(&format!(
-                    "export function _ext_{}__{}(",
-                    safe_type_key, method.name
+                    "export function _ext_{}{}__{}(",
+                    origin_prefix, safe_type_key, method.name
                 ));
                 let params: Vec<_> = method.params.iter().collect();
-                for (i, (pname, _)) in params.iter().enumerate() {
+                for (i, (pname, _, is_vararg)) in params.iter().enumerate() {
                     if i > 0 {
                         self.write_ext(", ");
+                    }
+                    if *is_vararg {
+                        self.write_ext("...");
                     }
                     self.write_ext(pname);
                 }
@@ -367,11 +372,14 @@ impl JsEmitter {
             } else {
                 self.write_indent_ext();
                 self.write_ext(&format!(
-                    "export function _ext_{}__{}(__self",
-                    safe_type_key, method.name
+                    "export function _ext_{}{}__{}(__self",
+                    origin_prefix, safe_type_key, method.name
                 ));
-                for (pname, _) in method.params.iter().filter(|(n, _)| n != "self") {
+                for (pname, _, is_vararg) in method.params.iter().filter(|(n, _, _)| n != "self") {
                     self.write_ext(", ");
+                    if *is_vararg {
+                        self.write_ext("...");
+                    }
                     self.write_ext(pname);
                 }
                 self.write_ext(") {\n");
@@ -397,6 +405,7 @@ impl JsEmitter {
 
             self.ext.dedent();
             self.writeln_ext("}\n");
+            self.current_receiver_type = None;
         }
     }
 

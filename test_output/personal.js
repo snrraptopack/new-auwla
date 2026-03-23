@@ -1,4 +1,10 @@
-import { __print, __range } from './__util.js';
-import * as __std_array from './std/array.js';
-const a = __range(1, 20, true);
-__print(__std_array._ext_array__last(a));
+import { __print } from './__util.js';
+function divide(f1, f2) {
+  if ((f2 === 0)) {
+    ({ ok: false, value: "can't divide by 0" });
+  } else {
+    ({ ok: true, value: (f1 / f2) });
+  }
+}
+__print(divide(10, 0));
+__print(divide(10, 3));
