@@ -17,13 +17,18 @@ extend T?E {
 
     }
 
-    fn is_err(self): bool => !self.is_ok();
+    fn is_err(self): bool {
+        return match self {
+            some(_) => false,
+            none(_) => true,
+        };
+    }
 
+    //TODO: Fix typechecker to recognize E type parameter
     fn get_err(self): E? {
         return match self {
             some(_) => none,
-            none(e) => some(e),
+            none(err) => some(err),
         };
-
     }
 }

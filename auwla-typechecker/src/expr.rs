@@ -131,6 +131,46 @@ impl Typechecker {
                         })?;
                 }
 
+                // Helper function for instantiating generic types in operator overloads
+                fn instantiate_op(
+                    ty: &Type,
+                    env: &std::collections::HashMap<String, usize>,
+                ) -> Type {
+                    match ty {
+                        Type::TypeVar(name) | Type::Custom(name) => {
+                            if let Some(&id) = env.get(name) {
+                                Type::InferenceVar(id)
+                            } else {
+                                ty.clone()
+                            }
+                        }
+                        Type::Array(inner) => Type::Array(Box::new(instantiate_op(inner, env))),
+                        Type::Dict(k, v) => {
+                            Type::Dict(Box::new(instantiate_op(k, env)), Box::new(instantiate_op(v, env)))
+                        }
+                        Type::Optional(inner) => {
+                            Type::Optional(Box::new(instantiate_op(inner, env)))
+                        }
+                        Type::Result { ok_type, err_type } => Type::Result {
+                            ok_type: Box::new(instantiate_op(ok_type, env)),
+                            err_type: Box::new(instantiate_op(err_type, env)),
+                        },
+                        Type::Function(p, r) => {
+                            let inst_p = p
+                                .iter()
+                                .map(|(p_ty, p_vararg)| (instantiate_op(p_ty, env), *p_vararg))
+                                .collect();
+                            let inst_r = Box::new(instantiate_op(r, env));
+                            Type::Function(inst_p, inst_r)
+                        }
+                        Type::Generic(n, args) => {
+                            let inst_args = args.iter().map(|a| instantiate_op(a, env)).collect();
+                            Type::Generic(n.clone(), inst_args)
+                        }
+                        _ => ty.clone(),
+                    }
+                }
+
                 // Check for operator overloads BEFORE type unification
                 let operator_method = match op {
                     auwla_ast::BinaryOp::Add => Some("op_plus"),
@@ -147,15 +187,41 @@ impl Typechecker {
                         if let Some(method_sig) = methods.iter().find(|m| m.name == method_name) {
                             // Found operator overload! Type check it like a method call
                             if method_sig.params.len() >= 2 {
+                                // Need to instantiate generic types from the extension
+                                // For example: dict<K, V> extension with dict<string, number> actual type
+                                let mut unifier = crate::inference::unify::Unifier::new();
+                                let mut type_env = std::collections::HashMap::new();
+                                
+                                // Build type environment by unifying self parameter with actual left type
+                                if let Some((_, self_ty, _)) = method_sig.params.first() {
+                                    // Extract type parameters from the extension
+                                    if let Some(t_params) = &method_sig.type_params {
+                                        for tp in t_params {
+                                            let id = unifier.new_type_var();
+                                            type_env.insert(tp.clone(), id);
+                                        }
+                                    }
+                                    
+                                    let inst_self = instantiate_op(self_ty, &type_env);
+                                    // Unify to bind type variables
+                                    let _ = unifier.unify(&inst_self, &left_ty);
+                                }
+                                
                                 let param_ty = &method_sig.params[1].1; // Second param (first is self)
-                                // Check if right operand matches the parameter type
-                                self.assert_type_eq(param_ty, &right_ty).map_err(|msg| TypeError {
+                                let inst_param = instantiate_op(param_ty, &type_env);
+                                let resolved_param = unifier.resolve(&inst_param);
+                                
+                                // Check if right operand matches the instantiated parameter type
+                                unifier.unify(&resolved_param, &right_ty).map_err(|_| TypeError {
                                     span: right.span.clone(),
-                                    message: format!("Operator overload type mismatch: {}", msg),
+                                    message: format!("Operator overload type mismatch: Strict Type mismatch: Expected '{}', found '{}'", resolved_param, right_ty),
                                 })?;
                                 
-                                // Return the operator's return type
-                                return Ok(method_sig.return_ty.clone().unwrap_or(Type::Basic("void".to_string())));
+                                // Return the instantiated return type
+                                let ret_ty = method_sig.return_ty.clone().unwrap_or(Type::Basic("void".to_string()));
+                                let inst_ret = instantiate_op(&ret_ty, &type_env);
+                                let resolved_ret = unifier.resolve(&inst_ret);
+                                return Ok(resolved_ret);
                             }
                         }
                     }

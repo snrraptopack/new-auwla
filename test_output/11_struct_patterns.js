@@ -8,7 +8,7 @@ function greet(u) {
   const __match_0 = u;
   if ((__match_0.role === "admin" && __match_0.name !== undefined)) {
     const name = __match_0.name;
-    __print(`Welcome back, Admin ${name}`);
+    __print(`Welcome back, Admin ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(name)}`);
   }
   else if ((__match_0.role === "user" && __match_0.age !== undefined) && (() => {
     const age = __match_0.age;
@@ -20,7 +20,7 @@ function greet(u) {
   else if ((__match_0.name !== undefined && __match_0.age !== undefined)) {
     const name = __match_0.name;
     const age = __match_0.age;
-    __print(`Welcome, ${name} (${age})`);
+    __print(`Welcome, ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(name)} (${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(age)})`);
   }
 }
 greet(alice);

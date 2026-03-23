@@ -227,14 +227,17 @@ impl JsEmitter {
                 self.write(")");
             }
             auwla_ast::ExprKind::Interpolation(parts) => {
-                // Emit JS template literal: `Hello ${name}!`
+                // Emit JS template literal with proper object formatting
                 self.write("`");
                 for part in parts {
                     match &part.node {
                         auwla_ast::ExprKind::StringLit(s) => self.write(s),
                         _ => {
                             self.write("${");
+                            // Wrap expression in a formatter that handles objects
+                            self.write("((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(");
                             self.emit_expr(part);
+                            self.write(")");
                             self.write("}");
                         }
                     }

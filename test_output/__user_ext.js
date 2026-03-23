@@ -152,7 +152,7 @@ export function _ext_usr_array__find_one(__self, id) {
 }
 
 export function _ext_usr_array__print_summary(__self) {
-  __print(`Summary of ${__self.length} tasks:`);
+  __print(`Summary of ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(__self.length)} tasks:`);
   for (const t of __self) {
     const __match_0 = t.status;
     let status_icon;
@@ -167,7 +167,7 @@ export function _ext_usr_array__print_summary(__self) {
         status_icon = "📦";
         break;
     }
-    __print(`${status_icon} ${t.title}`);
+    __print(`${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(status_icon)} ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(t.title)}`);
   }
 }
 

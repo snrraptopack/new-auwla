@@ -58,7 +58,7 @@ function handle_state(state) {
   }
   else if (__match_3.$variant === "Error") {
     const msg = __match_3.$data[0];
-    __print(`App encountered an error: ${msg}`);
+    __print(`App encountered an error: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(msg)}`);
   }
 }
 handle_state({ $variant: "Loading" });
@@ -76,7 +76,7 @@ function check_retries(current_retries, max_retries) {
   }
   else if (true) {
     const count = __match_4;
-    __print(`Retrying... attempt ${count}`);
+    __print(`Retrying... attempt ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(count)}`);
   }
 }
 check_retries(4, 3);

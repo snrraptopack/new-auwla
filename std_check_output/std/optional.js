@@ -1,4 +1,4 @@
-export function _ext_T__val_or(__self, default_v) {
+export function _ext_optional__val_or(__self, default_v) {
   const __match_0 = __self;
   if (__match_0.ok) {
     const v = __match_0.value;
@@ -9,7 +9,7 @@ export function _ext_T__val_or(__self, default_v) {
   }
 }
 
-export function _ext_T__is_some(__self) {
+export function _ext_optional__is_some(__self) {
   const __match_1 = __self;
   if (__match_1.ok) {
     const _ = __match_1.value;
@@ -20,7 +20,14 @@ export function _ext_T__is_some(__self) {
   }
 }
 
-export function _ext_T__is_none(__self) {
-  return !__self.is_some();
+export function _ext_optional__is_none(__self) {
+  const __match_2 = __self;
+  if (__match_2.ok) {
+    const _ = __match_2.value;
+    return false;
+  }
+  else if (!__match_2.ok) {
+    return true;
+  }
 }
 

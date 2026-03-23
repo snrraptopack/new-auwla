@@ -23,18 +23,26 @@ export function _ext_result__is_ok(__self) {
 }
 
 export function _ext_result__is_err(__self) {
-  return !__self.is_ok();
-}
-
-export function _ext_result__get_err(__self) {
   const __match_2 = __self;
   if (__match_2.ok) {
     const _ = __match_2.value;
-    return ({ ok: false });
+    return false;
   }
   else if (!__match_2.ok) {
-    const e = __match_2.value;
-    return ({ ok: true, value: e });
+    const _ = __match_2.value;
+    return true;
+  }
+}
+
+export function _ext_result__get_err(__self) {
+  const __match_3 = __self;
+  if (__match_3.ok) {
+    const _ = __match_3.value;
+    return ({ ok: false });
+  }
+  else if (!__match_3.ok) {
+    const err = __match_3.value;
+    return ({ ok: true, value: err });
   }
 }
 

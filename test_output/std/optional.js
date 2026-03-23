@@ -21,6 +21,13 @@ export function _ext_optional__is_some(__self) {
 }
 
 export function _ext_optional__is_none(__self) {
-  return !__self.is_some();
+  const __match_2 = __self;
+  if (__match_2.ok) {
+    const _ = __match_2.value;
+    return false;
+  }
+  else if (!__match_2.ok) {
+    return true;
+  }
 }
 

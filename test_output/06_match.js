@@ -10,21 +10,21 @@ const result1 = process(20);
 const __match_0 = result1;
 if (__match_0.ok) {
   const val = __match_0.value;
-  __print(`Success: ${val}`);
+  __print(`Success: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(val)}`);
 }
 else if (!__match_0.ok) {
   const err = __match_0.value;
-  __print(`Error: ${err}`);
+  __print(`Error: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(err)}`);
 }
 const __match_1 = process(5);
 let msg;
 if (__match_1.ok) {
   const val = __match_1.value;
-  msg = `It worked: ${val}`;
+  msg = `It worked: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(val)}`;
 }
 else if (!__match_1.ok) {
   const err = __match_1.value;
-  msg = `It failed: ${err}`;
+  msg = `It failed: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(err)}`;
 }
 __print(msg);
 const user = __range("A", "Z", true);

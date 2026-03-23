@@ -1,7 +1,7 @@
 import { __print } from './__util.js';
-import * as __std_array from './std/array.js';
 import * as __std_dict from './std/dict.js';
 import * as __std_optional from './std/optional.js';
+import * as __std_array from './std/array.js';
 function two_sum(nums, target) {
   const num_map = {  };
   for (let i = 0; i <= nums.length; i += 1) {
@@ -16,15 +16,15 @@ function two_sum(nums, target) {
 const nums1 = [2, 7, 11, 15];
 const target1 = 9;
 const result1 = two_sum(nums1, target1);
-__print(`Two Sum Test 1: ${result1}`);
+__print(`Two Sum Test 1: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(result1)}`);
 const nums2 = [3, 2, 4];
 const target2 = 6;
 const result2 = two_sum(nums2, target2);
-__print(`Two Sum Test 2: ${result2}`);
+__print(`Two Sum Test 2: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(result2)}`);
 const nums3 = [3, 3];
 const target3 = 6;
 const result3 = two_sum(nums3, target3);
-__print(`Two Sum Test 3: ${result3}`);
+__print(`Two Sum Test 3: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(result3)}`);
 function is_valid_parentheses(s) {
   const stack = [];
   const pairs = { ")": "(", "]": "[", "}": "{" };
@@ -41,11 +41,11 @@ function is_valid_parentheses(s) {
   return (stack.length === 0);
 }
 __print("Valid Parentheses Tests:");
-__print(`() : ${is_valid_parentheses("()")}`);
-__print(`()[] : ${is_valid_parentheses("()[]{}")}`);
-__print(`(] : ${is_valid_parentheses("(]")}`);
-__print(`([)] : ${is_valid_parentheses("([)]")}`);
-__print(`${[]} : ${is_valid_parentheses("{[]}")}`);
+__print(`() : ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(is_valid_parentheses("()"))}`);
+__print(`()[] : ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(is_valid_parentheses("()[]{}"))}`);
+__print(`(] : ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(is_valid_parentheses("(]"))}`);
+__print(`([)] : ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(is_valid_parentheses("([)]"))}`);
+__print(`${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)([])} : ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(is_valid_parentheses("{[]}"))}`);
 function max_subarray_sum(arr, k) {
   if ((arr.length < k)) {
     return 0;
@@ -67,10 +67,10 @@ function max_subarray_sum(arr, k) {
 __print("\nMax Subarray Sum Tests:");
 const arr1 = [2, 1, 5, 1, 3, 2];
 const k1 = 3;
-__print(`Array: ${arr1}, k=${k1}, Max Sum: ${max_subarray_sum(arr1, k1)}`);
+__print(`Array: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(arr1)}, k=${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(k1)}, Max Sum: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(max_subarray_sum(arr1, k1))}`);
 const arr2 = [2, 3, 4, 1, 5];
 const k2 = 2;
-__print(`Array: ${arr2}, k=${k2}, Max Sum: ${max_subarray_sum(arr2, k2)}`);
+__print(`Array: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(arr2)}, k=${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(k2)}, Max Sum: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(max_subarray_sum(arr2, k2))}`);
 function reverse_string(s) {
   let chars = s.split("");
   let left = 0;
@@ -85,9 +85,9 @@ function reverse_string(s) {
   return chars.join("");
 }
 __print("\nReverse String Tests:");
-__print(`hello -> ${reverse_string("hello")}`);
-__print(`Auwla -> ${reverse_string("Auwla")}`);
-__print(`racecar -> ${reverse_string("racecar")}`);
+__print(`hello -> ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(reverse_string("hello"))}`);
+__print(`Auwla -> ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(reverse_string("Auwla"))}`);
+__print(`racecar -> ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(reverse_string("racecar"))}`);
 function factorial(n) {
   if ((n <= 1)) {
     return 1;
@@ -95,6 +95,6 @@ function factorial(n) {
   return (n * factorial((n - 1)));
 }
 __print("\nFactorial Tests:");
-__print(`factorial(5) = ${factorial(5)}`);
-__print(`factorial(0) = ${factorial(0)}`);
-__print(`factorial(7) = ${factorial(7)}`);
+__print(`factorial(5) = ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(factorial(5))}`);
+__print(`factorial(0) = ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(factorial(0))}`);
+__print(`factorial(7) = ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(factorial(7))}`);

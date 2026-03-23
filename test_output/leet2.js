@@ -1,6 +1,6 @@
 import { __print } from './__util.js';
-import * as __std_dict from './std/dict.js';
 import * as __std_optional from './std/optional.js';
+import * as __std_dict from './std/dict.js';
 function test_nested_collections() {
   __print("--- Test 1: Nested Collections ---");
   let registry = {  };
@@ -9,7 +9,7 @@ function test_nested_collections() {
   __print("registry-primes", __std_dict._ext_dict__get(registry, "primes"));
   if (("primes" in registry)) {
     const p = __std_dict._ext_dict__get(registry, "primes");
-    __print(`Primes: ${p}`);
+    __print(`Primes: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(p)}`);
   }
   let total_elements = 0;
   const keys = ["primes", "fib"];
@@ -18,7 +18,7 @@ function test_nested_collections() {
       total_elements = (total_elements + __std_optional._ext_optional__val_or(__std_dict._ext_dict__get(registry, key), []).length);
     }
   }
-  __print(`Total elements: ${total_elements}`);
+  __print(`Total elements: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(total_elements)}`);
 }
 function test_mutability_in_loops() {
   __print("\n--- Test 2: Mutability in Loops ---");
@@ -30,7 +30,7 @@ function test_mutability_in_loops() {
       running_avg = (running_avg / 2);
     }
     sum = (sum + running_avg);
-    __print(`Step ${i}: square=${square}, sum=${sum}`);
+    __print(`Step ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(i)}: square=${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(square)}, sum=${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(sum)}`);
   }
 }
 function test_dict_composition() {
@@ -43,13 +43,13 @@ function test_dict_composition() {
   for (const fruit of fruit_list) {
     if ((fruit in inventory)) {
       const val = __std_optional._ext_optional__val_or(__std_dict._ext_dict__get(inventory, fruit), 0);
-      __print(`Found ${fruit}: ${val}`);
+      __print(`Found ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(fruit)}: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(val)}`);
       count = (count + 1);
     } else {
-      __print(`${fruit} not in inventory`);
+      __print(`${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(fruit)} not in inventory`);
     }
   }
-  __print(`Fruits found: ${count}`);
+  __print(`Fruits found: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(count)}`);
 }
 test_nested_collections();
 test_mutability_in_loops();

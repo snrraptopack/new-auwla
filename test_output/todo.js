@@ -9,15 +9,15 @@ function main() {
   if (__match_1.ok) {
     const t = __match_1.value;
     __print("Target Found!");
-    __print(`ID: ${t.id}`);
-    __print(`Label: ${t.title}`);
+    __print(`ID: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(t.id)}`);
+    __print(`Label: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(t.title)}`);
     if ((t.id > 100)) {
       __print("Priority: High (Legacy System)");
     }
   }
   else if (!__match_1.ok) {
     const msg = __match_1.value;
-    __print(`Error: ${msg}`);
+    __print(`Error: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(msg)}`);
   }
   const at = my_tasks.filter((val) => (val.id === 10));
   const version = "v1.0.0";
@@ -28,7 +28,7 @@ function main() {
     if ((c === "v")) {
       __print("Version starts with 'v' - Valid.");
     } else {
-      __print(`Unknown version format: ${c}`);
+      __print(`Unknown version format: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(c)}`);
     }
   }
   else if (!__match_2.ok) {

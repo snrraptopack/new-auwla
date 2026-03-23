@@ -15,5 +15,10 @@ extend T? {
 
     }
 
-    fn is_none(self): bool => !self.is_some();
+    fn is_none(self): bool {
+        return match self {
+            some(_) => false,
+            none => true,
+        };
+    }
 }

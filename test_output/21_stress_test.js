@@ -3,12 +3,12 @@ import * as __user from './__user_ext.js';
 function test_collections() {
   const base = [1, 2, 3];
   const expanded = [0, ...base, 4, 5];
-  __print(`Expanded Array length: ${expanded.length}`);
+  __print(`Expanded Array length: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(expanded.length)}`);
   const scores = { "alice": 100, "bob": 80 };
   const more = { ...scores, "charlie": 90 };
   __print("Scores:");
   for (const [k, v] of Object.entries(more)) {
-    __print(`${k}: ${v}`);
+    __print(`${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(k)}: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(v)}`);
   }
 }
 function safe_divide(a, b) {
@@ -21,33 +21,33 @@ function stress_main() {
   __print("--- STARTING AUWLA STRESS TEST ---");
   const start_val = 10;
   const final_val = __user._ext_usr_number__add_many(start_val, 1, 2, 3, 4);
-  __print(`Extended Add (10 + 1,2,3,4) = ${final_val}`);
-  __print(`Is ${final_val} multiple of 5? ${__user._ext_usr_number__is_multiple_of(final_val, 5)}`);
+  __print(`Extended Add (10 + 1,2,3,4) = ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(final_val)}`);
+  __print(`Is ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(final_val)} multiple of 5? ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(__user._ext_usr_number__is_multiple_of(final_val, 5))}`);
   const numbers = [1, 2, 3, 4, 5, 6, 7, 8];
   const evens = __user._ext_usr_array__filter_even_nums(numbers);
-  __print(`Evens count: ${evens.length}`);
-  __print(`Sum of evens: ${__user._ext_usr_array__sum_items(evens)}`);
+  __print(`Evens count: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(evens.length)}`);
+  __print(`Sum of evens: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(__user._ext_usr_array__sum_items(evens))}`);
   const v1 = { x: 3, y: 4 };
   const v2 = { x: 7, y: 6 };
   const v3 = __user._ext_usr_Vector2__add_vec(v1, v2);
-  __print(`Vector Sum: (${v3.x}, ${v3.y}), LengthSq: ${__user._ext_usr_Vector2__length_sq(v3)}`);
+  __print(`Vector Sum: (${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(v3.x)}, ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(v3.y)}), LengthSq: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(__user._ext_usr_Vector2__length_sq(v3))}`);
   const __match_0 = safe_divide(100, 5);
   if (__match_0.ok) {
     const val = __match_0.value;
-    __print(`100 / 5 = ${val}`);
+    __print(`100 / 5 = ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(val)}`);
   }
   else if (!__match_0.ok) {
     const err = __match_0.value;
-    __print(`Error: ${err}`);
+    __print(`Error: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(err)}`);
   }
   const __match_1 = safe_divide(99, 0);
   if (__match_1.ok) {
     const val = __match_1.value;
-    __print(`99 / 0 = ${val}`);
+    __print(`99 / 0 = ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(val)}`);
   }
   else if (!__match_1.ok) {
     const err = __match_1.value;
-    __print(`Error: ${err}`);
+    __print(`Error: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(err)}`);
   }
   __print("Step loop (0 to 12 step 3):");
   for (let i = 0; i <= 13; i += 3) {
