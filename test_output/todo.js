@@ -19,6 +19,7 @@ function main() {
     const msg = __match_1.value;
     __print(`Error: ${msg}`);
   }
+  const at = my_tasks.filter((val) => (val.id === 10));
   const version = "v1.0.0";
   __print("Checking version prefix...");
   const __match_2 = ((_r = version.at(0)) != null ? { ok: true, value: _r } : { ok: false });

@@ -77,6 +77,8 @@ pub enum ExprKind {
     },
     /// Array literal: [1, 2, 3]
     Array(Vec<Expr>),
+    /// A dictionary literal `{ key: value, ... }`
+    Dict(Vec<(Expr, Expr)>),
     /// Array indexing: arr[0]
     Index { expr: Box<Expr>, index: Box<Expr> },
     /// Range: 1..10 (inclusive) or 1..<10 (exclusive), also 'a'..'z'
@@ -121,10 +123,9 @@ pub enum ExprKind {
         method: String,
         args: Vec<Expr>,
     },
-    /// <T>(x: T) => x * 2
     Closure {
         type_params: Option<Vec<String>>,
-        params: Vec<(String, Option<crate::types::Type>)>,
+        params: Vec<(crate::Spanned<String>, Option<crate::types::Type>)>,
         return_ty: Option<crate::types::Type>,
         body: Box<Expr>,
     },
@@ -146,6 +147,7 @@ pub enum BinaryOp {
     Gte,
     And,
     Or,
+    In,
 }
 
 #[derive(Debug, Clone, PartialEq)]

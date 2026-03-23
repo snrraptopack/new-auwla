@@ -19,3 +19,9 @@ let msg = match process(5) {
     none(err) => "It failed: {err}"
 };
 print(msg);
+
+
+let user = 'A' .. 'Z';
+
+fn m(v:number):char => 'a';
+user.map(m);

@@ -54,6 +54,10 @@ extend array<T> {
     @external("js", "method", "concat")
     fn concat(self, other: T[]): T[];
 
+    @external("js", "method", "reduce")
+    fn reduce<U>(self, f: (U,T) => U, initial: U): U;
+
+
     @external("js", "static", "Array", "isArray")
     static fn is_array(val: T[]): bool;
 

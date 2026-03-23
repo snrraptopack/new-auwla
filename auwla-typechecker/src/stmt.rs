@@ -180,18 +180,33 @@ impl Typechecker {
                     auwla_ast::ExprKind::Index { expr, index } => {
                         let expr_ty = self.check_expr(expr)?;
                         let idx_ty = self.check_expr(index)?;
-                        self.assert_type_eq(&Type::Basic("number".to_string()), &idx_ty)
-                            .map_err(|_| TypeError {
-                                span: index.span.clone(),
-                                message: format!(
-                                    "Type error: array index must be 'number', got '{}'",
-                                    idx_ty
-                                ),
-                            })?;
 
                         match expr_ty {
                             Type::Array(inner) => {
+                                self.assert_type_eq(&Type::Basic("number".to_string()), &idx_ty)
+                                    .map_err(|_| TypeError {
+                                        span: index.span.clone(),
+                                        message: format!(
+                                            "Type error: array index must be 'number', got '{}'",
+                                            idx_ty
+                                        ),
+                                    })?;
                                 self.assert_type_eq(&inner, &val_ty)
+                                    .map_err(|msg| TypeError {
+                                        span: value.span.clone(),
+                                        message: msg,
+                                    })?;
+                            }
+                            Type::Dict(k, v) => {
+                                self.assert_type_eq(&k, &idx_ty)
+                                    .map_err(|_| TypeError {
+                                        span: index.span.clone(),
+                                        message: format!(
+                                            "Type error: dict index must be '{}', got '{}'",
+                                            self.type_to_key(&k), self.type_to_key(&idx_ty)
+                                        ),
+                                    })?;
+                                self.assert_type_eq(&v, &val_ty)
                                     .map_err(|msg| TypeError {
                                         span: value.span.clone(),
                                         message: msg,
@@ -201,7 +216,7 @@ impl Typechecker {
                                 return self.error(
                                     expr.span.clone(),
                                     format!(
-                                        "Type error: cannot index into non-array type '{}'",
+                                        "Type error: cannot index into non-array/dict type '{}'",
                                         other
                                     ),
                                 );

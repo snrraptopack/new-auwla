@@ -73,17 +73,36 @@ fn load_std_extensions() -> (
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let target = if args.len() > 1 { &args[1] } else { "app.aw" };
+    let mut target = "app.aw".to_string();
+    let mut out_dir = None;
 
-    let path = Path::new(target);
+    let mut i = 1;
+    while i < args.len() {
+        if args[i] == "-o" || args[i] == "--out-dir" {
+            if i + 1 < args.len() {
+                out_dir = Some(args[i + 1].clone());
+                i += 2;
+            } else {
+                eprintln!("[Error] Expected argument after {}", args[i]);
+                std::process::exit(1);
+            }
+        } else {
+            target = args[i].clone();
+            i += 1;
+        }
+    }
+
+    let path = Path::new(&target);
 
     if !path.exists() {
         eprintln!("[Error] Path '{}' does not exist.", target);
         std::process::exit(1);
     }
 
-    let global_output_root = if path.is_dir() {
-        path.join("output")
+    let global_output_root = if let Some(d) = out_dir {
+        PathBuf::from(d)
+    } else if path.is_dir() {
+        PathBuf::from("output")
     } else {
         path.parent().unwrap_or(Path::new(".")).join("output")
     };
@@ -92,6 +111,7 @@ fn main() {
     }
 
     let mut global_util_needed = false;
+    let mut has_errors = false;
 
     // ── Step 1: Load embedded standard library ──
     let (std_extensions, std_enums, std_parsed_modules) = load_std_extensions();
@@ -212,7 +232,7 @@ fn main() {
         ) {
             global_util_needed |= util_needed;
         } else {
-            std::process::exit(1);
+            has_errors = true;
         }
     } else if path.is_dir() {
         let is_module_dir = has_module_structure(path);
@@ -231,7 +251,7 @@ fn main() {
             ) {
                 global_util_needed |= util_needed;
             } else {
-                std::process::exit(1);
+                has_errors = true;
             }
         } else {
             // Test-runner mode: compile independent .aw files in a flat directory
@@ -301,7 +321,7 @@ fn main() {
             println!("\n=============================");
             println!("Test Results: {} passed, {} failed", passed, failed);
             if failed > 0 {
-                std::process::exit(1);
+                has_errors = true;
             }
         }
     }
@@ -361,6 +381,10 @@ fn main() {
             eprintln!("[Error] Failed to write '__util.js': {}", e);
         });
         println!("✓  Generated global '__util.js' ({} bytes)", contents.len());
+    }
+
+    if has_errors {
+        std::process::exit(1);
     }
 }
 

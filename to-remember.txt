@@ -1,0 +1,10 @@
+
+1. Building the Main App (Production / Dist)
+cargo run --bin auwla-cli -- app.aw -o dist
+
+
+2. Running Tests
+cargo run --bin auwla-cli -- tests -o test_output
+
+3. Developing the Standard Library itself
+cargo run --bin auwla-cli -- std -o std_check_output

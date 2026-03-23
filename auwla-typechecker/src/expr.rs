@@ -5,12 +5,24 @@ use auwla_ast::{Expr, Type};
 
 impl Typechecker {
     pub fn check_expr(&mut self, expr: &Expr) -> Result<Type, TypeError> {
-        let ty = self.check_expr_internal(expr)?;
+        self.check_expr_expected(expr, None)
+    }
+
+    pub fn check_expr_expected(
+        &mut self,
+        expr: &Expr,
+        expected_ty: Option<&Type>,
+    ) -> Result<Type, TypeError> {
+        let ty = self.check_expr_expected_internal(expr, expected_ty)?;
         self.node_types.insert(expr.span.clone(), ty.clone());
         Ok(ty)
     }
 
-    fn check_expr_internal(&mut self, expr: &Expr) -> Result<Type, TypeError> {
+    fn check_expr_expected_internal(
+        &mut self,
+        expr: &Expr,
+        expected_ty: Option<&Type>,
+    ) -> Result<Type, TypeError> {
         match &expr.node {
             auwla_ast::ExprKind::Void => Ok(Type::Basic("void".to_string())),
             auwla_ast::ExprKind::BoolLit(_) => Ok(Type::Basic("bool".to_string())),
@@ -18,22 +30,50 @@ impl Typechecker {
             auwla_ast::ExprKind::NumberLit(_) => Ok(Type::Basic("number".to_string())),
             auwla_ast::ExprKind::CharLit(_) => Ok(Type::Basic("char".to_string())),
             auwla_ast::ExprKind::Identifier(name) => {
-                self.lookup_variable(name).ok_or_else(|| TypeError {
-                    span: expr.span.clone(),
-                    message: format!("Undefined variable: '{}'", name),
-                })
+                if let Some(ty) = self.lookup_variable(name) {
+                    Ok(ty)
+                } else if let Some((_, params, ret)) = self.lookup_function(name) {
+                    let ret_ty = ret.unwrap_or(Type::Basic("void".to_string()));
+                    Ok(Type::Function(params, Box::new(ret_ty)))
+                } else {
+                    Err(TypeError {
+                        span: expr.span.clone(),
+                        message: format!("Undefined variable or function: '{}'", name),
+                    })
+                }
             }
             auwla_ast::ExprKind::Binary { op, left, right } => {
                 let left_ty = self.check_expr(left)?;
                 let right_ty = self.check_expr(right)?;
 
-                self.assert_type_eq(&left_ty, &right_ty).map_err(|_| TypeError {
+                if op == &auwla_ast::BinaryOp::In {
+                    match right_ty {
+                        Type::Dict(k, _) => {
+                            self.assert_type_eq(&k, &left_ty).map_err(|msg| TypeError {
+                                span: expr.span.clone(),
+                                message: msg,
+                            })?;
+                            return Ok(Type::Basic("bool".to_string()));
+                        }
+                        other => {
+                            return Err(TypeError {
+                                span: expr.span.clone(),
+                                message: format!("Type error: right side of 'in' operator must be a dict, got '{}'", other),
+                            });
+                        }
+                    }
+                }
+
+                let mut unifier = crate::inference::unify::Unifier::new();
+                unifier.unify(&left_ty, &right_ty).map_err(|_| TypeError {
                     span: expr.span.clone(),
                     message: format!(
                         "Strict Type inferred error: Operators must have matching types. Left: {}, Right: {}",
                         left_ty, right_ty
                     ),
                 })?;
+
+                let res_ty = unifier.resolve(&left_ty);
 
                 // Return boolean for comparative ops, otherwise return the evaluated mathematical type (number/string)
                 match op {
@@ -43,7 +83,7 @@ impl Typechecker {
                     | auwla_ast::BinaryOp::Gt
                     | auwla_ast::BinaryOp::Lte
                     | auwla_ast::BinaryOp::Gte => Ok(Type::Basic("bool".to_string())),
-                    _ => Ok(left_ty),
+                    _ => Ok(res_ty),
                 }
             }
             // If it evaluates `some()`, it wraps the OK branch.
@@ -149,6 +189,10 @@ impl Typechecker {
                             }
                         }
                         Type::Array(inner) => Type::Array(Box::new(instantiate(inner, env))),
+                        Type::Dict(k, v) => Type::Dict(
+                            Box::new(instantiate(k, env)),
+                            Box::new(instantiate(v, env)),
+                        ),
                         Type::Optional(inner) => Type::Optional(Box::new(instantiate(inner, env))),
                         Type::Result { ok_type, err_type } => Type::Result {
                             ok_type: Box::new(instantiate(ok_type, env)),
@@ -184,11 +228,14 @@ impl Typechecker {
                 }
 
                 for (param_ty, arg_expr) in inst_params.iter().zip(args) {
-                    let arg_ty = self.check_expr(arg_expr)?;
-                    // Unify the passed argument with the generic parameter signature!
-                    unifier.unify(param_ty, &arg_ty).map_err(|msg| TypeError {
+                    let arg_ty = self.check_expr_expected(arg_expr, Some(param_ty))?;
+                    unifier.unify(param_ty, &arg_ty).map_err(|_| TypeError {
                         span: arg_expr.span.clone(),
-                        message: msg,
+                        message: format!(
+                            "Type Mismatch: expected {}, found {}",
+                            unifier.resolve(param_ty),
+                            unifier.resolve(&arg_ty)
+                        ),
                     })?;
                 }
 
@@ -536,7 +583,8 @@ impl Typechecker {
                         self.check_stmt(stmt)?;
                     }
                     if let Some(res) = &arm.result {
-                        arm_yields = self.check_expr(res)?;
+                        arm_yields = self
+                            .check_expr_expected(res, expected_ty.or(common_return_ty.as_ref()))?;
                     }
                     self.exit_scope();
 
@@ -594,6 +642,33 @@ impl Typechecker {
 
                 Ok(common_return_ty.unwrap_or_else(|| Type::Basic("void".to_string())))
             }
+            auwla_ast::ExprKind::Dict(pairs) => {
+                if pairs.is_empty() {
+                    Ok(Type::Dict(
+                        Box::new(Type::Basic("unknown".to_string())),
+                        Box::new(Type::Basic("unknown".to_string())),
+                    ))
+                } else {
+                    let first_k_ty = self.check_expr(&pairs[0].0)?;
+                    let first_v_ty = self.check_expr(&pairs[0].1)?;
+                    
+                    self.assert_type_eq(&Type::Basic("string".to_string()), &first_k_ty)
+                        .or_else(|_| self.assert_type_eq(&Type::Basic("number".to_string()), &first_k_ty))
+                        .or_else(|_| self.assert_type_eq(&Type::Basic("char".to_string()), &first_k_ty))
+                        .map_err(|_| TypeError {
+                            span: pairs[0].0.span.clone(),
+                            message: format!("Type error: dict keys must be string, number, or char, got '{}'", first_k_ty),
+                        })?;
+
+                    for (k, v) in &pairs[1..] {
+                        let k_ty = self.check_expr(k)?;
+                        let v_ty = self.check_expr(v)?;
+                        self.assert_type_eq(&first_k_ty, &k_ty).map_err(|msg| TypeError { span: k.span.clone(), message: msg })?;
+                        self.assert_type_eq(&first_v_ty, &v_ty).map_err(|msg| TypeError { span: v.span.clone(), message: msg })?;
+                    }
+                    Ok(Type::Dict(Box::new(first_k_ty), Box::new(first_v_ty)))
+                }
+            }
             auwla_ast::ExprKind::Array(elements) => {
                 if elements.is_empty() {
                     // Empty array — type must be inferred from context (let binding)
@@ -618,17 +693,27 @@ impl Typechecker {
             } => {
                 let expr_ty = self.check_expr(arr_expr)?;
                 let idx_ty = self.check_expr(index)?;
-                self.assert_type_eq(&Type::Basic("number".to_string()), &idx_ty)
-                    .map_err(|msg| TypeError {
-                        span: index.span.clone(),
-                        message: msg,
-                    })?;
                 match expr_ty {
-                    Type::Array(inner) => Ok(*inner),
+                    Type::Array(inner) => {
+                        self.assert_type_eq(&Type::Basic("number".to_string()), &idx_ty)
+                            .map_err(|msg| TypeError {
+                                span: index.span.clone(),
+                                message: msg,
+                            })?;
+                        Ok(*inner)
+                    }
+                    Type::Dict(k, v) => {
+                        self.assert_type_eq(&k, &idx_ty)
+                            .map_err(|msg| TypeError {
+                                span: index.span.clone(),
+                                message: msg,
+                            })?;
+                        Ok(*v)
+                    }
                     other => Err(TypeError {
                         span: arr_expr.span.clone(),
                         message: format!(
-                            "Type error: cannot index into non-array type '{}'",
+                            "Type error: cannot index into non-array/dict type '{}'",
                             other
                         ),
                     }),
@@ -1044,10 +1129,14 @@ impl Typechecker {
                     }
 
                     for (param_ty, arg_expr) in inst_params.iter().zip(args) {
-                        let arg_ty = self.check_expr(arg_expr)?;
-                        unifier.unify(param_ty, &arg_ty).map_err(|msg| TypeError {
+                        let arg_ty = self.check_expr_expected(arg_expr, Some(param_ty))?;
+                        unifier.unify(param_ty, &arg_ty).map_err(|_| TypeError {
                             span: arg_expr.span.clone(),
-                            message: msg,
+                            message: format!(
+                                "Type Mismatch: expected {}, found {}",
+                                unifier.resolve(param_ty),
+                                unifier.resolve(&arg_ty)
+                            ),
                         })?;
                     }
 
@@ -1159,9 +1248,9 @@ impl Typechecker {
                     });
                 }
 
-                for (arg, (_, expected_ty)) in args.iter().zip(method_sig.params.iter()) {
-                    let arg_ty = self.check_expr(arg)?;
-                    self.assert_type_eq(expected_ty, &arg_ty)
+                for (arg, (_, expected_param_ty)) in args.iter().zip(method_sig.params.iter()) {
+                    let arg_ty = self.check_expr_expected(arg, Some(expected_param_ty))?;
+                    self.assert_type_eq(expected_param_ty, &arg_ty)
                         .map_err(|msg| TypeError {
                             span: arg.span.clone(),
                             message: msg,
@@ -1179,7 +1268,7 @@ impl Typechecker {
                     self.check_stmt(stmt)?;
                 }
                 let ty = if let Some(res) = result {
-                    self.check_expr(res)?
+                    self.check_expr_expected(res, expected_ty)?
                 } else {
                     // If we're inside a return context and have no trailing expr,
                     // the block's type is the declared return type (body uses `return`).
@@ -1198,38 +1287,63 @@ impl Typechecker {
                 ..
             } => {
                 let mut param_types = Vec::new();
+
+                // Try to glean expected function signature parameters and return type
+                let (expected_params, expected_ret) = match expected_ty {
+                    Some(Type::Function(p, r)) => (Some(p.clone()), Some(*r.clone())),
+                    _ => (None, None),
+                };
+
                 self.enter_scope();
-                for (name, ty_opt) in params {
-                    let ty = ty_opt.clone().ok_or_else(|| TypeError {
-                        span: expr.span.clone(),
+                for (i, (name_spanned, ty_opt)) in params.iter().enumerate() {
+                    let name = &name_spanned.node;
+                    let inferred_ty = expected_params.as_ref().and_then(|ep| ep.get(i).cloned());
+
+                    let ty = ty_opt.clone().or_else(|| inferred_ty).ok_or_else(|| TypeError {
+                        span: name_spanned.span.clone(),
                         message: format!(
-                            "Type error: parameter '{}' must have a type annotation",
+                            "Type error: parameter '{}' must have a type annotation (could not infer type contextually)",
                             name
                         ),
                     })?;
                     param_types.push(ty.clone());
+
+                    // Insert parameter type into Language Server nodes map for hover capabilities
+                    self.node_types
+                        .insert(name_spanned.span.clone(), ty.clone());
+
                     self.declare_variable(
-                        expr.span.clone(),
+                        name_spanned.span.clone(),
                         name.clone(),
                         ty,
                         Mutability::Immutable,
                     )?;
                 }
+
+                // If no explicitly annotated return_ty is provided, we use the expected_ret.
+                let effective_return_ty = return_ty.clone().or(expected_ret);
+
                 // Set return context so `return` stmts inside the body are valid
                 let saved_return_type = self.current_return_type.take();
                 let saved_fn_name = self.current_function_name.take();
-                self.current_return_type = Some(return_ty.clone());
+                self.current_return_type = Some(effective_return_ty.clone());
                 self.current_function_name = Some("closure".to_string());
-                let body_ty = self.check_expr(body)?;
+
+                // Pass expected return down to body checking
+                let body_ty = self.check_expr_expected(body, effective_return_ty.as_ref())?;
+
                 self.current_return_type = saved_return_type;
                 self.current_function_name = saved_fn_name;
-                let final_return_ty = if let Some(expected_ret) = return_ty {
-                    self.assert_type_eq(expected_ret, &body_ty)
+
+                let final_return_ty = if let Some(expected_ret_val) = effective_return_ty {
+                    let mut unifier = crate::inference::unify::Unifier::new();
+                    unifier
+                        .unify(&expected_ret_val, &body_ty)
                         .map_err(|msg| TypeError {
-                            span: expr.span.clone(),
+                            span: body.span.clone(),
                             message: msg,
                         })?;
-                    expected_ret.clone()
+                    unifier.resolve(&expected_ret_val)
                 } else {
                     body_ty
                 };

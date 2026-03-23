@@ -139,6 +139,7 @@ impl JsEmitter {
             Type::Basic(name) => name.clone(),
             Type::Custom(name) => name.clone(),
             Type::Array(inner) => format!("array<{}>", self.type_to_key(inner)),
+            Type::Dict(k, v) => format!("dict<{}, {}>", self.type_to_key(k), self.type_to_key(v)),
             Type::Optional(inner) => format!("{}?", self.type_to_key(inner)),
             Type::Result { ok_type, err_type } => {
                 format!(
@@ -346,6 +347,15 @@ impl JsEmitter {
                 self.array_literal_type_key(elems)
                     .unwrap_or_else(|| "array".to_string()),
             ),
+            ExprKind::Dict(pairs) => {
+                if pairs.is_empty() {
+                    Some("dict".to_string())
+                } else {
+                    let k = self.infer_type_key_from_expr(&pairs[0].0).unwrap_or_else(|| "unknown".to_string());
+                    let v = self.infer_type_key_from_expr(&pairs[0].1).unwrap_or_else(|| "unknown".to_string());
+                    Some(format!("dict<{}, {}>", k, v))
+                }
+            }
             ExprKind::StringLit(_) => Some("string".to_string()),
             ExprKind::NumberLit(_) => Some("number".to_string()),
             ExprKind::BoolLit(_) => Some("bool".to_string()),

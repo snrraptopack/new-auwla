@@ -39,6 +39,7 @@ impl JsEmitter {
                     BinaryOp::Gte => " >= ",
                     BinaryOp::And => " && ",
                     BinaryOp::Or => " || ",
+                    BinaryOp::In => " in ",
                 };
                 self.write(op_str);
                 self.emit_expr(right);
@@ -97,6 +98,19 @@ impl JsEmitter {
                     self.emit_expr(elem);
                 }
                 self.write("]");
+            }
+            auwla_ast::ExprKind::Dict(pairs) => {
+                self.write("{ ");
+                for (i, (k, v)) in pairs.iter().enumerate() {
+                    if i > 0 {
+                        self.write(", ");
+                    }
+                    self.write("[");
+                    self.emit_expr(k);
+                    self.write("]: ");
+                    self.emit_expr(v);
+                }
+                self.write(" }");
             }
             auwla_ast::ExprKind::Index { expr, index } => {
                 self.emit_expr(expr);
@@ -446,7 +460,7 @@ impl JsEmitter {
                     if i > 0 {
                         self.write(", ");
                     }
-                    self.write(name);
+                    self.write(&name.node);
                 }
                 self.write(") => ");
                 self.emit_expr(body);

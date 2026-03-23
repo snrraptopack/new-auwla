@@ -12,3 +12,4 @@ const a = ({ ok: true, value: "" });
 const as = __range(1, 100, true);
 __print(acc.user.name.len());
 __print(acc.balance);
+const asd = Math.random();

@@ -62,6 +62,7 @@ impl Typechecker {
             Type::Basic(name) => name.clone(),
             Type::Custom(name) => name.clone(),
             Type::Array(inner) => format!("array<{}>", self.type_to_key(inner)),
+            Type::Dict(k, v) => format!("dict<{}, {}>", self.type_to_key(k), self.type_to_key(v)),
             Type::Optional(inner) => format!("{}?", self.type_to_key(inner)),
             Type::Result { ok_type, err_type } => {
                 format!(
@@ -306,6 +307,10 @@ impl Typechecker {
         match ty {
             Type::Custom(name) if type_params.contains(name) => Type::TypeVar(name.clone()),
             Type::Array(inner) => Type::Array(Box::new(self.genericize_type(inner, type_params))),
+            Type::Dict(k, v) => Type::Dict(
+                Box::new(self.genericize_type(k, type_params)),
+                Box::new(self.genericize_type(v, type_params)),
+            ),
             Type::Optional(inner) => {
                 Type::Optional(Box::new(self.genericize_type(inner, type_params)))
             }
@@ -336,6 +341,10 @@ impl Typechecker {
         match ty {
             Type::SelfType => self_ty.clone(),
             Type::Array(inner) => Type::Array(Box::new(self.resolve_self_type(inner, self_ty))),
+            Type::Dict(k, v) => Type::Dict(
+                Box::new(self.resolve_self_type(k, self_ty)),
+                Box::new(self.resolve_self_type(v, self_ty)),
+            ),
             Type::Optional(inner) => {
                 Type::Optional(Box::new(self.resolve_self_type(inner, self_ty)))
             }
@@ -398,6 +407,13 @@ impl Typechecker {
                 }
             }
             (Type::Optional(_), Type::Basic(name)) if name == "null" => return Ok(()),
+            (Type::Dict(e_k, e_v), Type::Dict(a_k, a_v)) => {
+                if self.assert_type_eq(e_k, a_k).is_ok() {
+                    if self.assert_type_eq(e_v, a_v).is_ok() {
+                        return Ok(());
+                    }
+                }
+            }
 
             // Allow `some(value)` to match `Optional` by treating Result<T, unknown> as Optional<T>
             (

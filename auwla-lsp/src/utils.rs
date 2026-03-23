@@ -15,6 +15,7 @@ pub fn format_type(ty: &auwla_ast::Type) -> String {
         auwla_ast::Type::Basic(name) => name.clone(),
         auwla_ast::Type::Custom(name) => name.clone(),
         auwla_ast::Type::Array(inner) => format!("array<{}>", format_type(inner)),
+        auwla_ast::Type::Dict(k, v) => format!("dict<{}, {}>", format_type(k), format_type(v)),
         auwla_ast::Type::Optional(inner) => format!("{}?", format_type(inner)),
         auwla_ast::Type::Result { ok_type, err_type } => {
             format!("{}?{}", format_type(ok_type), format_type(err_type))

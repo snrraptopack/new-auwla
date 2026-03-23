@@ -51,12 +51,15 @@ fn expand_interpolation(
     let bytes = s.as_bytes();
     let mut frag_start = 0;
 
+    let s_offset = span.start + 1; // skip leading quote
+
     while i < bytes.len() {
         if bytes[i] == b'{' {
             // Emit the text before this `{` as a fragment
             let frag = &s[frag_start..i];
             if !frag.is_empty() {
-                result.push((Token::StringFragment(frag.to_string()), span.clone()));
+                let frag_span = (s_offset + frag_start)..(s_offset + i);
+                result.push((Token::StringFragment(frag.to_string()), frag_span));
             }
             // Find the matching `}`
             let expr_start = i + 1;
@@ -75,7 +78,7 @@ fn expand_interpolation(
             // j points to the closing `}`
             let expr_src = &s[expr_start..j];
             // Lex the expression inside braces
-            let inner_tokens = lex_inner_expr(expr_src, span);
+            let inner_tokens = lex_inner_expr(expr_src, s_offset + expr_start);
             result.extend(inner_tokens);
             i = j + 1;
             frag_start = i;
@@ -88,7 +91,8 @@ fn expand_interpolation(
     if frag_start < s.len() {
         let frag = &s[frag_start..];
         if !frag.is_empty() {
-            result.push((Token::StringFragment(frag.to_string()), span.clone()));
+            let frag_span = (s_offset + frag_start)..(s_offset + s.len());
+            result.push((Token::StringFragment(frag.to_string()), frag_span));
         }
     }
 
@@ -99,14 +103,19 @@ fn expand_interpolation(
 /// Lex an expression string from inside `{...}` interpolation braces
 fn lex_inner_expr(
     expr_src: &str,
-    parent_span: &std::ops::Range<usize>,
+    offset: usize,
 ) -> Vec<(Token, std::ops::Range<usize>)> {
     let mut tokens = Vec::new();
     let mut lexer = Token::lexer(expr_src);
     while let Some(res) = lexer.next() {
-        if let Ok(token) = res {
-            // Use the parent span for all inner tokens (approximate but functional)
-            tokens.push((token, parent_span.clone()));
+        let span = lexer.span();
+        let adj_span = (offset + span.start)..(offset + span.end);
+        match res {
+            Ok(token) => tokens.push((token, adj_span)),
+            Err(_) => {
+                let bad = expr_src[span.clone()].to_string();
+                tokens.push((Token::Error(bad), adj_span));
+            }
         }
     }
     tokens

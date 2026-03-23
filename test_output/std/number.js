@@ -17,6 +17,10 @@ export function _ext_number_triple(__self) {
   return (__self * 3);
 }
 
+export function _ext_number_minus(__self) {
+  return (__self * -1);
+}
+
 export function _ext_number_by(__self, value) {
   return (__self * value);
 }

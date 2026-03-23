@@ -97,6 +97,18 @@ fn expr_parser_inner(
                     auwla_ast::Spanned::new(auwla_ast::ExprKind::Array(inner), span)
                 });
 
+            // Dictionary literal: { key: value, ... }
+            let dict_lit = expr
+                .clone()
+                .then_ignore(just(Token::Colon))
+                .then(expr.clone())
+                .separated_by(just(Token::Comma))
+                .allow_trailing()
+                .delimited_by(just(Token::LBrace), just(Token::RBrace))
+                .map_with_span(|pairs, span| {
+                    auwla_ast::Spanned::new(auwla_ast::ExprKind::Dict(pairs), span)
+                });
+
             // String interpolation: InterpStart (StringFragment | expr)* InterpEnd
             let interp_part = select! { Token::StringFragment(s) => s }
                 .map_with_span(|s, span| {
@@ -179,6 +191,7 @@ fn expr_parser_inner(
                 });
 
             let closure_params = select! { Token::Ident(name) => name }
+                .map_with_span(|name, span| auwla_ast::Spanned::new(name, span))
                 .then(
                     just(Token::Colon)
                         .ignore_then(crate::types::type_parser())
@@ -248,6 +261,7 @@ fn expr_parser_inner(
                 .or(str_lit.clone())
                 .or(char_lit.clone())
                 .or(array_lit)
+                .or(dict_lit)
                 .or(block.clone())
                 .or(expr
                     .clone()
@@ -573,6 +587,7 @@ fn expr_parser_inner(
                         just(Token::Gt).to(BinaryOp::Gt),
                         just(Token::Lte).to(BinaryOp::Lte),
                         just(Token::Gte).to(BinaryOp::Gte),
+                        just(Token::In).to(BinaryOp::In),
                     ))
                     .then(sum)
                     .repeated(),

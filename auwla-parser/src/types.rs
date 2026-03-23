@@ -23,6 +23,18 @@ pub fn type_parser() -> impl Parser<Token, Type, Error = Simple<Token>> + Clone 
                     } else {
                         Type::Custom(name)
                     }
+                } else if name == "dict" {
+                    if let Some(mut args) = args {
+                        if args.len() == 2 {
+                            let v = args.pop().unwrap();
+                            let k = args.pop().unwrap();
+                            Type::Dict(Box::new(k), Box::new(v))
+                        } else {
+                            Type::Generic(name, args)
+                        }
+                    } else {
+                        Type::Custom(name)
+                    }
                 } else if let Some(args) = args {
                     Type::Generic(name, args)
                 } else {

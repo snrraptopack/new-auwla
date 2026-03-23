@@ -11,6 +11,7 @@ extend number {
     fn double(self): number => self * 2;
     fn square(self): number => self * self;
     fn triple(self): number => self * 3;
+    fn minus(self): number => self * -1;
     fn by(self, value: number): number => self * value;
     fn add(self, other: number): number => self + other;
     fn sub(self, other: number): number => self - other;

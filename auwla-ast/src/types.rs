@@ -15,6 +15,8 @@ pub enum Type {
     Array(Box<Type>),
     /// User-defined struct type: `User`, `Point`
     Custom(String),
+    /// Dictionary mapping: `dict<K, V>`
+    Dict(Box<Type>, Box<Type>),
     /// Function type: `(string, number) => bool`
     Function(Vec<Type>, Box<Type>),
     /// Optional type: `string?`, `number?`
@@ -37,6 +39,7 @@ impl fmt::Display for Type {
             Type::TypeVar(name) => write!(f, "{}", name),
             Type::InferenceVar(id) => write!(f, "?T{}", id),
             Type::Array(inner) => write!(f, "{}[]", inner),
+            Type::Dict(k, v) => write!(f, "dict<{}, {}>", k, v),
             Type::Optional(inner) => write!(f, "{}?", inner),
             Type::Result { ok_type, err_type } => write!(f, "{}?{}", ok_type, err_type),
             Type::Function(params, ret) => {
