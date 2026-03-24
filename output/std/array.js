@@ -1,31 +1,35 @@
-export function _ext_array_low(__self) {
+export function _ext_array__get(__self, index) {
+  if (((index < 0) || (index >= __self.length))) {
+    return ({ ok: false });
+  }
+  return ({ ok: true, value: __self[index] });
+}
+
+export function _ext_array__set(__self, index, value) {
+}
+
+export function _ext_array__low(__self) {
   return 0;
 }
 
-export function _ext_array_high(__self) {
+export function _ext_array__high(__self) {
   return __self.length;
 }
 
-export function _ext_array_last(__self) {
-  if ((__self.length > 0)) {
-    return ({ ok: true, value: __self[(__self.length - 1)] });
-  }
-  return ({ ok: false });
+export function _ext_array__last(__self) {
+  return _ext_array__get(__self, (__self.length - 1));
 }
 
-export function _ext_array_first(__self) {
-  if ((__self.length > 0)) {
-    return ({ ok: true, value: __self[0] });
-  }
-  return ({ ok: false });
+export function _ext_array__first(__self) {
+  return _ext_array__get(__self, 0);
 }
 
-export function _ext_array_is_empty(__self) {
+export function _ext_array__is_empty(__self) {
   return (__self.length === 0);
 }
 
-export function _ext_array_shuffle(__self) {
-  for (let i = 0; i < __self.length; i++) {
+export function _ext_array__shuffle(__self) {
+  for (let i = 0; i < __self.length; i += 1) {
     const random = Math.floor((Math.random() * __self.length));
     const temp = __self[i];
     __self[i] = __self[random];
@@ -33,13 +37,27 @@ export function _ext_array_shuffle(__self) {
   }
 }
 
-export function _ext_array_number_sum(__self) {
+export function _ext_array__op_mul(__self, times) {
+  let result = [];
+  let i = 0;
+  while ((i < times)) {
+    result = result.concat(__self);
+    i = (i + 1);
+  }
+  return result;
+}
+
+export function _ext_array__op_plus(__self, other) {
+  return __self.concat(other);
+}
+
+export function _ext_array__sum(__self) {
   return __self.reduce((acc, val) => (acc + val), 0);
 }
 
-export function _ext_array_number_max(__self) {
+export function _ext_array__max(__self) {
   let c_max = __self[0];
-  for (let i = 1; i < __self.length; i++) {
+  for (let i = 1; i < __self.length; i += 1) {
     if ((__self[i] > c_max)) {
       c_max = __self[i];
     }
@@ -47,9 +65,9 @@ export function _ext_array_number_max(__self) {
   return c_max;
 }
 
-export function _ext_array_number_min(__self) {
+export function _ext_array__min(__self) {
   let c_min = __self[0];
-  for (let i = 1; i < __self.length; i++) {
+  for (let i = 1; i < __self.length; i += 1) {
     if ((__self[i] < c_min)) {
       c_min = __self[i];
     }

@@ -33,7 +33,19 @@ impl MetadataCache {
         for entry in WalkDir::new(root)
             .into_iter()
             .filter_map(Result::ok)
-            .filter(|e| e.path().extension().map_or(false, |ext| ext == "aw"))
+            .filter(|e| {
+                // Skip std folder and output folders
+                let path = e.path();
+                if path.components().any(|c| {
+                    c.as_os_str() == "std" 
+                    || c.as_os_str() == "output" 
+                    || c.as_os_str() == "test_output"
+                    || c.as_os_str() == "target"
+                }) {
+                    return false;
+                }
+                path.extension().map_or(false, |ext| ext == "aw")
+            })
         {
             let path: PathBuf = entry.path().to_path_buf();
             if let Ok(content) = fs::read_to_string(&path) {

@@ -8,3 +8,7 @@ cargo run --bin auwla-cli -- tests -o test_output
 
 3. Developing the Standard Library itself
 cargo run --bin auwla-cli -- std -o std_check_output
+
+
+4. for lsp
+cargo run --bin auwla-cli -- tests/24_dict_methods.aw -o output

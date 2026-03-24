@@ -32,17 +32,39 @@ impl LanguageServer for Backend {
         if let Some(root_uri) = params.root_uri {
             if let Ok(path) = root_uri.to_file_path() {
                 let metadata_path = path.join("output").join("auwla_metadata.json");
+                
+                self.client
+                    .log_message(
+                        MessageType::INFO,
+                        format!("Looking for metadata at: {:?}", metadata_path),
+                    )
+                    .await;
+                
                 if metadata_path.exists() {
                     if let Ok(content) = std::fs::read_to_string(&metadata_path) {
                         if let Ok(map) = serde_json::from_str::<
                             std::collections::HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
                         >(&content)
                         {
+                            self.client
+                                .log_message(
+                                    MessageType::INFO,
+                                    format!("Loaded {} types from metadata.json", map.len()),
+                                )
+                                .await;
+                            
                             for (k, v) in map {
                                 self.metadata.insert(k, v);
                             }
                         }
                     }
+                } else {
+                    self.client
+                        .log_message(
+                            MessageType::WARNING,
+                            format!("Metadata file not found at: {:?}", metadata_path),
+                        )
+                        .await;
                 }
 
                 // Scan all .aw files in the workspace to build live metadata
