@@ -722,20 +722,12 @@ impl Typechecker {
                                                 })?;
 
                                             if let Some(sub_pattern) = sub_pattern_opt {
-                                                // If there's a nested pattern, we'd need to recursively typecheck it.
-                                                // For now, if it's a variable binding, declare it in scope.
-                                                if let auwla_ast::PatternKind::Variable(var_name) =
-                                                    &sub_pattern.node
-                                                {
-                                                    if i == 0 {
-                                                        self.declare_variable(
-                                                            sub_pattern.span.clone(),
-                                                            var_name.clone(),
-                                                            field_ty,
-                                                            Mutability::Immutable,
-                                                        )?;
-                                                    }
-                                                }
+                                                // Recursively typecheck nested patterns
+                                                self.check_nested_pattern(
+                                                    sub_pattern,
+                                                    &field_ty,
+                                                    i == 0,
+                                                )?;
                                             } else {
                                                 // Shorthand: `{ role }` acts as `{ role: role }` binding a variable
                                                 if i == 0 {
@@ -762,6 +754,38 @@ impl Typechecker {
                                             format!(
                                                 "Type error: cannot match struct '{}' on type '{}'",
                                                 display_name, result_ty
+                                            ),
+                                        );
+                                    }
+                                }
+                            }
+                            auwla_ast::PatternKind::Tuple(patterns) => {
+                                // Tuple pattern matching
+                                match &result_ty {
+                                    Type::Tuple(types) => {
+                                        if patterns.len() != types.len() {
+                                            return self.error(
+                                                p.span.clone(),
+                                                format!(
+                                                    "Type error: tuple pattern expects {} elements, found {}",
+                                                    types.len(),
+                                                    patterns.len()
+                                                ),
+                                            );
+                                        }
+                                        // Declare variables for each tuple element
+                                        if i == 0 {
+                                            for (pat, ty) in patterns.iter().zip(types.iter()) {
+                                                self.check_nested_pattern(pat, ty, true)?;
+                                            }
+                                        }
+                                    }
+                                    _ => {
+                                        return self.error(
+                                            p.span.clone(),
+                                            format!(
+                                                "Type error: cannot match tuple pattern on type '{}'",
+                                                result_ty
                                             ),
                                         );
                                     }
@@ -1696,6 +1720,15 @@ impl Typechecker {
                 self.exit_scope();
                 Ok(ty)
             }
+            auwla_ast::ExprKind::Tuple(elements) => {
+                // Check each element and collect their types
+                let mut element_types = Vec::new();
+                for elem in elements {
+                    let elem_ty = self.check_expr(elem)?;
+                    element_types.push(elem_ty);
+                }
+                Ok(Type::Tuple(element_types))
+            }
             auwla_ast::ExprKind::Closure {
                 type_params,
                 params,
@@ -1758,6 +1791,209 @@ impl Typechecker {
                 };
                 self.exit_scope();
                 Ok(Type::Function(param_types, Box::new(final_return_ty)))
+            }
+        }
+    }
+
+    /// Recursively typecheck nested patterns and declare variables
+    fn check_nested_pattern(
+        &mut self,
+        pattern: &auwla_ast::Pattern,
+        expected_ty: &Type,
+        should_declare: bool,
+    ) -> Result<(), TypeError> {
+        match &pattern.node {
+            auwla_ast::PatternKind::Variable(var_name) => {
+                if should_declare {
+                    self.declare_variable(
+                        pattern.span.clone(),
+                        var_name.clone(),
+                        expected_ty.clone(),
+                        Mutability::Immutable,
+                    )?;
+                }
+                Ok(())
+            }
+            auwla_ast::PatternKind::Literal(lit_expr) => {
+                // Literal patterns should match the expected type
+                let lit_ty = self.check_expr(lit_expr)?;
+                self.assert_type_eq(expected_ty, &lit_ty)
+                    .map_err(|msg| TypeError {
+                        span: pattern.span.clone(),
+                        message: format!(
+                            "Type error in pattern: {}. Expected '{}', found literal of type '{}'",
+                            msg, expected_ty, lit_ty
+                        ),
+                    })?;
+                Ok(())
+            }
+            auwla_ast::PatternKind::Struct(opt_name, fields) => {
+                // Nested struct pattern
+                match expected_ty {
+                    Type::Custom(struct_name) => {
+                        if let Some(name) = opt_name {
+                            if name != struct_name {
+                                return self.error(
+                                    pattern.span.clone(),
+                                    format!(
+                                        "Type error: expected struct '{}', found '{}'",
+                                        struct_name, name
+                                    ),
+                                );
+                            }
+                        }
+
+                        let struct_def = self.structs.get(struct_name).cloned().ok_or_else(|| {
+                            TypeError {
+                                span: pattern.span.clone(),
+                                message: format!("Type error: struct '{}' not found", struct_name),
+                            }
+                        })?;
+
+                        for (field_name, sub_pattern_opt) in fields {
+                            let field_ty = struct_def
+                                .iter()
+                                .find(|(f, _)| f == field_name)
+                                .map(|(_, t)| t.clone())
+                                .ok_or_else(|| TypeError {
+                                    span: pattern.span.clone(),
+                                    message: format!(
+                                        "Type error: field '{}' not found on struct '{}'",
+                                        field_name, struct_name
+                                    ),
+                                })?;
+
+                            if let Some(sub_pattern) = sub_pattern_opt {
+                                // Recursively check nested pattern
+                                self.check_nested_pattern(sub_pattern, &field_ty, should_declare)?;
+                            } else {
+                                // Shorthand: `{ role }` acts as `{ role: role }` binding
+                                if should_declare {
+                                    self.declare_variable(
+                                        pattern.span.clone(),
+                                        field_name.clone(),
+                                        field_ty,
+                                        Mutability::Immutable,
+                                    )?;
+                                }
+                            }
+                        }
+                        Ok(())
+                    }
+                    _ => self.error(
+                        pattern.span.clone(),
+                        format!(
+                            "Type error: cannot match struct pattern on type '{}'",
+                            expected_ty
+                        ),
+                    ),
+                }
+            }
+            auwla_ast::PatternKind::Wildcard => {
+                // Wildcard doesn't bind variables
+                Ok(())
+            }
+            auwla_ast::PatternKind::Or(patterns) => {
+                // OR patterns: all alternatives must be valid for the expected type
+                for sub_pattern in patterns {
+                    self.check_nested_pattern(sub_pattern, expected_ty, should_declare)?;
+                }
+                Ok(())
+            }
+            auwla_ast::PatternKind::Tuple(patterns) => {
+                // Tuple pattern
+                match expected_ty {
+                    Type::Tuple(types) => {
+                        if patterns.len() != types.len() {
+                            return self.error(
+                                pattern.span.clone(),
+                                format!(
+                                    "Type error: tuple pattern expects {} elements, found {}",
+                                    types.len(),
+                                    patterns.len()
+                                ),
+                            );
+                        }
+                        // Recursively check each element
+                        for (pat, ty) in patterns.iter().zip(types.iter()) {
+                            self.check_nested_pattern(pat, ty, should_declare)?;
+                        }
+                        Ok(())
+                    }
+                    _ => self.error(
+                        pattern.span.clone(),
+                        format!(
+                            "Type error: cannot match tuple pattern on type '{}'",
+                            expected_ty
+                        ),
+                    ),
+                }
+            }
+            auwla_ast::PatternKind::Variant { name, bindings } => {
+                // Variant pattern (enum matching)
+                match expected_ty {
+                    Type::Custom(enum_name) => {
+                        // Check if this is a valid enum variant
+                        let enum_def = self.enums.get(enum_name).cloned().ok_or_else(|| {
+                            TypeError {
+                                span: pattern.span.clone(),
+                                message: format!(
+                                    "Type error: '{}' is not an enum, cannot match variant '{}'",
+                                    enum_name, name
+                                ),
+                            }
+                        })?;
+
+                        // Check if the variant exists
+                        let variant = enum_def
+                            .iter()
+                            .find(|(v, _)| v == name)
+                            .ok_or_else(|| TypeError {
+                                span: pattern.span.clone(),
+                                message: format!(
+                                    "Type error: variant '{}' not found in enum '{}'",
+                                    name, enum_name
+                                ),
+                            })?;
+
+                        // Check bindings match variant data
+                        if bindings.len() != variant.1.len() {
+                            return self.error(
+                                pattern.span.clone(),
+                                format!(
+                                    "Type error: variant '{}' expects {} bindings, found {}",
+                                    name,
+                                    variant.1.len(),
+                                    bindings.len()
+                                ),
+                            );
+                        }
+
+                        // Declare binding variables with their types
+                        if should_declare {
+                            for (binding, ty) in bindings.iter().zip(variant.1.iter()) {
+                                self.declare_variable(
+                                    pattern.span.clone(),
+                                    binding.clone(),
+                                    ty.clone(),
+                                    Mutability::Immutable,
+                                )?;
+                            }
+                        }
+                        Ok(())
+                    }
+                    _ => self.error(
+                        pattern.span.clone(),
+                        format!(
+                            "Type error: cannot match enum variant '{}' on type '{}'",
+                            name, expected_ty
+                        ),
+                    ),
+                }
+            }
+            _ => {
+                // Other pattern types (Range) - not typically nested in struct patterns
+                Ok(())
             }
         }
     }

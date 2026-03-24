@@ -43,6 +43,25 @@ impl JsEmitter {
                 self.emit_expr(initializer);
                 self.write(";\n");
             }
+            auwla_ast::StmtKind::TupleDestructureLet {
+                bindings,
+                initializer,
+            } => {
+                self.write_indent();
+                if export {
+                    self.write("export ");
+                }
+                self.write("const [");
+                for (i, b) in bindings.iter().enumerate() {
+                    if i > 0 {
+                        self.write(", ");
+                    }
+                    self.write(b);
+                }
+                self.write("] = ");
+                self.emit_expr(initializer);
+                self.write(";\n");
+            }
             auwla_ast::StmtKind::Assign { target, value } => {
                 let target_str = self.emit_expr_to_string(target);
                 if let auwla_ast::ExprKind::Match { expr, arms } = &value.node {

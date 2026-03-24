@@ -24,6 +24,8 @@ pub enum PatternKind {
     Variable(String),
     /// Destructured Object format, e.g User { role: "admin", name } or { age, name }
     Struct(Option<String>, Vec<(String, Option<Pattern>)>),
+    /// Tuple pattern: (x, y, z)
+    Tuple(Vec<Pattern>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -143,6 +145,8 @@ pub enum ExprKind {
     },
     /// { stmt1; stmt2; expr }
     Block(Vec<crate::stmt::Stmt>, Option<Box<Expr>>),
+    /// Tuple literal: (1, "hello", true)
+    Tuple(Vec<Expr>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

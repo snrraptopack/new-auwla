@@ -609,6 +609,17 @@ impl JsEmitter {
                 self.write(") => ");
                 self.emit_expr(body);
             }
+            auwla_ast::ExprKind::Tuple(elements) => {
+                // Compile tuple to JS array
+                self.write("[");
+                for (i, elem) in elements.iter().enumerate() {
+                    if i > 0 {
+                        self.write(", ");
+                    }
+                    self.emit_expr(elem);
+                }
+                self.write("]");
+            }
             auwla_ast::ExprKind::Block(stmts, result) => {
                 // If this is a block expression, we might need a different emitting strategy
                 // depending on context. For now, we emit as a block.

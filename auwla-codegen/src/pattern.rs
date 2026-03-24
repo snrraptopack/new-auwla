@@ -83,6 +83,17 @@ impl JsEmitter {
                 }
                 self.write(")");
             }
+            auwla_ast::PatternKind::Tuple(patterns) => {
+                // Check tuple length and each element
+                self.write(&format!("(Array.isArray({}) && {}.length === {}",
+                    temp, temp, patterns.len()));
+                for (i, sub_pattern) in patterns.iter().enumerate() {
+                    self.write(" && ");
+                    let inner_temp = format!("{}[{}]", temp, i);
+                    self.emit_pattern_shape(&inner_temp, sub_pattern);
+                }
+                self.write(")");
+            }
         }
     }
 
@@ -121,6 +132,12 @@ impl JsEmitter {
                         self.write_indent();
                         self.write(&format!("const {} = {}.{};\n", fname, temp, fname));
                     }
+                }
+            }
+            auwla_ast::PatternKind::Tuple(patterns) => {
+                for (i, sub_pattern) in patterns.iter().enumerate() {
+                    let inner_temp = format!("{}[{}]", temp, i);
+                    self.emit_bound_variables(&inner_temp, sub_pattern);
                 }
             }
             _ => {}

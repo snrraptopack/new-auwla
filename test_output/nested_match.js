@@ -1,15 +1,4 @@
 import { __print } from './__util.js';
-import * as __std_dict from './std/dict.js';
-import * as __std_optional from './std/optional.js';
-import * as __std_array from './std/array.js';
-const school = {  };
-const first = { name: "One", location: "another", level: 10 };
-const second = { name: "Second", location: "Taadi", level: 0 };
-__std_dict._ext_dict__set(school, first.name, first);
-__std_dict._ext_dict__set(school, second.name, second);
-const numbers = [10, 30];
-const one = __std_optional._ext_optional__val_or(__std_array._ext_array__get(numbers, 0), 0);
-__print(((_o) => _o.ok ? _o.value : (10))(__std_array._ext_array__get(numbers, 200)));
 const user = { name: "Ama", address: { city: "Tarkwa", country: "Ghana" } };
 const __match_0 = user;
 if ((__match_0.name !== undefined && (__match_0.address.city === "Accra"))) {

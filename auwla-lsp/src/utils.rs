@@ -41,6 +41,10 @@ pub fn format_type(ty: &auwla_ast::Type) -> String {
         auwla_ast::Type::InferenceVar(id) => format!("_{}", id),
         auwla_ast::Type::SelfType => "Self".to_string(),
         auwla_ast::Type::Wrapper(inner) => format!("wrapper<{}>", format_type(inner)),
+        auwla_ast::Type::Tuple(types) => {
+            let parts: Vec<String> = types.iter().map(format_type).collect();
+            format!("({})", parts.join(", "))
+        }
     }
 }
 

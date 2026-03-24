@@ -60,6 +60,25 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                 )
             });
 
+        let tuple_destructure_stmt = just(Token::Let)
+            .ignore_then(
+                select! { Token::Ident(name) => name }
+                    .separated_by(just(Token::Comma))
+                    .delimited_by(just(Token::LParen), just(Token::RParen)),
+            )
+            .then_ignore(just(Token::Assign))
+            .then(expr.clone())
+            .then_ignore(just(Token::Semicolon))
+            .map_with_span(|(bindings, initializer), span| {
+                auwla_ast::Spanned::new(
+                    StmtKind::TupleDestructureLet {
+                        bindings,
+                        initializer,
+                    },
+                    span,
+                )
+            });
+
         let var_stmt = just(Token::Var)
             .ignore_then(select! { Token::Ident(name) => name })
             .then(just(Token::Colon).ignore_then(ty.clone()).or_not())
@@ -580,6 +599,7 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
             export_stmt,
             extend_decl,
             let_stmt,
+            tuple_destructure_stmt,
             destructure_stmt,
             var_stmt,
             return_stmt,

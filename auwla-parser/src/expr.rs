@@ -269,6 +269,29 @@ fn expr_parser_inner(
                     .boxed()
             };
 
+            // Tuple or grouped expression: (expr) or (expr1, expr2, ...)
+            // We need to parse comma-separated expressions and decide:
+            // - 0 elements: () = void
+            // - 1 element: (expr) = grouped expression
+            // - 2+ elements: (expr1, expr2) = tuple
+            let tuple_or_grouped = expr
+                .clone()
+                .separated_by(just(Token::Comma))
+                .allow_trailing()
+                .delimited_by(just(Token::LParen), just(Token::RParen))
+                .map_with_span(|exprs, span| {
+                    if exprs.is_empty() {
+                        // Empty tuple () = void
+                        auwla_ast::Spanned::new(auwla_ast::ExprKind::Void, span)
+                    } else if exprs.len() == 1 {
+                        // Single element = grouped expression (not a tuple)
+                        exprs.into_iter().next().unwrap()
+                    } else {
+                        // Multiple elements = tuple
+                        auwla_ast::Spanned::new(auwla_ast::ExprKind::Tuple(exprs), span)
+                    }
+                });
+
             // Build match expression parser conditionally
             let base_atom = self_expr
                 .or(closure)
@@ -285,9 +308,7 @@ fn expr_parser_inner(
                 .or(array_lit)
                 .or(dict_lit)
                 .or(block.clone())
-                .or(expr
-                    .clone()
-                    .delimited_by(just(Token::LParen), just(Token::RParen)));
+                .or(tuple_or_grouped);
 
             let atom: Box<dyn Parser<Token, Expr, Error = Simple<Token>> + '_> = if let Some(
                 ref _stmt,
@@ -325,7 +346,7 @@ fn expr_parser_inner(
                     });
 
                 let base_pattern = recursive(|pattern| {
-                    choice((
+                    let single_pattern = choice((
                         select! { Token::Ident(n) if n == "_" => n }
                             .map_with_span(|_, span| auwla_ast::Pattern::new(auwla_ast::PatternKind::Wildcard, span)),
                             range_or_lit.clone(),
@@ -374,20 +395,22 @@ fn expr_parser_inner(
                                         auwla_ast::Pattern::new(auwla_ast::PatternKind::Variable(name), span)
                                     }
                                 }),
-                        ))
+                        ));
+                    
+                    // Support OR patterns in nested positions
+                    single_pattern
+                        .separated_by(just(Token::Pipe))
+                        .at_least(1)
+                        .map_with_span(|mut patterns, span| {
+                            if patterns.len() == 1 {
+                                patterns.pop().unwrap()
+                            } else {
+                                auwla_ast::Pattern::new(auwla_ast::PatternKind::Or(patterns), span)
+                            }
+                        })
                 });
 
-                let arm_pattern = base_pattern
-                    .clone()
-                    .separated_by(just(Token::Pipe))
-                    .at_least(1)
-                    .map_with_span(|mut patterns, span| {
-                        if patterns.len() == 1 {
-                            patterns.pop().unwrap()
-                        } else {
-                            auwla_ast::Pattern::new(auwla_ast::PatternKind::Or(patterns), span)
-                        }
-                    });
+                let arm_pattern = base_pattern.clone();
 
                 let arm_rhs = just(Token::FatArrow).ignore_then(
                     block

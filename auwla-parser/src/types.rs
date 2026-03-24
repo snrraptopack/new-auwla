@@ -46,6 +46,26 @@ pub fn type_parser() -> impl Parser<Token, Type, Error = Simple<Token>> + Clone 
                 }
             });
 
+        // Tuple type: (T1, T2, ...) - must have at least 2 elements or trailing comma
+        let tuple = ty
+            .clone()
+            .separated_by(just(Token::Comma))
+            .allow_trailing()
+            .delimited_by(just(Token::LParen), just(Token::RParen))
+            .try_map(|types, _span| {
+                // Empty tuple () is void
+                if types.is_empty() {
+                    Ok(Type::Basic("void".to_string()))
+                } else if types.len() == 1 {
+                    // Single element without trailing comma is grouped type, not tuple
+                    // Parser can't distinguish, so we treat (T) as T
+                    Ok(types.into_iter().next().unwrap())
+                } else {
+                    // Multiple elements = tuple
+                    Ok(Type::Tuple(types))
+                }
+            });
+
         let func = ty
             .clone()
             .separated_by(just(Token::Comma))
@@ -71,7 +91,7 @@ pub fn type_parser() -> impl Parser<Token, Type, Error = Simple<Token>> + Clone 
                 }
             });
 
-        let atom = func.or(array_keyword).or(basic_or_custom);
+        let atom = func.or(tuple).or(array_keyword).or(basic_or_custom);
 
         // base_type with optional array brackets (support nested: number[][])
         let base = atom

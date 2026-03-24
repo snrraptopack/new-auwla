@@ -1,6 +1,6 @@
 import { __print } from './__util.js';
-import * as __std_optional from './std/optional.js';
 import * as __std_dict from './std/dict.js';
+import * as __std_optional from './std/optional.js';
 function test_nested_collections() {
   __print("--- Test 1: Nested Collections ---");
   let registry = {  };

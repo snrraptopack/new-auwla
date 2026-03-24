@@ -55,6 +55,11 @@ pub enum StmtKind {
         bindings: Vec<String>,
         initializer: Expr,
     },
+    /// let (x, y) = point;
+    TupleDestructureLet {
+        bindings: Vec<String>,
+        initializer: Expr,
+    },
     /// var x = 5;
     Var {
         name: String,

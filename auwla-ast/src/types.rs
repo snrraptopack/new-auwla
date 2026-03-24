@@ -31,6 +31,8 @@ pub enum Type {
     SelfType,
     /// Internal: A polymorphic wrapper (either Optional or Result) specifically for some()
     Wrapper(Box<Type>),
+    /// Tuple type: (number, string, bool)
+    Tuple(Vec<Type>),
 }
 
 impl Type {
@@ -47,6 +49,7 @@ impl Type {
             Type::InferenceVar(id) => format!("_{}", id),
             Type::SelfType => "Self".to_string(),
             Type::Wrapper(inner) => format!("wrapper<{}>", inner.base_key()),
+            Type::Tuple(_) => "tuple".to_string(),
         }
     }
 }
@@ -87,6 +90,16 @@ impl fmt::Display for Type {
             }
             Type::SelfType => write!(f, "Self"),
             Type::Wrapper(inner) => write!(f, "wrapper<{}>", inner),
+            Type::Tuple(types) => {
+                write!(f, "(")?;
+                for (i, t) in types.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", t)?;
+                }
+                write!(f, ")")
+            }
         }
     }
 }

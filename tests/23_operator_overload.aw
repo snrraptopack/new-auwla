@@ -42,6 +42,7 @@ print("v1 + v2:");
 let sum = v1 + v2;
 print(sum);
 
+
 print("v1 - v2:");
 let diff = v1 - v2;
 print(diff);

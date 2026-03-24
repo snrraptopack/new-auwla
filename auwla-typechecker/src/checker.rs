@@ -85,6 +85,10 @@ impl Typechecker {
             Type::InferenceVar(id) => format!("_{}", id),
             Type::SelfType => "Self".to_string(),
             Type::Wrapper(inner) => format!("wrapper<{}>", self.type_to_key(inner)),
+            Type::Tuple(types) => {
+                let parts: Vec<String> = types.iter().map(|t| self.type_to_key(t)).collect();
+                format!("({})", parts.join(", "))
+            }
         }
     }
 
@@ -363,6 +367,13 @@ impl Typechecker {
                     .collect();
                 Type::Function(gen_params, Box::new(self.genericize_type(ret, type_params)))
             }
+            Type::Tuple(types) => {
+                let gen_types = types
+                    .iter()
+                    .map(|t| self.genericize_type(t, type_params))
+                    .collect();
+                Type::Tuple(gen_types)
+            }
             _ => ty.clone(),
         }
     }
@@ -406,6 +417,13 @@ impl Typechecker {
                     sub_params,
                     Box::new(self.substitute_type_var(ret, var_name, replacement)),
                 )
+            }
+            Type::Tuple(types) => {
+                let sub_types = types
+                    .iter()
+                    .map(|t| self.substitute_type_var(t, var_name, replacement))
+                    .collect();
+                Type::Tuple(sub_types)
             }
             Type::Wrapper(inner) => {
                 Type::Wrapper(Box::new(self.substitute_type_var(inner, var_name, replacement)))
@@ -519,6 +537,7 @@ impl Typechecker {
             Type::Function(params, ret) => {
                 params.iter().any(|(p, _)| self.contains_unknown(p)) || self.contains_unknown(ret)
             }
+            Type::Tuple(types) => types.iter().any(|t| self.contains_unknown(t)),
             _ => false,
         }
     }

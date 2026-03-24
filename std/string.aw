@@ -45,7 +45,45 @@ extend string {
     @external("js", "method", "replace")
     fn replace(self, search: string, replacement: string): string;
 
-    // --- Pure Auwla methods ---
+    @external("js", "method", "trimStart")
+    fn trim_start(self): string;
+
+    @external("js", "method", "trimEnd")
+    fn trim_end(self): string;
+
+    @external("js", "method", "padStart")
+    fn pad_start(self, length: number, fill: string): string;
+
+    @external("js", "method", "padEnd")
+    fn pad_end(self, length: number, fill: string): string;
+
+    @external("js", "method", "replaceAll")
+    fn replace_all(self, search: string, replacement: string): string;
+
+    @external("js", "method", "lastIndexOf")
+    fn last_index_of(self, search: string): number;
+
+    @external("js", "method", "normalize")
+    fn normalize(self): string;
+
+    @external("js", "method", "codePointAt")
+    fn code_at(self, index: number): number?;
+
+    @external("js", "static", "String", "fromCodePoint")
+    static fn from_code(code: number): string;
+
+}
+
+// --- Operator extensions ---
+extend string {
+     operator *(self, other: number): string {
+        return self.repeat(other);
+    }
+}
+
+// --- Pure Auwla methods ---
+extend string{
+
     fn shout(self): string => self + "!!!";
     fn whisper(self): string => self + "...";
 
@@ -67,7 +105,4 @@ extend string {
         return result;
     }
 
-    operator *(self, other: number): string {
-        return self.repeat(other);
-    }
 }

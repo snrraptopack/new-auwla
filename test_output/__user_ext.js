@@ -1,5 +1,3 @@
-import { __print } from './__util.js';
-
 import './std/string.js';
 import './std/array.js';
 import './std/number.js';
@@ -140,35 +138,6 @@ export function _ext_usr_Vector2__op_mul(__self, scalar) {
 
 export function _ext_usr_Vector2__op_div(__self, divisor) {
   return { x: (__self.x / divisor), y: (__self.y / divisor) };
-}
-
-export function _ext_usr_array__find_one(__self, id) {
-  for (const t of __self) {
-    if ((t.id === id)) {
-      return ({ ok: true, value: t });
-    }
-  }
-  return ({ ok: false, value: "id not found" });
-}
-
-export function _ext_usr_array__print_summary(__self) {
-  __print(`Summary of ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(__self.length)} tasks:`);
-  for (const t of __self) {
-    const __match_0 = t.status;
-    let status_icon;
-    switch (__match_0.$variant) {
-      case "Pending":
-        status_icon = "⏳";
-        break;
-      case "Done":
-        status_icon = "✅";
-        break;
-      case "Archived":
-        status_icon = "📦";
-        break;
-    }
-    __print(`${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(status_icon)} ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(t.title)}`);
-  }
 }
 
 export function _ext_usr_array__sum(__self) {

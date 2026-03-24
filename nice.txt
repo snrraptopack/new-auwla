@@ -1,0 +1,6 @@
+Source Mapping & Debugging: Since you target JS, 
+if an Auwla program crashes, 
+the browser/Node will throw an error pointing to the generated JS. 
+You need to implement standard Source Maps (.map files) 
+so the engine maps the error back to the exact line and column in the
+ .aw file.

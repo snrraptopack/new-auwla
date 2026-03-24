@@ -173,6 +173,10 @@ impl JsEmitter {
             Type::InferenceVar(id) => format!("_{}", id),
             Type::SelfType => "Self".to_string(),
             Type::Wrapper(inner) => format!("wrapper<{}>", self.type_to_key(inner)),
+            Type::Tuple(types) => {
+                let parts: Vec<String> = types.iter().map(|t| self.type_to_key(t)).collect();
+                format!("({})", parts.join(", "))
+            }
         }
     }
 

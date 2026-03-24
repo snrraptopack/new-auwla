@@ -151,6 +151,19 @@ impl Unifier {
                 }
                 Ok(())
             }
+            (Type::Tuple(types1), Type::Tuple(types2)) => {
+                if types1.len() != types2.len() {
+                    return Err(format!(
+                        "Cannot unify tuples with different lengths: {} vs {}",
+                        types1.len(),
+                        types2.len()
+                    ));
+                }
+                for (t1, t2) in types1.iter().zip(types2.iter()) {
+                    self.unify(t1, t2)?;
+                }
+                Ok(())
+            }
             // Polymorphic Wrapper (some(val)) unification
             (Type::Wrapper(w), other) | (other, Type::Wrapper(w)) => {
                 match other {
@@ -202,6 +215,10 @@ impl Unifier {
             Type::Generic(name, args) => {
                 let resolved_args = args.iter().map(|a| self.resolve(a)).collect();
                 Type::Generic(name.clone(), resolved_args)
+            }
+            Type::Tuple(types) => {
+                let resolved_types = types.iter().map(|t| self.resolve(t)).collect();
+                Type::Tuple(resolved_types)
             }
             Type::Wrapper(inner) => Type::Optional(Box::new(self.resolve(inner))),
             _ => ty.clone(), // Basic, Custom, TypeVar remain unchanged
