@@ -7,6 +7,8 @@ extend number {
     fn by(self,value:number): number => self * value;
 }
 
+
+
 // Use in a for loop — call double/square on loop variable
 for i in 1 .. 5 {
     let d = i.double();

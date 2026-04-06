@@ -83,6 +83,8 @@ fn handle_dot_completion(
     dot_idx: usize,
     items: &mut Vec<CompletionItem>,
 ) {
+    let direct_type_hint = infer_type_key_before_dot(content, dot_idx);
+
     // Replace the dot with a space so the expression before it parses cleanly
     let mut shadow = String::with_capacity(content.len());
     shadow.push_str(&content[..dot_idx]);
@@ -143,11 +145,21 @@ fn handle_dot_completion(
                 push_methods_from_registry(&typechecker.extensions, &base_key, items);
                 push_methods_for_type_key(backend, &base_key, items);
             }
+
+            if let Some(hint) = &direct_type_hint {
+                if hint != &type_key && hint != &base_key {
+                    push_methods_from_registry(&typechecker.extensions, hint, items);
+                    push_methods_for_type_key(backend, hint, items);
+                    push_local_extend_methods_for_key(content, hint, items);
+                }
+            }
             return;
         }
 
-        if let Some(type_key) = infer_type_key_before_dot(content, dot_idx) {
+        if let Some(type_key) = direct_type_hint.clone() {
+            push_methods_from_registry(&typechecker.extensions, &type_key, items);
             push_methods_for_type_key(backend, &type_key, items);
+            push_local_extend_methods_for_key(content, &type_key, items);
             return;
         }
 
@@ -160,8 +172,23 @@ fn handle_dot_completion(
         return;
     }
 
-    if let Some(type_key) = infer_type_key_before_dot(content, dot_idx) {
+    if let Some(type_key) = direct_type_hint {
+        // Even when strict parse fails (common while typing), recover a partial
+        // registry from the same shadow source so user-defined extensions appear.
+        let recovery_tokens: Vec<_> = auwla_lexer::lex(&shadow)
+            .into_iter()
+            .filter(|(t, _)| !matches!(t, auwla_lexer::token::Token::Error(_)))
+            .map(|(t, _)| t)
+            .collect();
+        let (ast_opt, _) = auwla_parser::parse_recovery(recovery_tokens);
+        if let Some(ast) = ast_opt {
+            let mut typechecker = create_typechecker_with_metadata(backend);
+            run_lenient_typecheck(&mut typechecker, &ast);
+            push_methods_from_registry(&typechecker.extensions, &type_key, items);
+        }
+
         push_methods_for_type_key(backend, &type_key, items);
+        push_local_extend_methods_for_key(content, &type_key, items);
         return;
     }
 
@@ -408,5 +435,59 @@ fn run_lenient_typecheck(
 ) {
     for stmt in &ast.statements {
         let _ = typechecker.check_stmt(stmt);
+    }
+}
+
+fn push_local_extend_methods_for_key(content: &str, type_key: &str, items: &mut Vec<CompletionItem>) {
+    let tokens: Vec<_> = auwla_lexer::lex(content)
+        .into_iter()
+        .filter(|(t, _)| !matches!(t, auwla_lexer::token::Token::Error(_)))
+        .map(|(t, _)| t)
+        .collect();
+
+    let (ast_opt, _) = auwla_parser::parse_recovery(tokens);
+    let Some(ast) = ast_opt else {
+        return;
+    };
+
+    for stmt in ast.statements {
+        if let auwla_ast::StmtKind::Extend { target_type, methods, .. } = stmt.node {
+            if target_type.base_key() != type_key {
+                continue;
+            }
+
+            for method in methods {
+                let params = method
+                    .params
+                    .iter()
+                    .map(|(name, ty, is_vararg)| {
+                        let mut rendered = String::new();
+                        if *is_vararg {
+                            rendered.push_str("...");
+                        }
+                        rendered.push_str(name);
+                        if let Some(t) = ty {
+                            rendered.push_str(": ");
+                            rendered.push_str(&t.to_string());
+                        }
+                        rendered
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                let detail = if let Some(ret) = method.return_ty {
+                    format!("fn {}({}) -> {}", method.name, params, ret)
+                } else {
+                    format!("fn {}({})", method.name, params)
+                };
+
+                items.push(CompletionItem {
+                    label: method.name,
+                    detail: Some(detail),
+                    kind: Some(CompletionItemKind::METHOD),
+                    ..Default::default()
+                });
+            }
+        }
     }
 }
