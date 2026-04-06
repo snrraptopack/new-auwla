@@ -94,44 +94,14 @@ impl Typechecker {
                 Ok(())
             }
             auwla_ast::StmtKind::TupleDestructureLet {
-                bindings,
+                pattern,
                 initializer,
             } => {
                 let init_ty = self.check_expr(initializer)?;
                 let resolved_init = self.resolve_type(&init_ty);
 
-                match resolved_init {
-                    Type::Tuple(types) => {
-                        if bindings.len() != types.len() {
-                            return self.error(
-                                initializer.span.clone(),
-                                format!(
-                                    "Type error: tuple has {} elements but {} bindings were provided",
-                                    types.len(),
-                                    bindings.len()
-                                ),
-                            );
-                        }
-
-                        for (binding, ty) in bindings.iter().zip(types.iter()) {
-                            self.declare_variable(
-                                stmt.span.clone(),
-                                binding.clone(),
-                                ty.clone(),
-                                Mutability::Immutable,
-                            )?;
-                        }
-                    }
-                    _ => {
-                        return self.error(
-                            initializer.span.clone(),
-                            format!(
-                                "Type error: expected tuple for destructuring, found '{}'",
-                                init_ty
-                            ),
-                        );
-                    }
-                }
+                // Use check_nested_pattern to handle the tuple pattern recursively
+                self.check_nested_pattern(pattern, &resolved_init, true)?;
                 Ok(())
             }
             auwla_ast::StmtKind::Var {

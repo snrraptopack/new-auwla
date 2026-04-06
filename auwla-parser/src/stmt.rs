@@ -62,17 +62,37 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
 
         let tuple_destructure_stmt = just(Token::Let)
             .ignore_then(
-                select! { Token::Ident(name) => name }
-                    .separated_by(just(Token::Comma))
-                    .delimited_by(just(Token::LParen), just(Token::RParen)),
+                // Use a simple recursive pattern parser for tuple destructuring
+                recursive(|pattern| {
+                    choice((
+                        // Tuple pattern: (x, y) or ((a, b), c)
+                        pattern
+                            .clone()
+                            .separated_by(just(Token::Comma))
+                            .allow_trailing()
+                            .delimited_by(just(Token::LParen), just(Token::RParen))
+                            .map_with_span(|patterns, span| {
+                                if patterns.len() == 1 {
+                                    patterns.into_iter().next().unwrap()
+                                } else {
+                                    auwla_ast::Spanned::new(auwla_ast::PatternKind::Tuple(patterns), span)
+                                }
+                            }),
+                        // Variable pattern: x, y, z
+                        select! { Token::Ident(name) => name }
+                            .map_with_span(|name, span| {
+                                auwla_ast::Spanned::new(auwla_ast::PatternKind::Variable(name), span)
+                            }),
+                    ))
+                })
             )
             .then_ignore(just(Token::Assign))
             .then(expr.clone())
             .then_ignore(just(Token::Semicolon))
-            .map_with_span(|(bindings, initializer), span| {
+            .map_with_span(|(pattern, initializer), span| {
                 auwla_ast::Spanned::new(
                     StmtKind::TupleDestructureLet {
-                        bindings,
+                        pattern,
                         initializer,
                     },
                     span,

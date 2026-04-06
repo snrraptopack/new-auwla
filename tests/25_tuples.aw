@@ -41,5 +41,5 @@ describe_point((10, 20));
 
 // Mixed types in tuple
 let mixed: (string, number, bool, string) = ("test", 42, false, "end");
-let (s1, n, b, s2) = mixed;
+let (s1, n, bs, s2) = mixed;
 print("Mixed: {s1}, {n}, {b}, {s2}");

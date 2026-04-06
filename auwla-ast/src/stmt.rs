@@ -55,9 +55,9 @@ pub enum StmtKind {
         bindings: Vec<String>,
         initializer: Expr,
     },
-    /// let (x, y) = point;
+    /// let (x, y) = point; or let ((a, b), (c, d)) = nested;
     TupleDestructureLet {
-        bindings: Vec<String>,
+        pattern: crate::expr::Pattern,
         initializer: Expr,
     },
     /// var x = 5;

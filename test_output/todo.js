@@ -1,23 +1,44 @@
 import { __print } from './__util.js';
-import * as __std_dict from './std/dict.js';
-import * as __std_optional from './std/optional.js';
-import * as __std_array from './std/array.js';
-const school = {  };
-const first = { name: "One", location: "another", level: 10 };
-const second = { name: "Second", location: "Taadi", level: 0 };
-__std_dict._ext_dict__set(school, first.name, first);
-__std_dict._ext_dict__set(school, second.name, second);
-const numbers = [10, 30];
-const one = __std_optional._ext_optional__val_or(__std_array._ext_array__get(numbers, 0), 0);
-__print(((_o) => _o.ok ? _o.value : (10))(__std_array._ext_array__get(numbers, 200)));
-const user = { name: "Ama", address: { city: "Tarkwa", country: "Ghana" } };
-const __match_0 = user;
-if ((__match_0.name !== undefined && (__match_0.address.city === "Accra"))) {
-  const name = __match_0.name;
-  __print(`${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(name)} is in Accra`);
+const valid_json = "[1, 2, 3, 4, 5]";
+const valid = JSON.parse(valid_json);
+const __match_0 = valid;
+if (__match_0.ok) {
+  const obj = __match_0.value;
+  __print(`Success parsing array: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(obj)}`);
 }
-else if ((__match_0.name !== undefined && (__match_0.address.city !== undefined))) {
-  const name = __match_0.name;
-  const city = __match_0.address.city;
-  __print(`${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(name)} is in ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(city)}`);
+else if (!__match_0.ok) {
+  const err = __match_0.value;
+  __print(`Error: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(err)}`);
+}
+const a = Math.random();
+__print(`Random number: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(a)}`);
+const invalid = JSON.parse("not valid json at all");
+const __match_1 = invalid;
+if (__match_1.ok) {
+  const obj = __match_1.value;
+  __print(`Success: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(obj)}`);
+}
+else if (!__match_1.ok) {
+  const err = __match_1.value;
+  __print(`Error caught: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(err)}`);
+}
+const null_test = JSON.parse("null");
+const __match_2 = null_test;
+if (__match_2.ok) {
+  const result = __match_2.value;
+  __print("Parsed null successfully");
+}
+else if (!__match_2.ok) {
+  const err = __match_2.value;
+  __print(`Error parsing null: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(err)}`);
+}
+const number_test = JSON.parse("42");
+const __match_3 = number_test;
+if (__match_3.ok) {
+  const num = __match_3.value;
+  __print(`Parsed number: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(num)}`);
+}
+else if (!__match_3.ok) {
+  const err = __match_3.value;
+  __print(`Error: ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(err)}`);
 }

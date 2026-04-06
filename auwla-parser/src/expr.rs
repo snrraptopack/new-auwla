@@ -350,6 +350,24 @@ fn expr_parser_inner(
                         select! { Token::Ident(n) if n == "_" => n }
                             .map_with_span(|_, span| auwla_ast::Pattern::new(auwla_ast::PatternKind::Wildcard, span)),
                             range_or_lit.clone(),
+                            // Tuple pattern: (x, y) or ((a, b), c)
+                            pattern
+                                .clone()
+                                .separated_by(just(Token::Comma))
+                                .allow_trailing()
+                                .delimited_by(just(Token::LParen), just(Token::RParen))
+                                .map_with_span(|patterns, span| {
+                                    if patterns.is_empty() {
+                                        // Empty tuple () matches void
+                                        auwla_ast::Pattern::new(auwla_ast::PatternKind::Wildcard, span)
+                                    } else if patterns.len() == 1 {
+                                        // Single element in parens is just grouped, not a tuple pattern
+                                        patterns.into_iter().next().unwrap()
+                                    } else {
+                                        // Multiple elements = tuple pattern
+                                        auwla_ast::Pattern::new(auwla_ast::PatternKind::Tuple(patterns), span)
+                                    }
+                                }),
                             // Struct pattern Parser: User { role: "admin", name } or { role: "admin" }
                             select! { Token::Ident(n) if n.chars().next().map_or(false, |c| c.is_uppercase()) => n }
                                 .or_not()

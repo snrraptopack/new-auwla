@@ -44,21 +44,16 @@ impl JsEmitter {
                 self.write(";\n");
             }
             auwla_ast::StmtKind::TupleDestructureLet {
-                bindings,
+                pattern,
                 initializer,
             } => {
                 self.write_indent();
                 if export {
                     self.write("export ");
                 }
-                self.write("const [");
-                for (i, b) in bindings.iter().enumerate() {
-                    if i > 0 {
-                        self.write(", ");
-                    }
-                    self.write(b);
-                }
-                self.write("] = ");
+                self.write("const ");
+                self.emit_tuple_pattern(pattern);
+                self.write(" = ");
                 self.emit_expr(initializer);
                 self.write(";\n");
             }
@@ -451,5 +446,28 @@ impl JsEmitter {
         self.in_extension_method = true;
         self.emit_stmt(stmt);
         self.in_extension_method = old;
+    }
+
+    /// Recursively emit a tuple pattern for destructuring
+    fn emit_tuple_pattern(&mut self, pattern: &auwla_ast::Pattern) {
+        match &pattern.node {
+            auwla_ast::PatternKind::Variable(name) => {
+                self.write(name);
+            }
+            auwla_ast::PatternKind::Tuple(patterns) => {
+                self.write("[");
+                for (i, p) in patterns.iter().enumerate() {
+                    if i > 0 {
+                        self.write(", ");
+                    }
+                    self.emit_tuple_pattern(p);
+                }
+                self.write("]");
+            }
+            _ => {
+                // Other patterns shouldn't appear in tuple destructuring
+                self.write("_");
+            }
+        }
     }
 }

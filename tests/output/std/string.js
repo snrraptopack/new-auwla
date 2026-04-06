@@ -1,3 +1,7 @@
+export function _ext_string__op_mul(__self, other) {
+  return __self.repeat(other);
+}
+
 export function _ext_string__shout(__self) {
   return (__self + "!!!");
 }
@@ -24,9 +28,5 @@ export function _ext_string__reverse(__self) {
     result = (__self.charAt(((__self.length - 1) - i)) + result);
   }
   return result;
-}
-
-export function _ext_string__op_mul(__self, other) {
-  return __self.repeat(other);
 }
 

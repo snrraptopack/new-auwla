@@ -1796,7 +1796,7 @@ impl Typechecker {
     }
 
     /// Recursively typecheck nested patterns and declare variables
-    fn check_nested_pattern(
+    pub(crate) fn check_nested_pattern(
         &mut self,
         pattern: &auwla_ast::Pattern,
         expected_ty: &Type,
