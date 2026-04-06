@@ -1,5 +1,6 @@
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
+use std::collections::HashMap;
 
 use crate::Backend;
 use crate::utils::format_method_signature;
@@ -27,9 +28,6 @@ pub async fn handle_completion(
 
     if let Some(di) = dot_idx {
         handle_dot_completion(backend, &content, di, &mut items);
-        if items.is_empty() {
-            return Ok(Some(global_completions(backend)));
-        }
     } else {
         handle_general_completion(backend, &content, &mut items);
     }
@@ -37,26 +35,6 @@ pub async fn handle_completion(
     items.sort_by(|a, b| a.label.cmp(&b.label));
     items.dedup_by(|a, b| a.label == b.label);
     Ok(Some(CompletionResponse::Array(items)))
-}
-
-/// Build a fallback completion list from all extension methods across all types.
-pub fn global_completions(backend: &Backend) -> CompletionResponse {
-    let mut items = Vec::new();
-    for entry in backend.metadata.iter() {
-        let type_key = entry.key();
-        for method in entry.value() {
-            let sig = format_method_signature(method);
-            items.push(CompletionItem {
-                label: method.name.clone(),
-                detail: Some(format!("{} ({})", sig, type_key)),
-                kind: Some(CompletionItemKind::METHOD),
-                ..Default::default()
-            });
-        }
-    }
-    items.sort_by(|a, b| a.label.cmp(&b.label));
-    items.dedup_by(|a, b| a.label == b.label);
-    CompletionResponse::Array(items)
 }
 
 // ---------------------------------------------------------------------------
@@ -121,13 +99,8 @@ fn handle_dot_completion(
         .collect();
 
     if let Ok(ast) = auwla_parser::parse(tokens) {
-        let mut typechecker = auwla_typechecker::Typechecker::new();
-        for entry in backend.metadata.iter() {
-            typechecker
-                .extensions
-                .insert(entry.key().clone(), entry.value().clone());
-        }
-        let _ = typechecker.check_program(&ast);
+        let mut typechecker = create_typechecker_with_metadata(backend);
+        run_lenient_typecheck(&mut typechecker, &ast);
 
         // Find the expression whose byte span ends closest to (but before) the dot
         let mut best_fit: Option<auwla_ast::Type> = None;
@@ -146,6 +119,7 @@ fn handle_dot_completion(
 
         if let Some(ref ty) = best_fit {
             let type_key = typechecker.type_to_key(ty);
+            let base_key = ty.base_key();
 
             // Add struct fields
             if let Some(fields) = typechecker.structs.get(&type_key) {
@@ -163,24 +137,175 @@ fn handle_dot_completion(
                 }
             }
 
-            // Add extension methods for this type
-            if let Some(methods) = backend.metadata.get(&type_key) {
-                for method in methods.value() {
-                    let sig = format_method_signature(method);
-                    items.push(CompletionItem {
-                        label: method.name.clone(),
-                        detail: Some(sig.clone()),
-                        documentation: Some(Documentation::MarkupContent(MarkupContent {
-                            kind: MarkupKind::Markdown,
-                            value: format!("```auwla\n{}\n```", sig),
-                        })),
-                        kind: Some(CompletionItemKind::METHOD),
-                        ..Default::default()
-                    });
-                }
+            push_methods_from_registry(&typechecker.extensions, &type_key, items);
+            push_methods_for_type_key(backend, &type_key, items);
+            if base_key != type_key {
+                push_methods_from_registry(&typechecker.extensions, &base_key, items);
+                push_methods_for_type_key(backend, &base_key, items);
+            }
+            return;
+        }
+
+        if let Some(type_key) = infer_type_key_before_dot(content, dot_idx) {
+            push_methods_for_type_key(backend, &type_key, items);
+            return;
+        }
+
+        if let Some((exact_key, base_key)) = infer_variable_type_keys_before_dot(backend, content, dot_idx) {
+            push_methods_for_type_key(backend, &exact_key, items);
+            if base_key != exact_key {
+                push_methods_for_type_key(backend, &base_key, items);
             }
         }
+        return;
     }
+
+    if let Some(type_key) = infer_type_key_before_dot(content, dot_idx) {
+        push_methods_for_type_key(backend, &type_key, items);
+        return;
+    }
+
+    if let Some((exact_key, base_key)) = infer_variable_type_keys_before_dot(backend, content, dot_idx) {
+        push_methods_for_type_key(backend, &exact_key, items);
+        if base_key != exact_key {
+            push_methods_for_type_key(backend, &base_key, items);
+        }
+    }
+}
+
+fn push_methods_for_type_key(backend: &Backend, type_key: &str, items: &mut Vec<CompletionItem>) {
+    if let Some(methods) = backend.metadata.get(type_key) {
+        for method in methods.value() {
+            let sig = format_method_signature(method);
+            items.push(CompletionItem {
+                label: method.name.clone(),
+                detail: Some(sig.clone()),
+                documentation: Some(Documentation::MarkupContent(MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value: format!("```auwla\n{}\n```", sig),
+                })),
+                kind: Some(CompletionItemKind::METHOD),
+                ..Default::default()
+            });
+        }
+    }
+}
+
+fn push_methods_from_registry(
+    registry: &HashMap<String, Vec<auwla_ast::ExtensionMethod>>,
+    type_key: &str,
+    items: &mut Vec<CompletionItem>,
+) {
+    if let Some(methods) = registry.get(type_key) {
+        for method in methods {
+            let sig = format_method_signature(method);
+            items.push(CompletionItem {
+                label: method.name.clone(),
+                detail: Some(sig.clone()),
+                documentation: Some(Documentation::MarkupContent(MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value: format!("```auwla\n{}\n```", sig),
+                })),
+                kind: Some(CompletionItemKind::METHOD),
+                ..Default::default()
+            });
+        }
+    }
+}
+
+fn infer_type_key_before_dot(content: &str, dot_idx: usize) -> Option<String> {
+    if dot_idx > content.len() {
+        return None;
+    }
+
+    let line_start = content[..dot_idx]
+        .rfind(|c| c == '\n' || c == '\r')
+        .map(|i| i + 1)
+        .unwrap_or(0);
+
+    let receiver_src = content[line_start..dot_idx].trim_end();
+    if receiver_src.is_empty() {
+        return None;
+    }
+
+    let receiver_tokens: Vec<_> = auwla_lexer::lex(receiver_src)
+        .into_iter()
+        .map(|(t, _)| t)
+        .filter(|t| !matches!(t, auwla_lexer::token::Token::Error(_)))
+        .collect();
+
+    match receiver_tokens.last() {
+        Some(auwla_lexer::token::Token::StringLit(_)) => Some("string".to_string()),
+        Some(auwla_lexer::token::Token::NumberLit(_)) => Some("number".to_string()),
+        Some(auwla_lexer::token::Token::True) | Some(auwla_lexer::token::Token::False) => {
+            Some("bool".to_string())
+        }
+        Some(auwla_lexer::token::Token::CharLit(_)) => Some("char".to_string()),
+        Some(auwla_lexer::token::Token::Ident(name)) => {
+            let lowered = name.to_ascii_lowercase();
+            match lowered.as_str() {
+                "string" | "number" | "bool" | "char" | "array" | "dict" | "optional"
+                | "result" => Some(lowered),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+fn infer_variable_type_keys_before_dot(
+    backend: &Backend,
+    content: &str,
+    dot_idx: usize,
+) -> Option<(String, String)> {
+    if dot_idx > content.len() {
+        return None;
+    }
+
+    let line_start = content[..dot_idx]
+        .rfind(|c| c == '\n' || c == '\r')
+        .map(|i| i + 1)
+        .unwrap_or(0);
+    let receiver_src = content[line_start..dot_idx].trim_end();
+    if receiver_src.is_empty() {
+        return None;
+    }
+
+    let receiver_tokens: Vec<_> = auwla_lexer::lex(receiver_src)
+        .into_iter()
+        .map(|(t, _)| t)
+        .filter(|t| !matches!(t, auwla_lexer::token::Token::Error(_)))
+        .collect();
+
+    let ident = match receiver_tokens.last() {
+        Some(auwla_lexer::token::Token::Ident(name)) => name.clone(),
+        _ => return None,
+    };
+
+    let mut prefix = content[..dot_idx].to_string();
+    if !prefix.trim_end().ends_with(';') {
+        prefix.push(';');
+    }
+
+    let tokens: Vec<_> = auwla_lexer::lex(&prefix)
+        .into_iter()
+        .map(|(t, _)| t)
+        .filter(|t| !matches!(t, auwla_lexer::token::Token::Error(_)))
+        .collect();
+
+    let (ast_opt, _) = auwla_parser::parse_recovery(tokens);
+    let ast = ast_opt?;
+
+    let mut typechecker = create_typechecker_with_metadata(backend);
+    run_lenient_typecheck(&mut typechecker, &ast);
+
+    for scope in typechecker.scopes.iter().rev() {
+        if let Some(ty) = scope.variables.get(&ident) {
+            return Some((typechecker.type_to_key(ty), ty.base_key()));
+        }
+    }
+
+    None
 }
 
 /// General (no-dot) completion: keywords, variables, functions, struct/enum names.
@@ -208,13 +333,8 @@ fn handle_general_completion(backend: &Backend, content: &str, items: &mut Vec<C
         .collect();
 
     if let Ok(ast) = auwla_parser::parse(tokens) {
-        let mut typechecker = auwla_typechecker::Typechecker::new();
-        for entry in backend.metadata.iter() {
-            typechecker
-                .extensions
-                .insert(entry.key().clone(), entry.value().clone());
-        }
-        let _ = typechecker.check_program(&ast);
+        let mut typechecker = create_typechecker_with_metadata(backend);
+        run_lenient_typecheck(&mut typechecker, &ast);
 
         for scope in &typechecker.scopes {
             for (name, ty) in &scope.variables {
@@ -269,5 +389,24 @@ fn handle_general_completion(backend: &Backend, content: &str, items: &mut Vec<C
                 ..Default::default()
             });
         }
+    }
+}
+
+fn create_typechecker_with_metadata(backend: &Backend) -> auwla_typechecker::Typechecker {
+    let mut typechecker = auwla_typechecker::Typechecker::new();
+    for entry in backend.metadata.iter() {
+        typechecker
+            .extensions
+            .insert(entry.key().clone(), entry.value().clone());
+    }
+    typechecker
+}
+
+fn run_lenient_typecheck(
+    typechecker: &mut auwla_typechecker::Typechecker,
+    ast: &auwla_ast::Program,
+) {
+    for stmt in &ast.statements {
+        let _ = typechecker.check_stmt(stmt);
     }
 }

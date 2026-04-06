@@ -8,15 +8,15 @@ fn two_sum(nums: number[], target: number): number[] {
     let num_map: dict<number, number> = {};
 
     for i in 0..nums.len() {
-        let complement = target - nums.get(i).val_or(0);
+        let complement = target - (nums.get(i) ?? 0);
 
         // Check if complement exists in map
         if complement in num_map {
-            return [num_map.get(complement).val_or(0), i];
+            return [num_map.get(complement) ?? 0, i];
         }
 
         // Store current number and its index
-        num_map.set(nums.get(i).val_or(0), i);
+        num_map.set(nums.get(i) ?? 0, i);
     }
 
     // Return empty array if no solution found
@@ -146,3 +146,9 @@ print("\nFactorial Tests:");
 print("factorial(5) = {factorial(5)}"); // Should print 120
 print("factorial(0) = {factorial(0)}"); // Should print 1
 print("factorial(7) = {factorial(7)}"); // Should print 5040
+
+
+let one = [1];
+let two = [1];
+
+

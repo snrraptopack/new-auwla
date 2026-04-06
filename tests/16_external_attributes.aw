@@ -34,6 +34,7 @@ extend string{
 fn main() {
     let arr = [1, 2, 3];
 
+
     print("the max value : {arr.max()}");
 
     // Test instance property mapping
@@ -76,3 +77,5 @@ let nums = 1 .. 100;
 for i in nums.low() .. nums.high(){
     print("the current number is : {i}");
 }
+
+

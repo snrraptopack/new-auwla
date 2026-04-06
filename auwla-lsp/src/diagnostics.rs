@@ -55,6 +55,16 @@ fn handle_typechecker_errors(
             .map(|r| r.end)
             .unwrap_or(content.len());
 
+        // While typing `expr.` and moving to the next line, the parser can temporarily
+        // read it as `expr.method` on the following identifier and report a noisy
+        // "method not found" error. Suppress that transient diagnostic.
+        if e.message.contains("Type error: method '")
+            && e.message.contains("not found on type")
+            && looks_like_incomplete_dot_access(content, byte_start)
+        {
+            return;
+        }
+
         diagnostics.push(Diagnostic {
             range: Range::new(
                 byte_to_position(content, byte_start),
@@ -66,6 +76,31 @@ fn handle_typechecker_errors(
             ..Default::default()
         });
     }
+}
+
+fn looks_like_incomplete_dot_access(content: &str, byte_start: usize) -> bool {
+    if byte_start == 0 || byte_start > content.len() {
+        return false;
+    }
+
+    let bytes = content.as_bytes();
+    let mut i = byte_start;
+    let mut saw_newline = false;
+
+    while i > 0 {
+        i -= 1;
+        match bytes[i] {
+            b' ' | b'\t' => continue,
+            b'\n' | b'\r' => {
+                saw_newline = true;
+                continue;
+            }
+            b'.' => return saw_newline,
+            _ => return false,
+        }
+    }
+
+    false
 }
 
 // ---------------------------------------------------------------------------
