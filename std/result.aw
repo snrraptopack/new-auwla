@@ -1,6 +1,6 @@
 // std/result.aw — Methods for T?E types
 
-extend T?E {
+extend <T, E> T?E {
     fn val_or(self, default_v: T): T {
         return match self {
             some(v) => v,

@@ -575,6 +575,7 @@ impl Typechecker {
             }
             auwla_ast::StmtKind::StructDecl {
                 name,
+                type_params,
                 fields,
                 attributes,
                 ..
@@ -585,7 +586,15 @@ impl Typechecker {
                         format!("Struct '{}' is already defined", name),
                     );
                 }
-                self.structs.insert(name.clone(), fields.clone());
+
+                let tps = type_params.clone().unwrap_or_default();
+                let stored_fields: Vec<(String, Type)> = fields
+                    .iter()
+                    .map(|(fname, fty)| (fname.clone(), self.genericize_type(fty, &tps)))
+                    .collect();
+
+                self.structs.insert(name.clone(), stored_fields);
+                self.struct_type_params.insert(name.clone(), tps);
                 self.definitions.insert(name.clone(), stmt.span.clone());
                 self.type_attributes
                     .insert(name.clone(), attributes.clone());
@@ -604,6 +613,7 @@ impl Typechecker {
             }
             auwla_ast::StmtKind::EnumDecl {
                 name,
+                type_params,
                 variants,
                 attributes,
                 ..
@@ -614,7 +624,23 @@ impl Typechecker {
                         format!("Enum '{}' is already defined", name),
                     );
                 }
-                self.enums.insert(name.clone(), variants.clone());
+
+                let tps = type_params.clone().unwrap_or_default();
+                let stored_variants: Vec<(String, Vec<Type>)> = variants
+                    .iter()
+                    .map(|(vname, vargs)| {
+                        (
+                            vname.clone(),
+                            vargs
+                                .iter()
+                                .map(|t| self.genericize_type(t, &tps))
+                                .collect(),
+                        )
+                    })
+                    .collect();
+
+                self.enums.insert(name.clone(), stored_variants);
+                self.enum_type_params.insert(name.clone(), tps);
                 self.definitions.insert(name.clone(), stmt.span.clone());
                 self.type_attributes
                     .insert(name.clone(), attributes.clone());

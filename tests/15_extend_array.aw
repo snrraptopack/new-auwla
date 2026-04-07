@@ -1,4 +1,4 @@
-extend array<T> {
+extend <T> array<T> {
     @external("js", "property", "length")
     fn len(self): number;
 

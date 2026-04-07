@@ -101,7 +101,7 @@ mod tests {
     #[test]
     fn test_generic_array_extension_method_call() {
         let source = r#"
-            extend array<T> {
+            extend <T> array<T> {
                 @external("js", "method", "push")
                 fn push_val(self, val: T): void;
             }
@@ -119,6 +119,50 @@ mod tests {
         assert!(
             checker.check_program(&ast).is_ok(),
             "generic extension call should typecheck"
+        );
+    }
+
+    #[test]
+    fn test_generic_struct_init_with_type_args() {
+        let source = r#"
+            struct Box<T> {
+                value: T,
+            }
+
+            fn main() {
+                let b = Box::<number> { value: 1 };
+            }
+        "#;
+
+        let tokens: Vec<_> = lex(source).into_iter().map(|(t, _)| t).collect();
+        let ast = parse(tokens).expect("Failed to parse generic struct source");
+
+        let mut checker = Typechecker::new();
+        assert!(checker.check_program(&ast).is_ok());
+    }
+
+    #[test]
+    fn test_generic_enum_init_with_type_args() {
+        let source = r#"
+            enum Maybe<T> {
+                Some(T),
+                None,
+            }
+
+            fn main() {
+                let x = Maybe::<number>::Some(1);
+            }
+        "#;
+
+        let tokens: Vec<_> = lex(source).into_iter().map(|(t, _)| t).collect();
+        let ast = parse(tokens).expect("Failed to parse generic enum source");
+
+        let mut checker = Typechecker::new();
+        let result = checker.check_program(&ast);
+        assert!(
+            result.is_ok(),
+            "generic enum init should typecheck: {:?}",
+            result.err()
         );
     }
 }

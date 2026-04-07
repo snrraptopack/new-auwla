@@ -1,7 +1,7 @@
 import { __print } from './__util.js';
+import * as __std_dict from './std/dict.js';
 import * as __std_optional from './std/optional.js';
 import * as __std_array from './std/array.js';
-import * as __std_dict from './std/dict.js';
 function main() {
   const arr = [1, 2, 3];
   const val = __std_optional._ext_optional__val_or(__std_array._ext_array__get(arr, 0), 0);

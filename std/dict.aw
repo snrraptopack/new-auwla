@@ -1,6 +1,6 @@
 // std/dict.aw — Standard library dictionary extensions
 
-extend dict<K, V> {
+extend <K, V> dict<K, V> {
     // --- External static helpers ---
     @external("js", "static", "Reflect", "deleteProperty")
     static fn delete_property(obj: dict<K, V>, key: K): bool;

@@ -1,5 +1,6 @@
-import { __print } from './__util.js';
+import { __print, __range } from './__util.js';
 import * as __std_string from './std/string.js';
+import * as __std_array from './std/array.js';
 import * as __user from './__user_ext.js';
 const v1 = { x: 10, y: 20 };
 const v2 = { x: 5, y: 3 };
@@ -20,6 +21,5 @@ const result = __user._ext_usr_Vector2__op_mul(__user._ext_usr_Vector2__op_plus(
 __print(result);
 const repeated = __std_string._ext_string__op_mul("Hello ", 3);
 __print(repeated);
-for (let i = 1; i < 20; i += 1) {
-  __print(`The cursor is ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(i)}`);
-}
+const num_arr = [__range(1, 3, true)];
+const f = ((_o) => _o.ok ? _o.value : (0))(__std_array._ext_array__get(((_o) => _o.ok ? _o.value : ([0]))(__std_array._ext_array__get(num_arr, 0)), 0));

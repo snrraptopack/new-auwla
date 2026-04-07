@@ -67,4 +67,4 @@ print(repeated);
 
 let num_arr = [1 .. 3];
 
-let f = num_arr.get(0) ?? [0];
+let f = (num_arr.get(0) ?? [0]).get(0) ?? 0;

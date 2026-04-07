@@ -1,6 +1,6 @@
 // std/array.aw — Standard library array extensions
 
-extend array<T> {
+extend <T> array<T> {
     // --- JS interop: properties ---
     @external("js", "property", "length")
     fn len(self): number;

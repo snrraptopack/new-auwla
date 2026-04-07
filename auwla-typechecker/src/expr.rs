@@ -1159,11 +1159,69 @@ impl Typechecker {
 
                 Ok(ok_ty)
             }
-            auwla_ast::ExprKind::StructInit { name, fields, .. } => {
+            auwla_ast::ExprKind::StructInit {
+                name,
+                type_args,
+                fields,
+            } => {
                 let struct_def_raw = self.structs.get(name).cloned().ok_or_else(|| TypeError {
                     span: expr.span.clone(),
                     message: format!("Undefined struct '{}'", name),
                 })?;
+
+                let tparams = self
+                    .struct_type_params
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_default();
+
+                let applied_fields = if tparams.is_empty() {
+                    if let Some(args) = type_args {
+                        if !args.is_empty() {
+                            return Err(TypeError {
+                                span: expr.span.clone(),
+                                message: format!(
+                                    "Struct '{}' is not generic but {} type argument(s) were provided",
+                                    name,
+                                    args.len()
+                                ),
+                            });
+                        }
+                    }
+                    struct_def_raw
+                } else {
+                    let args = type_args.as_ref().ok_or_else(|| TypeError {
+                        span: expr.span.clone(),
+                        message: format!(
+                            "Struct '{}' expects {} type argument(s), but none were provided",
+                            name,
+                            tparams.len()
+                        ),
+                    })?;
+
+                    if args.len() != tparams.len() {
+                        return Err(TypeError {
+                            span: expr.span.clone(),
+                            message: format!(
+                                "Struct '{}' expects {} type argument(s), but {} were provided",
+                                name,
+                                tparams.len(),
+                                args.len()
+                            ),
+                        });
+                    }
+
+                    struct_def_raw
+                        .iter()
+                        .map(|(fname, fty)| {
+                            let mut applied = fty.clone();
+                            for (tp, ta) in tparams.iter().zip(args.iter()) {
+                                applied = self.substitute_type_var(&applied, tp, ta);
+                            }
+                            (fname.clone(), applied)
+                        })
+                        .collect()
+                };
 
                 if self.is_namespace(name) {
                     return Err(TypeError {
@@ -1172,7 +1230,7 @@ impl Typechecker {
                     });
                 }
 
-                let struct_def = struct_def_raw;
+                let struct_def = applied_fields;
 
                 if fields.len() != struct_def.len() {
                     return Err(TypeError {
@@ -1214,14 +1272,75 @@ impl Typechecker {
             }
             auwla_ast::ExprKind::EnumInit {
                 enum_name,
+                type_args,
                 variant_name,
                 args,
                 ..
             } => {
-                let enum_def = self.enums.get(enum_name).ok_or_else(|| TypeError {
+                let enum_def_raw = self.enums.get(enum_name).cloned().ok_or_else(|| TypeError {
                     span: expr.span.clone(),
                     message: format!("Undefined enum '{}'", enum_name),
                 })?;
+
+                let tparams = self
+                    .enum_type_params
+                    .get(enum_name)
+                    .cloned()
+                    .unwrap_or_default();
+
+                let enum_def = if tparams.is_empty() {
+                    if let Some(args) = type_args {
+                        if !args.is_empty() {
+                            return Err(TypeError {
+                                span: expr.span.clone(),
+                                message: format!(
+                                    "Enum '{}' is not generic but {} type argument(s) were provided",
+                                    enum_name,
+                                    args.len()
+                                ),
+                            });
+                        }
+                    }
+                    enum_def_raw
+                } else {
+                    let args_t = type_args.as_ref().ok_or_else(|| TypeError {
+                        span: expr.span.clone(),
+                        message: format!(
+                            "Enum '{}' expects {} type argument(s), but none were provided",
+                            enum_name,
+                            tparams.len()
+                        ),
+                    })?;
+
+                    if args_t.len() != tparams.len() {
+                        return Err(TypeError {
+                            span: expr.span.clone(),
+                            message: format!(
+                                "Enum '{}' expects {} type argument(s), but {} were provided",
+                                enum_name,
+                                tparams.len(),
+                                args_t.len()
+                            ),
+                        });
+                    }
+
+                    enum_def_raw
+                        .iter()
+                        .map(|(vname, vargs)| {
+                            let resolved_args: Vec<Type> = vargs
+                                .iter()
+                                .map(|vt| {
+                                    let mut applied = vt.clone();
+                                    for (tp, ta) in tparams.iter().zip(args_t.iter()) {
+                                        applied = self.substitute_type_var(&applied, tp, ta);
+                                    }
+                                    applied
+                                })
+                                .collect();
+                            (vname.clone(), resolved_args)
+                        })
+                        .collect()
+                };
 
                 let mut found_variant = None;
                 for (vname, vargs) in enum_def.iter() {
@@ -1595,20 +1714,74 @@ impl Typechecker {
                     });
 
                     if let Some(variant_args) = maybe_variant_args {
-                        if args.len() != variant_args.len() {
+                        let tparams = self
+                            .enum_type_params
+                            .get(type_name)
+                            .cloned()
+                            .unwrap_or_default();
+
+                        let resolved_variant_args: Vec<Type> = if tparams.is_empty() {
+                            if let Some(t_args) = type_args {
+                                if !t_args.is_empty() {
+                                    return Err(TypeError {
+                                        span: expr.span.clone(),
+                                        message: format!(
+                                            "Enum '{}' is not generic but {} type argument(s) were provided",
+                                            type_name,
+                                            t_args.len()
+                                        ),
+                                    });
+                                }
+                            }
+                            variant_args
+                        } else {
+                            let t_args = type_args.as_ref().ok_or_else(|| TypeError {
+                                span: expr.span.clone(),
+                                message: format!(
+                                    "Enum '{}' expects {} type argument(s), but none were provided",
+                                    type_name,
+                                    tparams.len()
+                                ),
+                            })?;
+
+                            if t_args.len() != tparams.len() {
+                                return Err(TypeError {
+                                    span: expr.span.clone(),
+                                    message: format!(
+                                        "Enum '{}' expects {} type argument(s), but {} were provided",
+                                        type_name,
+                                        tparams.len(),
+                                        t_args.len()
+                                    ),
+                                });
+                            }
+
+                            variant_args
+                                .iter()
+                                .map(|vt| {
+                                    let mut applied = vt.clone();
+                                    for (tp, ta) in tparams.iter().zip(t_args.iter()) {
+                                        applied = self.substitute_type_var(&applied, tp, ta);
+                                    }
+                                    applied
+                                })
+                                .collect()
+                        };
+
+                        if args.len() != resolved_variant_args.len() {
                             return Err(TypeError {
                                 span: expr.span.clone(),
                                 message: format!(
                                     "Enum variant '{}::{}' expects {} arguments, but {} were provided",
                                     type_name,
                                     method,
-                                    variant_args.len(),
+                                    resolved_variant_args.len(),
                                     args.len()
                                 ),
                             });
                         }
 
-                        for (expected_ty, arg_expr) in variant_args.iter().zip(args) {
+                        for (expected_ty, arg_expr) in resolved_variant_args.iter().zip(args) {
                             let actual_ty = self.check_expr(arg_expr)?;
                             self.assert_type_eq(expected_ty, &actual_ty)
                                 .map_err(|msg| TypeError {

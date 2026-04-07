@@ -1,5 +1,5 @@
 // std/optional.aw — Methods for T? types
-extend T? {
+extend <T> T? {
     fn val_or(self, default_v: T): T {
         return match self {
             some(v) => v,
