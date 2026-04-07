@@ -118,7 +118,7 @@ impl JsEmitter {
             }
             auwla_ast::ExprKind::Call { name, args, .. } => {
                 // Map built-in functions
-                let js_name = if name == "print" {
+                let js_name = if name == "print" && !self.known_functions.contains(name) {
                     "__print"
                 } else {
                     name.as_str()

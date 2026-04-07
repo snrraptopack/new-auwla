@@ -1,6 +1,6 @@
 import { __print, __range } from './__util.js';
-import * as __std_array from './std/array.js';
 import * as __std_string from './std/string.js';
+import * as __std_array from './std/array.js';
 import * as __user from './__user_ext.js';
 const v1 = { x: 10, y: 20 };
 const v2 = { x: 5, y: 3 };

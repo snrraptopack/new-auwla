@@ -272,8 +272,11 @@ impl Typechecker {
                 args,
                 type_args,
             } => {
-                // Built-in functions
-                if name == "print" {
+                let has_named_var = self.lookup_variable(name).is_some();
+                let has_named_fn = self.lookup_function(name).is_some();
+
+                // Built-in fallback: print() if no user/imported binding exists.
+                if name == "print" && !has_named_var && !has_named_fn {
                     // print() accepts any number of arguments of any type
                     for arg in args {
                         self.check_expr(arg)?;

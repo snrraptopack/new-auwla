@@ -290,4 +290,31 @@ mod tests {
         let msg = result.err().unwrap().message;
         assert!(msg.contains("constraint violated"), "unexpected error: {}", msg);
     }
+
+    #[test]
+    fn test_standalone_external_function_declaration_and_call() {
+        let source = r#"
+            @external("js", "function", "__print")
+            fn print(msg: string): void;
+
+            @external("js", "static", "Math", "max")
+            fn max2(a: number, b: number): number;
+
+            fn main() {
+                print("hello");
+                let m = max2(3, 7);
+                print("max is {m}");
+            }
+        "#;
+
+        let tokens: Vec<_> = lex(source).into_iter().map(|(t, _)| t).collect();
+        let ast = parse(tokens).expect("Failed to parse standalone external function source");
+        let mut checker = Typechecker::new();
+        let result = checker.check_program(&ast);
+        assert!(
+            result.is_ok(),
+            "standalone external functions should typecheck: {:?}",
+            result.err()
+        );
+    }
 }

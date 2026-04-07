@@ -1,6 +1,6 @@
 import { __print } from './__util.js';
-import * as __std_optional from './std/optional.js';
 import * as __std_array from './std/array.js';
+import * as __std_optional from './std/optional.js';
 const nums = [10, 20, 30];
 const first = __std_array._ext_array__get(nums, 0);
 const out = __std_optional._ext_optional__val_or(__std_array._ext_array__get(nums, 0), 0);

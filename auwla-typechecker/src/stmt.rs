@@ -368,7 +368,7 @@ impl Typechecker {
                 params,
                 return_ty,
                 body,
-                ..
+                attributes,
             } => {
                 let mut all_tps = Vec::new();
                 if let Some(tps) = type_params.as_ref() {
@@ -404,6 +404,11 @@ impl Typechecker {
                 );
 
                 self.declare_function(stmt.span.clone(), name.clone(), signature);
+
+                if self.has_attribute(attributes, "external", Some("js")) {
+                    // Ambient external function declarations have no Auwla body to check.
+                    return Ok(());
+                }
 
                 let prev_return = self.current_return_type.take();
                 let prev_func_name = self.current_function_name.take();

@@ -1,7 +1,7 @@
 import { __print } from './__util.js';
-import * as __std_array from './std/array.js';
-import * as __std_dict from './std/dict.js';
 import * as __std_optional from './std/optional.js';
+import * as __std_dict from './std/dict.js';
+import * as __std_array from './std/array.js';
 function two_sum(nums, target) {
   const num_map = {  };
   for (let i = 0; i <= nums.length; i += 1) {

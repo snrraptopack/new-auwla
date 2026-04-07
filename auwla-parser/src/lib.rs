@@ -163,6 +163,37 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_external_fn_decl_without_body() {
+        let source = r#"
+            @external("js", "function", "__print")
+            fn print(msg: string): void;
+        "#;
+        let tokens: Vec<Token> = lex(source).into_iter().map(|(t, _)| t).collect();
+        let ast = parse(tokens).expect("Failed to parse external fn declaration");
+
+        assert_eq!(ast.statements.len(), 1);
+        if let auwla_ast::StmtKind::Fn {
+            name,
+            params,
+            return_ty,
+            body,
+            attributes,
+            ..
+        } = &ast.statements[0].node
+        {
+            assert_eq!(name, "print");
+            assert_eq!(params.len(), 1);
+            assert_eq!(params[0].0, "msg");
+            assert_eq!(params[0].1, Type::Basic("string".to_string()));
+            assert_eq!(return_ty, &Some(Type::Basic("void".to_string())));
+            assert!(body.is_empty());
+            assert!(attributes.iter().any(|a| a.name == "external"));
+        } else {
+            panic!("Expected Fn statement");
+        }
+    }
+
+    #[test]
     fn test_parse_if_else() {
         let source = r#"
             if count > 10 {

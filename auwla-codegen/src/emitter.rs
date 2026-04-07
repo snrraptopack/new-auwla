@@ -51,6 +51,8 @@ pub(crate) struct JsEmitter {
     pub(crate) type_attributes: HashMap<String, Vec<Attribute>>,
     /// Origin of the current source file being emitted (Std or User)
     pub(crate) current_origin: auwla_ast::ExtensionOrigin,
+    /// Top-level and imported function names visible in this file.
+    pub(crate) known_functions: HashSet<String>,
 }
 
 impl JsEmitter {
@@ -81,7 +83,31 @@ impl JsEmitter {
             current_origin,
             node_types,
             current_receiver_type: None,
+            known_functions: HashSet::new(),
         }
+    }
+
+    fn collect_known_functions(&self, program: &Program) -> HashSet<String> {
+        let mut known = HashSet::new();
+        for stmt in &program.statements {
+            match &stmt.node {
+                auwla_ast::StmtKind::Fn { name, .. } => {
+                    known.insert(name.clone());
+                }
+                auwla_ast::StmtKind::Import { names, .. } => {
+                    for n in names {
+                        known.insert(n.clone());
+                    }
+                }
+                auwla_ast::StmtKind::Export { stmt: inner } => {
+                    if let auwla_ast::StmtKind::Fn { name, .. } = &inner.node {
+                        known.insert(name.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+        known
     }
 
     pub(crate) fn fresh_temp(&mut self) -> String {
@@ -321,6 +347,7 @@ impl JsEmitter {
     // ──────────────────────────── Program ────────────────────────────
 
     fn emit_program(&mut self, program: &Program) {
+        self.known_functions = self.collect_known_functions(program);
         for stmt in &program.statements {
             self.emit_stmt(stmt);
         }

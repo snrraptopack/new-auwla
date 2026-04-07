@@ -163,7 +163,8 @@ pub fn stmt_parser() -> impl Parser<Token, Stmt, Error = Simple<Token>> + Clone 
                         .then_ignore(just(Token::Semicolon))
                         .map_with_span(|e, span| {
                             vec![auwla_ast::Spanned::new(StmtKind::Return(Some(e)), span)]
-                        })),
+                        }))
+                    .or(just(Token::Semicolon).to(Vec::new())),
             )
             .map_with_span(
                 |(((((attributes, name), type_params), params), return_ty), body), span| {

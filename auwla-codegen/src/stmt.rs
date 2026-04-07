@@ -2,6 +2,117 @@ use crate::emitter::JsEmitter;
 use auwla_ast::{Method, Stmt};
 
 impl JsEmitter {
+    fn emit_external_function_wrapper(
+        &mut self,
+        name: &str,
+        params: &[(String, auwla_ast::Type, bool)],
+        return_ty: &Option<auwla_ast::Type>,
+        attr: &auwla_ast::Attribute,
+        export: bool,
+    ) -> bool {
+        if attr.args.first().map(|s| s.as_str()) != Some("js") {
+            return false;
+        }
+
+        let mapping_type = attr.args.get(1).map(|s| s.as_str());
+        let call = match mapping_type {
+            Some("function") => {
+                let Some(target) = attr.args.get(2).map(|s| s.as_str()) else {
+                    return false;
+                };
+                let args: Vec<&str> = params.iter().map(|(n, _, _)| n.as_str()).collect();
+                format!("{}({})", target, args.join(", "))
+            }
+            Some("static") => {
+                let Some(obj) = attr.args.get(2).map(|s| s.as_str()) else {
+                    return false;
+                };
+                let Some(target) = attr.args.get(3).map(|s| s.as_str()) else {
+                    return false;
+                };
+                let args: Vec<&str> = params.iter().map(|(n, _, _)| n.as_str()).collect();
+                format!("{}.{}({})", obj, target, args.join(", "))
+            }
+            Some("method") => {
+                if params.is_empty() {
+                    return false;
+                }
+                let receiver = &params[0].0;
+                let args: Vec<&str> = params.iter().skip(1).map(|(n, _, _)| n.as_str()).collect();
+                let Some(target) = attr.args.get(2).map(|s| s.as_str()) else {
+                    return false;
+                };
+                format!("{}.{}({})", receiver, target, args.join(", "))
+            }
+            Some("property") => {
+                if params.is_empty() {
+                    return false;
+                }
+                let receiver = &params[0].0;
+                let Some(target) = attr.args.get(2).map(|s| s.as_str()) else {
+                    return false;
+                };
+                format!("{}.{}", receiver, target)
+            }
+            _ => return false,
+        };
+
+        self.write_indent();
+        if export {
+            self.write("export ");
+        }
+        self.write(&format!("function {}(", name));
+        for (i, (param_name, _, is_vararg)) in params.iter().enumerate() {
+            if i > 0 {
+                self.write(", ");
+            }
+            if *is_vararg {
+                self.write("...");
+            }
+            self.write(param_name);
+        }
+        self.write(") {\n");
+        self.out.indent();
+
+        let needs_optional_wrap = matches!(return_ty, Some(auwla_ast::Type::Optional(_)));
+        let needs_result_wrap = matches!(return_ty, Some(auwla_ast::Type::Result { .. }));
+        let is_void = matches!(return_ty, Some(auwla_ast::Type::Basic(v)) if v == "void") || return_ty.is_none();
+
+        if needs_result_wrap {
+            self.write_indent();
+            self.write("try {\n");
+            self.out.indent();
+            self.write_indent();
+            self.write(&format!("return {{ ok: true, value: {} }};\n", call));
+            self.out.dedent();
+            self.write_indent();
+            self.write("} catch (_err) {\n");
+            self.out.indent();
+            self.write_indent();
+            self.write("return { ok: false, value: _err.message || String(_err) };\n");
+            self.out.dedent();
+            self.write_indent();
+            self.write("}\n");
+        } else if needs_optional_wrap {
+            self.write_indent();
+            self.write(&format!("const _res = {};\n", call));
+            self.write_indent();
+            self.write("return (_res != null) ? { ok: true, value: _res } : { ok: false };\n");
+        } else if is_void {
+            self.write_indent();
+            self.write(&format!("{};\n", call));
+            self.write_indent();
+            self.write("return;\n");
+        } else {
+            self.write_indent();
+            self.write(&format!("return {};\n", call));
+        }
+
+        self.out.dedent();
+        self.writeln("}");
+        true
+    }
+
     pub(crate) fn emit_stmt(&mut self, stmt: &Stmt) {
         self.emit_stmt_inner(stmt, false);
     }
@@ -88,9 +199,17 @@ impl JsEmitter {
             auwla_ast::StmtKind::Fn {
                 name,
                 params,
+                return_ty,
                 body,
+                attributes,
                 ..
             } => {
+                if let Some(attr) = attributes.iter().find(|a| a.name == "external") {
+                    if self.emit_external_function_wrapper(name, params, return_ty, attr, export) {
+                        return;
+                    }
+                }
+
                 self.write_indent();
                 if export {
                     self.write("export ");
