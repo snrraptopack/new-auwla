@@ -62,3 +62,9 @@ print(result);
 
 let repeated = "Hello " * 3;
 print(repeated);
+
+
+
+let num_arr = [1 .. 3];
+
+let f = num_arr.get(0) ?? [0];

@@ -45,3 +45,6 @@ function test_strict_bool() {
 test_compound();
 test_coalesce();
 test_strict_bool();
+function add_one(num) {
+  return (10 + ((_o) => _o.ok ? _o.value : (0))(num));
+}

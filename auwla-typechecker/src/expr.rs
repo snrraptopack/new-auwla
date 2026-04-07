@@ -414,7 +414,13 @@ impl Typechecker {
 
                 for (i, arg_expr) in args.iter().enumerate() {
                     let param_ty = if is_vararg && i >= num_normal {
-                        let (var_ty, _) = inst_params.last().unwrap();
+                        let (var_ty, _) = inst_params.last().ok_or_else(|| TypeError {
+                            span: expr.span.clone(),
+                            message: format!(
+                                "Type error: function '{}' has invalid vararg signature",
+                                name
+                            ),
+                        })?;
                         match var_ty {
                             Type::Array(inner) => inner.as_ref(),
                             _ => var_ty,
@@ -1512,7 +1518,13 @@ impl Typechecker {
 
                     for (i, arg_expr) in args.iter().enumerate() {
                         let (param_ty, _) = if is_vararg && i >= num_normal {
-                            let (v_ty, _) = inst_params.last().unwrap();
+                            let (v_ty, _) = inst_params.last().ok_or_else(|| TypeError {
+                                span: expr.span.clone(),
+                                message: format!(
+                                    "Type error: method '{}' has invalid vararg signature",
+                                    method
+                                ),
+                            })?;
                             match v_ty {
                                 Type::Array(inner) => (inner.as_ref(), true),
                                 _ => (v_ty, true),
@@ -1680,7 +1692,13 @@ impl Typechecker {
 
                 for (i, arg_expr) in args.iter().enumerate() {
                     let expected_param_ty = if is_vararg && i >= num_normal {
-                        let (_, v_ty, _) = method_sig.params.last().unwrap();
+                        let (_, v_ty, _) = method_sig.params.last().ok_or_else(|| TypeError {
+                            span: expr.span.clone(),
+                            message: format!(
+                                "Type error: static method '{}' has invalid vararg signature",
+                                method
+                            ),
+                        })?;
                         match v_ty {
                             Type::Array(inner) => inner.as_ref(),
                             _ => v_ty,

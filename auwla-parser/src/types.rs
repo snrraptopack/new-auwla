@@ -15,7 +15,11 @@ pub fn type_parser() -> impl Parser<Token, Type, Error = Simple<Token>> + Clone 
                 if name == "array" || name == "Array" {
                     if let Some(mut args) = args {
                         if args.len() == 1 {
-                            Type::Array(Box::new(args.pop().unwrap()))
+                            if let Some(inner) = args.pop() {
+                                Type::Array(Box::new(inner))
+                            } else {
+                                Type::Generic(name, args)
+                            }
                         } else {
                             // Fallback or error: array expects 1 arg
                             Type::Generic(name, args)
@@ -26,9 +30,10 @@ pub fn type_parser() -> impl Parser<Token, Type, Error = Simple<Token>> + Clone 
                 } else if name == "dict" || name == "Dict" {
                     if let Some(mut args) = args {
                         if args.len() == 2 {
-                            let v = args.pop().unwrap();
-                            let k = args.pop().unwrap();
-                            Type::Dict(Box::new(k), Box::new(v))
+                            match (args.pop(), args.pop()) {
+                                (Some(v), Some(k)) => Type::Dict(Box::new(k), Box::new(v)),
+                                _ => Type::Generic(name, args),
+                            }
                         } else {
                             Type::Generic(name, args)
                         }
@@ -59,7 +64,11 @@ pub fn type_parser() -> impl Parser<Token, Type, Error = Simple<Token>> + Clone 
                 } else if types.len() == 1 {
                     // Single element without trailing comma is grouped type, not tuple
                     // Parser can't distinguish, so we treat (T) as T
-                    Ok(types.into_iter().next().unwrap())
+                    if let Some(inner) = types.into_iter().next() {
+                        Ok(inner)
+                    } else {
+                        Ok(Type::Basic("void".to_string()))
+                    }
                 } else {
                     // Multiple elements = tuple
                     Ok(Type::Tuple(types))
@@ -85,7 +94,11 @@ pub fn type_parser() -> impl Parser<Token, Type, Error = Simple<Token>> + Clone 
             )
             .map(|(_, mut args)| {
                 if args.len() == 1 {
-                    Type::Array(Box::new(args.pop().unwrap()))
+                    if let Some(inner) = args.pop() {
+                        Type::Array(Box::new(inner))
+                    } else {
+                        Type::Generic("array".to_string(), args)
+                    }
                 } else {
                     Type::Generic("array".to_string(), args)
                 }

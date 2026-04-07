@@ -24,6 +24,8 @@ impl std::fmt::Display for TypeError {
 #[cfg(test)]
 mod tests {
     use auwla_ast::Type;
+    use auwla_lexer::lex;
+    use auwla_parser::parse;
 
     use super::*;
 
@@ -94,5 +96,29 @@ mod tests {
         );
 
         assert!(checker.check_stmt(&stmt).is_ok());
+    }
+
+    #[test]
+    fn test_generic_array_extension_method_call() {
+        let source = r#"
+            extend array<T> {
+                @external("js", "method", "push")
+                fn push_val(self, val: T): void;
+            }
+
+            fn main() {
+                let arr = [1, 2, 3];
+                arr.push_val(4);
+            }
+        "#;
+
+        let tokens: Vec<_> = lex(source).into_iter().map(|(t, _)| t).collect();
+        let ast = parse(tokens).expect("Failed to parse generic extension source");
+
+        let mut checker = Typechecker::new();
+        assert!(
+            checker.check_program(&ast).is_ok(),
+            "generic extension call should typecheck"
+        );
     }
 }

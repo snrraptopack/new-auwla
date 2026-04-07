@@ -2,7 +2,7 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 
 use crate::Backend;
-use crate::utils::{byte_to_position, get_word_at_offset};
+use crate::utils::{byte_to_position, get_word_at_position};
 
 /// Implements go-to-definition for the Auwla Language Server.
 pub async fn handle_definition(
@@ -22,12 +22,8 @@ pub async fn handle_definition(
         return Ok(None);
     };
 
-    // Get the word under the cursor
-    let lines: Vec<&str> = content.lines().collect();
-    let word = lines
-        .get(position.line as usize)
-        .map(|line| get_word_at_offset(line, position.character as usize))
-        .unwrap_or_default();
+    // Get the word under the cursor with UTF-16-aware indexing.
+    let word = get_word_at_position(&content, position);
 
     if word.is_empty() {
         return Ok(None);
@@ -57,7 +53,7 @@ pub async fn handle_definition(
     let _ = typechecker.check_program(&ast);
 
     // Look up the word in the definitions map
-    if let Some(def_span) = typechecker.definitions.get(word) {
+    if let Some(def_span) = typechecker.definitions.get(&word) {
         let byte_start = token_byte_spans
             .get(def_span.start)
             .map(|r| r.start)

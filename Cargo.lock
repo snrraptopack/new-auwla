@@ -144,6 +144,8 @@ name = "auwla-typechecker"
 version = "0.1.0"
 dependencies = [
  "auwla-ast",
+ "auwla-lexer",
+ "auwla-parser",
 ]
 
 [[package]]

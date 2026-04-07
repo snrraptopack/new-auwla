@@ -20,3 +20,6 @@ const result = __user._ext_usr_Vector2__op_mul(__user._ext_usr_Vector2__op_plus(
 __print(result);
 const repeated = __std_string._ext_string__op_mul("Hello ", 3);
 __print(repeated);
+for (let i = 1; i < 20; i += 1) {
+  __print(`The cursor is ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(i)}`);
+}

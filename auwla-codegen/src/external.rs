@@ -27,35 +27,27 @@ impl JsEmitter {
 
         match mapping_type {
             Some("property") => {
-                let target = attr
-                    .args
-                    .get(2)
-                    .map(|s| s.as_str())
-                    .expect("Missing JS property name in @external attribute");
+                let Some(target) = attr.args.get(2).map(|s| s.as_str()) else {
+                    return false;
+                };
                 let call = format!("__self.{}", target);
                 self.emit_external_return(&call, needs_optional_wrap, needs_result_wrap);
             }
             Some("method") => {
-                let target = attr
-                    .args
-                    .get(2)
-                    .map(|s| s.as_str())
-                    .expect("Missing JS method name in @external attribute");
+                let Some(target) = attr.args.get(2).map(|s| s.as_str()) else {
+                    return false;
+                };
                 let args = Self::non_self_param_names(method);
                 let call = format!("__self.{}({})", target, args.join(", "));
                 self.emit_external_return(&call, needs_optional_wrap, needs_result_wrap);
             }
             Some("static") => {
-                let obj = attr
-                    .args
-                    .get(2)
-                    .map(|s| s.as_str())
-                    .expect("Missing JS object name in @external static attribute");
-                let target = attr
-                    .args
-                    .get(3)
-                    .map(|s| s.as_str())
-                    .expect("Missing JS static member name in @external attribute");
+                let Some(obj) = attr.args.get(2).map(|s| s.as_str()) else {
+                    return false;
+                };
+                let Some(target) = attr.args.get(3).map(|s| s.as_str()) else {
+                    return false;
+                };
                 let args: Vec<&str> = method.params.iter().map(|(n, _, _)| n.as_str()).collect();
                 let call = format!("{}.{}({})", obj, target, args.join(", "));
                 self.emit_external_return(&call, needs_optional_wrap, needs_result_wrap);

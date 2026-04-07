@@ -61,3 +61,7 @@ fn test_strict_bool() {
     test_compound();
     test_coalesce();
     test_strict_bool();
+
+
+fn add_one(num:number?):number => 10 + (num ?? 0);
+

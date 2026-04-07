@@ -3,10 +3,70 @@ use tower_lsp::lsp_types::Position;
 /// Convert a byte offset in source text to an LSP `Position` (line, column).
 pub fn byte_to_position(source: &str, byte: usize) -> Position {
     let safe = byte.min(source.len());
-    let prefix = &source[..safe];
-    let line = prefix.lines().count().max(1) - 1;
-    let col = prefix.rfind('\n').map(|i| safe - i - 1).unwrap_or(safe);
-    Position::new(line as u32, col as u32)
+
+    let mut line = 0u32;
+    let mut line_start = 0usize;
+    for (idx, ch) in source.char_indices() {
+        if idx >= safe {
+            break;
+        }
+        if ch == '\n' {
+            line += 1;
+            line_start = idx + 1;
+        }
+    }
+
+    let utf16_col = source[line_start..safe].encode_utf16().count() as u32;
+    Position::new(line, utf16_col)
+}
+
+/// Convert an LSP `Position` (UTF-16 line/character) to a byte offset.
+pub fn position_to_byte_offset(source: &str, position: Position) -> usize {
+    let mut current_line = 0u32;
+    let mut line_start = 0usize;
+
+    for (idx, ch) in source.char_indices() {
+        if current_line == position.line {
+            break;
+        }
+        if ch == '\n' {
+            current_line += 1;
+            line_start = idx + 1;
+        }
+    }
+
+    if current_line < position.line {
+        return source.len();
+    }
+
+    let line_end = source[line_start..]
+        .find('\n')
+        .map(|off| line_start + off)
+        .unwrap_or(source.len());
+    let line = &source[line_start..line_end];
+
+    let mut utf16_count = 0u32;
+    let mut byte_in_line = line.len();
+    for (idx, ch) in line.char_indices() {
+        if utf16_count >= position.character {
+            byte_in_line = idx;
+            break;
+        }
+
+        let w = ch.len_utf16() as u32;
+        if utf16_count + w > position.character {
+            byte_in_line = idx;
+            break;
+        }
+
+        utf16_count += w;
+        if utf16_count == position.character {
+            byte_in_line = idx + ch.len_utf8();
+            break;
+        }
+    }
+
+    line_start + byte_in_line
 }
 
 /// Format an `auwla_ast::Type` as a human-readable string.
@@ -108,4 +168,22 @@ pub fn get_word_at_offset(line: &str, char_idx: usize) -> &str {
     }
 
     &line[start..end]
+}
+
+/// Extract identifier at a given LSP position using UTF-16 aware cursor math.
+pub fn get_word_at_position(source: &str, position: Position) -> String {
+    let byte = position_to_byte_offset(source, position);
+
+    let line_start = source[..byte.min(source.len())]
+        .rfind('\n')
+        .map(|i| i + 1)
+        .unwrap_or(0);
+    let line_end = source[byte.min(source.len())..]
+        .find('\n')
+        .map(|off| byte.min(source.len()) + off)
+        .unwrap_or(source.len());
+
+    let line = &source[line_start..line_end];
+    let local_byte = byte.saturating_sub(line_start).min(line.len());
+    get_word_at_offset(line, local_byte).to_string()
 }

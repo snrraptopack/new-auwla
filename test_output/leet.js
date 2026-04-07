@@ -1,15 +1,15 @@
 import { __print } from './__util.js';
+import * as __std_dict from './std/dict.js';
 import * as __std_optional from './std/optional.js';
 import * as __std_array from './std/array.js';
-import * as __std_dict from './std/dict.js';
 function two_sum(nums, target) {
   const num_map = {  };
   for (let i = 0; i <= nums.length; i += 1) {
-    const complement = (target - __std_optional._ext_optional__val_or(__std_array._ext_array__get(nums, i), 0));
+    const complement = (target - ((_o) => _o.ok ? _o.value : (0))(__std_array._ext_array__get(nums, i)));
     if ((complement in num_map)) {
-      return [__std_optional._ext_optional__val_or(__std_dict._ext_dict__get(num_map, complement), 0), i];
+      return [((_o) => _o.ok ? _o.value : (0))(__std_dict._ext_dict__get(num_map, complement)), i];
     }
-    __std_dict._ext_dict__set(num_map, __std_optional._ext_optional__val_or(__std_array._ext_array__get(nums, i), 0), i);
+    __std_dict._ext_dict__set(num_map, ((_o) => _o.ok ? _o.value : (0))(__std_array._ext_array__get(nums, i)), i);
   }
   return [];
 }
@@ -98,3 +98,5 @@ __print("\nFactorial Tests:");
 __print(`factorial(5) = ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(factorial(5))}`);
 __print(`factorial(0) = ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(factorial(0))}`);
 __print(`factorial(7) = ${((_v) => typeof _v === 'object' && _v !== null ? JSON.stringify(_v) : _v)(factorial(7))}`);
+const one = [1];
+const two = [1];

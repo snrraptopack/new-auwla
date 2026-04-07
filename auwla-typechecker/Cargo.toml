@@ -5,3 +5,7 @@ edition = "2024"
 
 [dependencies]
 auwla-ast = { version = "0.1.0", path = "../auwla-ast" }
+
+[dev-dependencies]
+auwla-lexer = { path = "../auwla-lexer" }
+auwla-parser = { path = "../auwla-parser" }

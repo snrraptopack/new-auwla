@@ -1,129 +1,32 @@
 {
-  "result": [
+  "console": [
     {
-      "type_params": [
-        "T",
-        "E"
-      ],
-      "name": "val_or",
-      "is_static": false,
+      "type_params": null,
+      "name": "log",
+      "is_static": true,
       "params": [
         [
-          "self",
+          "msg",
           {
-            "Result": {
-              "ok_type": {
-                "TypeVar": "T"
-              },
-              "err_type": {
-                "TypeVar": "E"
-              }
-            }
-          },
-          false
-        ],
-        [
-          "default_v",
-          {
-            "Custom": "T"
+            "Basic": "string"
           },
           false
         ]
       ],
       "return_ty": {
-        "Custom": "T"
+        "Basic": "void"
       },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "T",
-        "E"
-      ],
-      "name": "is_ok",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Result": {
-              "ok_type": {
-                "TypeVar": "T"
-              },
-              "err_type": {
-                "TypeVar": "E"
-              }
-            }
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Basic": "bool"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "T",
-        "E"
-      ],
-      "name": "is_err",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Result": {
-              "ok_type": {
-                "TypeVar": "T"
-              },
-              "err_type": {
-                "TypeVar": "E"
-              }
-            }
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Basic": "bool"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "T",
-        "E"
-      ],
-      "name": "get_err",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Result": {
-              "ok_type": {
-                "TypeVar": "T"
-              },
-              "err_type": {
-                "TypeVar": "E"
-              }
-            }
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Optional": {
-          "Custom": "E"
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "method",
+            "log"
+          ]
         }
-      },
-      "attributes": [],
-      "origin": "Std"
+      ],
+      "origin": "User"
     }
   ],
   "number": [
@@ -637,6 +540,133 @@
       },
       "attributes": [],
       "origin": "User"
+    }
+  ],
+  "result": [
+    {
+      "type_params": [
+        "T",
+        "E"
+      ],
+      "name": "val_or",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Result": {
+              "ok_type": {
+                "TypeVar": "T"
+              },
+              "err_type": {
+                "TypeVar": "E"
+              }
+            }
+          },
+          false
+        ],
+        [
+          "default_v",
+          {
+            "Custom": "T"
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Custom": "T"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "T",
+        "E"
+      ],
+      "name": "is_ok",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Result": {
+              "ok_type": {
+                "TypeVar": "T"
+              },
+              "err_type": {
+                "TypeVar": "E"
+              }
+            }
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Basic": "bool"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "T",
+        "E"
+      ],
+      "name": "is_err",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Result": {
+              "ok_type": {
+                "TypeVar": "T"
+              },
+              "err_type": {
+                "TypeVar": "E"
+              }
+            }
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Basic": "bool"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "T",
+        "E"
+      ],
+      "name": "get_err",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Result": {
+              "ok_type": {
+                "TypeVar": "T"
+              },
+              "err_type": {
+                "TypeVar": "E"
+              }
+            }
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Optional": {
+          "Custom": "E"
+        }
+      },
+      "attributes": [],
+      "origin": "Std"
     }
   ],
   "string": [
@@ -1791,6 +1821,72 @@
         "Basic": "string"
       },
       "attributes": [],
+      "origin": "User"
+    }
+  ],
+  "User": [
+    {
+      "type_params": null,
+      "name": "greet",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Custom": "User"
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Basic": "string"
+      },
+      "attributes": [],
+      "origin": "User"
+    }
+  ],
+  "JSON": [
+    {
+      "type_params": null,
+      "name": "parse",
+      "is_static": true,
+      "params": [
+        [
+          "text",
+          {
+            "Basic": "string"
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Result": {
+          "ok_type": {
+            "Dict": [
+              {
+                "Custom": "T"
+              },
+              {
+                "Custom": "U"
+              }
+            ]
+          },
+          "err_type": {
+            "Basic": "string"
+          }
+        }
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "static",
+            "JSON",
+            "parse"
+          ]
+        }
+      ],
       "origin": "User"
     }
   ],
@@ -3277,51 +3373,6 @@
       "origin": "User"
     }
   ],
-  "JSON": [
-    {
-      "type_params": null,
-      "name": "parse",
-      "is_static": true,
-      "params": [
-        [
-          "text",
-          {
-            "Basic": "string"
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Result": {
-          "ok_type": {
-            "Dict": [
-              {
-                "Basic": "string"
-              },
-              {
-                "Custom": "any"
-              }
-            ]
-          },
-          "err_type": {
-            "Basic": "string"
-          }
-        }
-      },
-      "attributes": [
-        {
-          "name": "external",
-          "args": [
-            "js",
-            "static",
-            "JSON",
-            "parse"
-          ]
-        }
-      ],
-      "origin": "User"
-    }
-  ],
   "dict": [
     {
       "type_params": [
@@ -4274,84 +4325,6 @@
       "origin": "Std"
     }
   ],
-  "optional": [
-    {
-      "type_params": [
-        "T"
-      ],
-      "name": "val_or",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Optional": {
-              "TypeVar": "T"
-            }
-          },
-          false
-        ],
-        [
-          "default_v",
-          {
-            "Custom": "T"
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Custom": "T"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "T"
-      ],
-      "name": "is_some",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Optional": {
-              "TypeVar": "T"
-            }
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Basic": "bool"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "T"
-      ],
-      "name": "is_none",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Optional": {
-              "TypeVar": "T"
-            }
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Basic": "bool"
-      },
-      "attributes": [],
-      "origin": "Std"
-    }
-  ],
   "Vector2": [
     {
       "type_params": null,
@@ -4503,55 +4476,82 @@
       "origin": "User"
     }
   ],
-  "console": [
+  "optional": [
     {
-      "type_params": null,
-      "name": "log",
-      "is_static": true,
-      "params": [
-        [
-          "msg",
-          {
-            "Basic": "string"
-          },
-          false
-        ]
+      "type_params": [
+        "T"
       ],
-      "return_ty": {
-        "Basic": "void"
-      },
-      "attributes": [
-        {
-          "name": "external",
-          "args": [
-            "js",
-            "method",
-            "log"
-          ]
-        }
-      ],
-      "origin": "User"
-    }
-  ],
-  "User": [
-    {
-      "type_params": null,
-      "name": "greet",
+      "name": "val_or",
       "is_static": false,
       "params": [
         [
           "self",
           {
-            "Custom": "User"
+            "Optional": {
+              "TypeVar": "T"
+            }
+          },
+          false
+        ],
+        [
+          "default_v",
+          {
+            "Custom": "T"
           },
           false
         ]
       ],
       "return_ty": {
-        "Basic": "string"
+        "Custom": "T"
       },
       "attributes": [],
-      "origin": "User"
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "T"
+      ],
+      "name": "is_some",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Optional": {
+              "TypeVar": "T"
+            }
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Basic": "bool"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "T"
+      ],
+      "name": "is_none",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Optional": {
+              "TypeVar": "T"
+            }
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Basic": "bool"
+      },
+      "attributes": [],
+      "origin": "Std"
     }
   ],
   "Math": [

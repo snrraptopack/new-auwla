@@ -3,7 +3,7 @@ use tower_lsp::lsp_types::*;
 use std::collections::HashMap;
 
 use crate::Backend;
-use crate::utils::format_method_signature;
+use crate::utils::{format_method_signature, position_to_byte_offset};
 
 /// Implements the completion handler for the Auwla Language Server.
 pub async fn handle_completion(
@@ -20,8 +20,8 @@ pub async fn handle_completion(
         return Ok(None);
     };
 
-    // Calculate byte offset from (line, character) using raw bytes
-    let byte_offset = calculate_byte_offset(&content, position);
+    // Calculate byte offset from UTF-16 LSP position
+    let byte_offset = position_to_byte_offset(&content, position);
 
     // Search backwards from cursor for a dot, but ONLY on the current line
     let dot_idx = find_dot_before_cursor(&content, byte_offset);
@@ -40,24 +40,6 @@ pub async fn handle_completion(
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
-
-fn calculate_byte_offset(content: &str, position: Position) -> usize {
-    let mut byte_offset = 0usize;
-    let mut current_line = 0u32;
-    for (i, byte) in content.as_bytes().iter().enumerate() {
-        if current_line == position.line {
-            byte_offset = i + position.character as usize;
-            break;
-        }
-        if *byte == b'\n' {
-            current_line += 1;
-        }
-    }
-    if current_line < position.line {
-        byte_offset = content.len();
-    }
-    byte_offset
-}
 
 fn find_dot_before_cursor(content: &str, byte_offset: usize) -> Option<usize> {
     let search_start = byte_offset.saturating_sub(1);

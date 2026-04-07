@@ -240,9 +240,12 @@ fn main() {
     }
 
     if path.is_file() {
-        let output_file = global_output_root
-            .join(path.file_name().unwrap())
-            .with_extension("js");
+        let Some(file_name) = path.file_name() else {
+            eprintln!("[Error] Invalid input path '{}': missing file name", path.display());
+            std::process::exit(1);
+        };
+
+        let output_file = global_output_root.join(file_name).with_extension("js");
         if let Ok((_, util_needed)) = compile_file_standalone(
             path,
             &output_file,
@@ -291,7 +294,11 @@ fn main() {
 
             for file_path in &entries {
                 println!("\nTesting: {}", file_path.display());
-                let file_stem = file_path.file_stem().unwrap();
+                let Some(file_stem) = file_path.file_stem() else {
+                    eprintln!("[Error] Could not determine file stem for '{}'", file_path.display());
+                    failed += 1;
+                    continue;
+                };
                 let output_file_path = output_dir.join(file_stem).with_extension("js");
                 match compile_file_standalone(
                     file_path,
@@ -481,7 +488,7 @@ fn compile_directory_as_module(
         for stmt in &ast.statements {
             if let auwla_ast::StmtKind::Import { path, .. } = &stmt.node {
                 // Resolve path relative to the file's directory
-                let dep_key = resolve_import_key(dir, path);
+                let dep_key = resolve_import_key(key, path);
                 file_deps.push(dep_key);
             }
         }
@@ -548,7 +555,7 @@ fn compile_directory_as_module(
             let mut import_ctx: HashMap<String, ExportMap> = HashMap::new();
             for stmt in &ast.statements {
                 if let auwla_ast::StmtKind::Import { path: raw_path, .. } = &stmt.node {
-                    let dep_key = resolve_import_key(dir, raw_path);
+                    let dep_key = resolve_import_key(key, raw_path);
                     if let Some(map) = export_maps.get(&dep_key) {
                         import_ctx.insert(raw_path.clone(), map.clone());
                     }
@@ -576,7 +583,11 @@ fn compile_directory_as_module(
                     let util_needed = postprocess::add_runtime_imports(&mut js_output, &rel_prefix);
                     module_util_needed |= util_needed;
 
-                    let stem = file_path.file_stem().unwrap();
+                    let Some(stem) = file_path.file_stem() else {
+                        eprintln!("[Error] Could not determine file stem for '{}'", file_path.display());
+                        fail_count += 1;
+                        continue;
+                    };
                     let out_path = output_dir.join(stem).with_extension("js");
                     fs::write(&out_path, &js_output).unwrap_or_else(|e| {
                         eprintln!("[Error] Failed to write '{}': {}", out_path.display(), e);
@@ -589,8 +600,22 @@ fn compile_directory_as_module(
                     success_count += 1;
                 }
                 Err(e) => {
-                    let source = file_sources.get(key).unwrap();
-                    let token_byte_spans = file_token_spans.get(key).unwrap();
+                    let Some(source) = file_sources.get(key) else {
+                        eprintln!(
+                            "[Error] Internal state mismatch: missing source for '{}'",
+                            key
+                        );
+                        fail_count += 1;
+                        continue;
+                    };
+                    let Some(token_byte_spans) = file_token_spans.get(key) else {
+                        eprintln!(
+                            "[Error] Internal state mismatch: missing token spans for '{}'",
+                            key
+                        );
+                        fail_count += 1;
+                        continue;
+                    };
 
                     let byte_start = token_byte_spans
                         .get(e.span.start)
@@ -622,17 +647,86 @@ fn compile_directory_as_module(
 /// Canonical key for a file relative to the project directory.
 /// e.g., dir = "tests/modules", file = "tests/modules/math.aw" -> "./math"
 fn file_key(_dir: &Path, file: &Path) -> String {
-    let stem = file.file_stem().unwrap().to_string_lossy();
-    format!("./{}", stem)
+    let rel = file
+        .strip_prefix(_dir)
+        .unwrap_or(file)
+        .to_string_lossy()
+        .replace('\\', "/");
+
+    let no_ext = rel.strip_suffix(".aw").unwrap_or(&rel);
+    normalize_module_key(no_ext)
 }
 
 /// Resolve a raw import path like `'./math'` to its file key.
-fn resolve_import_key(_dir: &Path, raw: &str) -> String {
-    // Normalize: strip .aw extension if present
-    if raw.ends_with(".aw") {
-        raw[..raw.len() - 3].to_string()
+fn resolve_import_key(importer_key: &str, raw: &str) -> String {
+    let raw_norm = raw.replace('\\', "/");
+
+    if raw_norm.starts_with("./") || raw_norm.starts_with("../") {
+        let importer_dir = importer_key
+            .rsplit_once('/')
+            .map(|(dir, _)| dir)
+            .unwrap_or(".");
+
+        let combined = if importer_dir == "." {
+            raw_norm
+        } else {
+            format!("{}/{}", importer_dir, raw_norm)
+        };
+
+        normalize_module_key(&combined)
     } else {
-        raw.to_string()
+        normalize_module_key(&raw_norm)
+    }
+}
+
+fn normalize_module_key(raw: &str) -> String {
+    let normalized = raw.replace('\\', "/");
+    let trimmed = normalized.strip_suffix(".aw").unwrap_or(&normalized);
+
+    let mut parts: Vec<&str> = Vec::new();
+    for part in trimmed.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                if !parts.is_empty() {
+                    parts.pop();
+                }
+            }
+            other => parts.push(other),
+        }
+    }
+
+    if parts.is_empty() {
+        "./main".to_string()
+    } else {
+        format!("./{}", parts.join("/"))
+    }
+}
+
+#[cfg(test)]
+mod module_key_tests {
+    use super::{file_key, normalize_module_key, resolve_import_key};
+    use std::path::Path;
+
+    #[test]
+    fn file_key_preserves_relative_segments() {
+        let dir = Path::new("tests/modules");
+        let file = Path::new("tests/modules/nested/math.aw");
+        assert_eq!(file_key(dir, file), "./nested/math");
+    }
+
+    #[test]
+    fn resolve_import_uses_importer_directory() {
+        assert_eq!(resolve_import_key("./main", "./math"), "./math");
+        assert_eq!(resolve_import_key("./nested/main", "./math"), "./nested/math");
+        assert_eq!(resolve_import_key("./nested/main", "../util.aw"), "./util");
+    }
+
+    #[test]
+    fn normalize_module_key_handles_common_forms() {
+        assert_eq!(normalize_module_key("math.aw"), "./math");
+        assert_eq!(normalize_module_key("./nested/./math"), "./nested/math");
+        assert_eq!(normalize_module_key("nested\\math.aw"), "./nested/math");
     }
 }
 

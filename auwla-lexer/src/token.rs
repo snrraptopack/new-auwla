@@ -75,7 +75,7 @@ pub enum Token {
     #[regex("[0-9]+([.][0-9]+)?", |lex| lex.slice().to_string())]
     NumberLit(String),
 
-    #[regex("'[^']'", |lex| lex.slice().chars().nth(1).unwrap())]
+    #[regex("'[^']'", |lex| lex.slice().chars().nth(1).unwrap_or('\0'))]
     CharLit(char),
 
     // Symbols & Punctuation

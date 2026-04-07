@@ -2,7 +2,7 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 
 use crate::Backend;
-use crate::utils::{format_method_signature, get_word_at_offset};
+use crate::utils::{format_method_signature, get_word_at_position, position_to_byte_offset};
 
 /// Implements the hover handler for the Auwla Language Server.
 pub async fn handle_hover(backend: &Backend, params: HoverParams) -> Result<Option<Hover>> {
@@ -19,28 +19,9 @@ pub async fn handle_hover(backend: &Backend, params: HoverParams) -> Result<Opti
         return Ok(None);
     };
 
-    // Get the word under the cursor for extension method lookup
-    let lines: Vec<&str> = content.lines().collect();
-    let word = lines
-        .get(position.line as usize)
-        .map(|line| get_word_at_offset(line, position.character as usize))
-        .unwrap_or_default();
-
-    // Calculate byte offset
-    let mut byte_offset = 0usize;
-    let mut current_line = 0u32;
-    for (i, byte) in content.as_bytes().iter().enumerate() {
-        if current_line == position.line {
-            byte_offset = i + position.character as usize;
-            break;
-        }
-        if *byte == b'\n' {
-            current_line += 1;
-        }
-    }
-    if current_line < position.line {
-        byte_offset = content.len();
-    }
+    // Get the word and byte offset under the cursor using UTF-16-aware conversion.
+    let word = get_word_at_position(&content, position);
+    let byte_offset = position_to_byte_offset(&content, position);
 
     // Shadow-compile the document for type info
     let lexed = auwla_lexer::lex(&content);
@@ -72,14 +53,14 @@ pub async fn handle_hover(backend: &Backend, params: HoverParams) -> Result<Opti
 
     // --- Fallback: look up variable/function names from scopes ---
     if !word.is_empty() {
-        if let Some(hover) = try_scope_hover(&typechecker, word) {
+        if let Some(hover) = try_scope_hover(&typechecker, &word) {
             return Ok(Some(hover));
         }
     }
 
     // --- Fallback: search extension methods by word ---
     if !word.is_empty() {
-        if let Some(hover) = try_extension_hover(backend, word) {
+        if let Some(hover) = try_extension_hover(backend, &word) {
             return Ok(Some(hover));
         }
     }

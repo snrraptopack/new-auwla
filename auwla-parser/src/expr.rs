@@ -77,8 +77,14 @@ fn expr_parser_inner(
 
             let ident_call_struct = struct_init.or(ident_or_call);
 
-            let num = select! { Token::NumberLit(n) => n }.map_with_span(|n, span| {
-                auwla_ast::Spanned::new(auwla_ast::ExprKind::NumberLit(n.parse().unwrap()), span)
+            let num = select! { Token::NumberLit(n) => n }.try_map(|n, span| {
+                match n.parse::<f64>() {
+                    Ok(value) => Ok(auwla_ast::Spanned::new(
+                        auwla_ast::ExprKind::NumberLit(value),
+                        span,
+                    )),
+                    Err(_) => Err(Simple::custom(span, "Invalid number literal")),
+                }
             });
             let str_lit = select! { Token::StringLit(s) => s }.map_with_span(|s, span| {
                 auwla_ast::Spanned::new(auwla_ast::ExprKind::StringLit(s), span)
