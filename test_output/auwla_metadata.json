@@ -1,1180 +1,80 @@
 {
-  "dict": [
+  "optional": [
     {
       "type_params": [
-        "K",
-        "V"
+        "T"
       ],
-      "name": "delete_property",
-      "is_static": true,
+      "name": "val_or",
+      "is_static": false,
       "params": [
         [
-          "obj",
+          "self",
           {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
+            "Optional": {
+              "Custom": "T"
+            }
           },
           false
         ],
         [
-          "key",
+          "default_v",
           {
-            "Custom": "K"
+            "Custom": "T"
           },
           false
         ]
       ],
       "return_ty": {
-        "Basic": "bool"
-      },
-      "attributes": [
-        {
-          "name": "external",
-          "args": [
-            "js",
-            "static",
-            "Reflect",
-            "deleteProperty"
-          ]
-        }
-      ],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "K",
-        "V"
-      ],
-      "name": "object_keys",
-      "is_static": true,
-      "params": [
-        [
-          "obj",
-          {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Array": {
-          "Basic": "string"
-        }
-      },
-      "attributes": [
-        {
-          "name": "external",
-          "args": [
-            "js",
-            "static",
-            "Object",
-            "keys"
-          ]
-        }
-      ],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "K",
-        "V"
-      ],
-      "name": "len",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Basic": "number"
+        "Custom": "T"
       },
       "attributes": [],
       "origin": "Std"
     },
     {
       "type_params": [
-        "K",
-        "V"
+        "T"
       ],
-      "name": "contains",
+      "name": "is_some",
       "is_static": false,
       "params": [
         [
           "self",
           {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ],
-        [
-          "key",
-          {
-            "Custom": "K"
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Basic": "bool"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "K",
-        "V"
-      ],
-      "name": "remove",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ],
-        [
-          "key",
-          {
-            "Custom": "K"
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Basic": "bool"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "K",
-        "V"
-      ],
-      "name": "clear",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Basic": "void"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "K",
-        "V"
-      ],
-      "name": "is_empty",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Basic": "bool"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "K",
-        "V"
-      ],
-      "name": "get",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ],
-        [
-          "key",
-          {
-            "Custom": "K"
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Optional": {
-          "Custom": "V"
-        }
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "K",
-        "V"
-      ],
-      "name": "set",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ],
-        [
-          "key",
-          {
-            "Custom": "K"
-          },
-          false
-        ],
-        [
-          "value",
-          {
-            "Custom": "V"
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Basic": "void"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "K",
-        "V"
-      ],
-      "name": "keys",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Array": {
-          "Custom": "K"
-        }
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "K",
-        "V"
-      ],
-      "name": "values",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Array": {
-          "Custom": "V"
-        }
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "K",
-        "V",
-        "U"
-      ],
-      "name": "map",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ],
-        [
-          "f",
-          {
-            "Function": [
-              [
-                [
-                  {
-                    "Custom": "V"
-                  },
-                  false
-                ]
-              ],
-              {
-                "Custom": "U"
-              }
-            ]
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Dict": [
-          {
-            "Custom": "K"
-          },
-          {
-            "Custom": "U"
-          }
-        ]
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "K",
-        "V"
-      ],
-      "name": "filter",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ],
-        [
-          "predicate",
-          {
-            "Function": [
-              [
-                [
-                  {
-                    "Custom": "K"
-                  },
-                  false
-                ],
-                [
-                  {
-                    "Custom": "V"
-                  },
-                  false
-                ]
-              ],
-              {
-                "Basic": "bool"
-              }
-            ]
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Dict": [
-          {
-            "Custom": "K"
-          },
-          {
-            "Custom": "V"
-          }
-        ]
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "K",
-        "V"
-      ],
-      "name": "for_each",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ],
-        [
-          "f",
-          {
-            "Function": [
-              [
-                [
-                  {
-                    "Custom": "K"
-                  },
-                  false
-                ],
-                [
-                  {
-                    "Custom": "V"
-                  },
-                  false
-                ]
-              ],
-              {
-                "Basic": "void"
-              }
-            ]
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Basic": "void"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "K",
-        "V"
-      ],
-      "name": "merge",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ],
-        [
-          "other",
-          {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Dict": [
-          {
-            "Custom": "K"
-          },
-          {
-            "Custom": "V"
-          }
-        ]
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "K",
-        "V"
-      ],
-      "name": "op_plus",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ],
-        [
-          "other",
-          {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Dict": [
-          {
-            "Custom": "K"
-          },
-          {
-            "Custom": "V"
-          }
-        ]
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "K",
-        "V"
-      ],
-      "name": "pick",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ],
-        [
-          "keys",
-          {
-            "Array": {
-              "Custom": "K"
+            "Optional": {
+              "Custom": "T"
             }
           },
           false
         ]
       ],
       "return_ty": {
-        "Dict": [
-          {
-            "Custom": "K"
-          },
-          {
-            "Custom": "V"
-          }
-        ]
+        "Basic": "bool"
       },
       "attributes": [],
       "origin": "Std"
     },
     {
       "type_params": [
-        "K",
-        "V"
+        "T"
       ],
-      "name": "omit",
+      "name": "is_none",
       "is_static": false,
       "params": [
         [
           "self",
           {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ],
-        [
-          "keys",
-          {
-            "Array": {
-              "Custom": "K"
+            "Optional": {
+              "Custom": "T"
             }
           },
           false
         ]
       ],
       "return_ty": {
-        "Dict": [
-          {
-            "Custom": "K"
-          },
-          {
-            "Custom": "V"
-          }
-        ]
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "K",
-        "V"
-      ],
-      "name": "find_key",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ],
-        [
-          "predicate",
-          {
-            "Function": [
-              [
-                [
-                  {
-                    "Custom": "V"
-                  },
-                  false
-                ]
-              ],
-              {
-                "Basic": "bool"
-              }
-            ]
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Optional": {
-          "Custom": "K"
-        }
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "K",
-        "V"
-      ],
-      "name": "any",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ],
-        [
-          "predicate",
-          {
-            "Function": [
-              [
-                [
-                  {
-                    "Custom": "V"
-                  },
-                  false
-                ]
-              ],
-              {
-                "Basic": "bool"
-              }
-            ]
-          },
-          false
-        ]
-      ],
-      "return_ty": {
         "Basic": "bool"
       },
       "attributes": [],
       "origin": "Std"
-    },
-    {
-      "type_params": [
-        "K",
-        "V"
-      ],
-      "name": "every",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ],
-        [
-          "predicate",
-          {
-            "Function": [
-              [
-                [
-                  {
-                    "Custom": "V"
-                  },
-                  false
-                ]
-              ],
-              {
-                "Basic": "bool"
-              }
-            ]
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Basic": "bool"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "K",
-        "V"
-      ],
-      "name": "count",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Dict": [
-              {
-                "Custom": "K"
-              },
-              {
-                "Custom": "V"
-              }
-            ]
-          },
-          false
-        ],
-        [
-          "predicate",
-          {
-            "Function": [
-              [
-                [
-                  {
-                    "Custom": "K"
-                  },
-                  false
-                ],
-                [
-                  {
-                    "Custom": "V"
-                  },
-                  false
-                ]
-              ],
-              {
-                "Basic": "bool"
-              }
-            ]
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Basic": "number"
-      },
-      "attributes": [],
-      "origin": "Std"
-    }
-  ],
-  "console": [
-    {
-      "type_params": null,
-      "name": "log",
-      "is_static": true,
-      "params": [
-        [
-          "msg",
-          {
-            "Basic": "string"
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Basic": "void"
-      },
-      "attributes": [
-        {
-          "name": "external",
-          "args": [
-            "js",
-            "method",
-            "log"
-          ]
-        }
-      ],
-      "origin": "User"
-    }
-  ],
-  "Vector2": [
-    {
-      "type_params": null,
-      "name": "length_sq",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Custom": "Vector2"
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Basic": "number"
-      },
-      "attributes": [],
-      "origin": "User"
-    },
-    {
-      "type_params": null,
-      "name": "add_vec",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Custom": "Vector2"
-          },
-          false
-        ],
-        [
-          "other",
-          {
-            "Custom": "Vector2"
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Custom": "Vector2"
-      },
-      "attributes": [],
-      "origin": "User"
-    },
-    {
-      "type_params": null,
-      "name": "op_plus",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Custom": "Vector2"
-          },
-          false
-        ],
-        [
-          "other",
-          {
-            "Custom": "Vector2"
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Custom": "Vector2"
-      },
-      "attributes": [],
-      "origin": "User"
-    },
-    {
-      "type_params": null,
-      "name": "op_minus",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Custom": "Vector2"
-          },
-          false
-        ],
-        [
-          "other",
-          {
-            "Custom": "Vector2"
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Custom": "Vector2"
-      },
-      "attributes": [],
-      "origin": "User"
-    },
-    {
-      "type_params": null,
-      "name": "op_mul",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Custom": "Vector2"
-          },
-          false
-        ],
-        [
-          "scalar",
-          {
-            "Basic": "number"
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Custom": "Vector2"
-      },
-      "attributes": [],
-      "origin": "User"
-    },
-    {
-      "type_params": null,
-      "name": "op_div",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Custom": "Vector2"
-          },
-          false
-        ],
-        [
-          "divisor",
-          {
-            "Basic": "number"
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Custom": "Vector2"
-      },
-      "attributes": [],
-      "origin": "User"
-    }
-  ],
-  "JSON": [
-    {
-      "type_params": null,
-      "name": "parse",
-      "is_static": true,
-      "params": [
-        [
-          "text",
-          {
-            "Basic": "string"
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Result": {
-          "ok_type": {
-            "Dict": [
-              {
-                "Custom": "T"
-              },
-              {
-                "Custom": "U"
-              }
-            ]
-          },
-          "err_type": {
-            "Basic": "string"
-          }
-        }
-      },
-      "attributes": [
-        {
-          "name": "external",
-          "args": [
-            "js",
-            "static",
-            "JSON",
-            "parse"
-          ]
-        }
-      ],
-      "origin": "User"
     }
   ],
   "array": [
@@ -2660,84 +1560,6 @@
       "origin": "User"
     }
   ],
-  "optional": [
-    {
-      "type_params": [
-        "T"
-      ],
-      "name": "val_or",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Optional": {
-              "Custom": "T"
-            }
-          },
-          false
-        ],
-        [
-          "default_v",
-          {
-            "Custom": "T"
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Custom": "T"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "T"
-      ],
-      "name": "is_some",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Optional": {
-              "Custom": "T"
-            }
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Basic": "bool"
-      },
-      "attributes": [],
-      "origin": "Std"
-    },
-    {
-      "type_params": [
-        "T"
-      ],
-      "name": "is_none",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Optional": {
-              "Custom": "T"
-            }
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Basic": "bool"
-      },
-      "attributes": [],
-      "origin": "Std"
-    }
-  ],
   "Math": [
     {
       "type_params": null,
@@ -3138,6 +1960,178 @@
           ]
         }
       ],
+      "origin": "User"
+    }
+  ],
+  "User": [
+    {
+      "type_params": null,
+      "name": "greet",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Custom": "User"
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Basic": "string"
+      },
+      "attributes": [],
+      "origin": "User"
+    }
+  ],
+  "Vector2": [
+    {
+      "type_params": null,
+      "name": "length_sq",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Custom": "Vector2"
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [],
+      "origin": "User"
+    },
+    {
+      "type_params": null,
+      "name": "add_vec",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Custom": "Vector2"
+          },
+          false
+        ],
+        [
+          "other",
+          {
+            "Custom": "Vector2"
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Custom": "Vector2"
+      },
+      "attributes": [],
+      "origin": "User"
+    },
+    {
+      "type_params": null,
+      "name": "op_plus",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Custom": "Vector2"
+          },
+          false
+        ],
+        [
+          "other",
+          {
+            "Custom": "Vector2"
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Custom": "Vector2"
+      },
+      "attributes": [],
+      "origin": "User"
+    },
+    {
+      "type_params": null,
+      "name": "op_minus",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Custom": "Vector2"
+          },
+          false
+        ],
+        [
+          "other",
+          {
+            "Custom": "Vector2"
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Custom": "Vector2"
+      },
+      "attributes": [],
+      "origin": "User"
+    },
+    {
+      "type_params": null,
+      "name": "op_mul",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Custom": "Vector2"
+          },
+          false
+        ],
+        [
+          "scalar",
+          {
+            "Basic": "number"
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Custom": "Vector2"
+      },
+      "attributes": [],
+      "origin": "User"
+    },
+    {
+      "type_params": null,
+      "name": "op_div",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Custom": "Vector2"
+          },
+          false
+        ],
+        [
+          "divisor",
+          {
+            "Basic": "number"
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Custom": "Vector2"
+      },
+      "attributes": [],
       "origin": "User"
     }
   ],
@@ -3651,6 +2645,81 @@
         "Basic": "bool"
       },
       "attributes": [],
+      "origin": "User"
+    }
+  ],
+  "console": [
+    {
+      "type_params": null,
+      "name": "log",
+      "is_static": true,
+      "params": [
+        [
+          "msg",
+          {
+            "Basic": "string"
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Basic": "void"
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "method",
+            "log"
+          ]
+        }
+      ],
+      "origin": "User"
+    }
+  ],
+  "JSON": [
+    {
+      "type_params": null,
+      "name": "parse",
+      "is_static": true,
+      "params": [
+        [
+          "text",
+          {
+            "Basic": "string"
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Result": {
+          "ok_type": {
+            "Dict": [
+              {
+                "Custom": "T"
+              },
+              {
+                "Custom": "U"
+              }
+            ]
+          },
+          "err_type": {
+            "Basic": "string"
+          }
+        }
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "static",
+            "JSON",
+            "parse"
+          ]
+        }
+      ],
       "origin": "User"
     }
   ],
@@ -4809,6 +3878,958 @@
       "origin": "User"
     }
   ],
+  "dict": [
+    {
+      "type_params": [
+        "K",
+        "V"
+      ],
+      "name": "delete_property",
+      "is_static": true,
+      "params": [
+        [
+          "obj",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ],
+        [
+          "key",
+          {
+            "Custom": "K"
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Basic": "bool"
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "static",
+            "Reflect",
+            "deleteProperty"
+          ]
+        }
+      ],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "K",
+        "V"
+      ],
+      "name": "object_keys",
+      "is_static": true,
+      "params": [
+        [
+          "obj",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Array": {
+          "Basic": "string"
+        }
+      },
+      "attributes": [
+        {
+          "name": "external",
+          "args": [
+            "js",
+            "static",
+            "Object",
+            "keys"
+          ]
+        }
+      ],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "K",
+        "V"
+      ],
+      "name": "len",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "K",
+        "V"
+      ],
+      "name": "contains",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ],
+        [
+          "key",
+          {
+            "Custom": "K"
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Basic": "bool"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "K",
+        "V"
+      ],
+      "name": "remove",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ],
+        [
+          "key",
+          {
+            "Custom": "K"
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Basic": "bool"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "K",
+        "V"
+      ],
+      "name": "clear",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Basic": "void"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "K",
+        "V"
+      ],
+      "name": "is_empty",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Basic": "bool"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "K",
+        "V"
+      ],
+      "name": "get",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ],
+        [
+          "key",
+          {
+            "Custom": "K"
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Optional": {
+          "Custom": "V"
+        }
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "K",
+        "V"
+      ],
+      "name": "set",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ],
+        [
+          "key",
+          {
+            "Custom": "K"
+          },
+          false
+        ],
+        [
+          "value",
+          {
+            "Custom": "V"
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Basic": "void"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "K",
+        "V"
+      ],
+      "name": "keys",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Array": {
+          "Custom": "K"
+        }
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "K",
+        "V"
+      ],
+      "name": "values",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Array": {
+          "Custom": "V"
+        }
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "K",
+        "V",
+        "U"
+      ],
+      "name": "map",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ],
+        [
+          "f",
+          {
+            "Function": [
+              [
+                [
+                  {
+                    "Custom": "V"
+                  },
+                  false
+                ]
+              ],
+              {
+                "Custom": "U"
+              }
+            ]
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Dict": [
+          {
+            "Custom": "K"
+          },
+          {
+            "Custom": "U"
+          }
+        ]
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "K",
+        "V"
+      ],
+      "name": "filter",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ],
+        [
+          "predicate",
+          {
+            "Function": [
+              [
+                [
+                  {
+                    "Custom": "K"
+                  },
+                  false
+                ],
+                [
+                  {
+                    "Custom": "V"
+                  },
+                  false
+                ]
+              ],
+              {
+                "Basic": "bool"
+              }
+            ]
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Dict": [
+          {
+            "Custom": "K"
+          },
+          {
+            "Custom": "V"
+          }
+        ]
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "K",
+        "V"
+      ],
+      "name": "for_each",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ],
+        [
+          "f",
+          {
+            "Function": [
+              [
+                [
+                  {
+                    "Custom": "K"
+                  },
+                  false
+                ],
+                [
+                  {
+                    "Custom": "V"
+                  },
+                  false
+                ]
+              ],
+              {
+                "Basic": "void"
+              }
+            ]
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Basic": "void"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "K",
+        "V"
+      ],
+      "name": "merge",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ],
+        [
+          "other",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Dict": [
+          {
+            "Custom": "K"
+          },
+          {
+            "Custom": "V"
+          }
+        ]
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "K",
+        "V"
+      ],
+      "name": "op_plus",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ],
+        [
+          "other",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Dict": [
+          {
+            "Custom": "K"
+          },
+          {
+            "Custom": "V"
+          }
+        ]
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "K",
+        "V"
+      ],
+      "name": "pick",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ],
+        [
+          "keys",
+          {
+            "Array": {
+              "Custom": "K"
+            }
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Dict": [
+          {
+            "Custom": "K"
+          },
+          {
+            "Custom": "V"
+          }
+        ]
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "K",
+        "V"
+      ],
+      "name": "omit",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ],
+        [
+          "keys",
+          {
+            "Array": {
+              "Custom": "K"
+            }
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Dict": [
+          {
+            "Custom": "K"
+          },
+          {
+            "Custom": "V"
+          }
+        ]
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "K",
+        "V"
+      ],
+      "name": "find_key",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ],
+        [
+          "predicate",
+          {
+            "Function": [
+              [
+                [
+                  {
+                    "Custom": "V"
+                  },
+                  false
+                ]
+              ],
+              {
+                "Basic": "bool"
+              }
+            ]
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Optional": {
+          "Custom": "K"
+        }
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "K",
+        "V"
+      ],
+      "name": "any",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ],
+        [
+          "predicate",
+          {
+            "Function": [
+              [
+                [
+                  {
+                    "Custom": "V"
+                  },
+                  false
+                ]
+              ],
+              {
+                "Basic": "bool"
+              }
+            ]
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Basic": "bool"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "K",
+        "V"
+      ],
+      "name": "every",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ],
+        [
+          "predicate",
+          {
+            "Function": [
+              [
+                [
+                  {
+                    "Custom": "V"
+                  },
+                  false
+                ]
+              ],
+              {
+                "Basic": "bool"
+              }
+            ]
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Basic": "bool"
+      },
+      "attributes": [],
+      "origin": "Std"
+    },
+    {
+      "type_params": [
+        "K",
+        "V"
+      ],
+      "name": "count",
+      "is_static": false,
+      "params": [
+        [
+          "self",
+          {
+            "Dict": [
+              {
+                "Custom": "K"
+              },
+              {
+                "Custom": "V"
+              }
+            ]
+          },
+          false
+        ],
+        [
+          "predicate",
+          {
+            "Function": [
+              [
+                [
+                  {
+                    "Custom": "K"
+                  },
+                  false
+                ],
+                [
+                  {
+                    "Custom": "V"
+                  },
+                  false
+                ]
+              ],
+              {
+                "Basic": "bool"
+              }
+            ]
+          },
+          false
+        ]
+      ],
+      "return_ty": {
+        "Basic": "number"
+      },
+      "attributes": [],
+      "origin": "Std"
+    }
+  ],
   "result": [
     {
       "type_params": [
@@ -4934,27 +4955,6 @@
       },
       "attributes": [],
       "origin": "Std"
-    }
-  ],
-  "User": [
-    {
-      "type_params": null,
-      "name": "greet",
-      "is_static": false,
-      "params": [
-        [
-          "self",
-          {
-            "Custom": "User"
-          },
-          false
-        ]
-      ],
-      "return_ty": {
-        "Basic": "string"
-      },
-      "attributes": [],
-      "origin": "User"
     }
   ]
 }

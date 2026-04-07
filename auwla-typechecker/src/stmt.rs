@@ -11,6 +11,13 @@ impl Typechecker {
                 ty,
                 initializer,
             } => {
+                if let Some(declared_ty) = ty {
+                    self.validate_type_alias_arity(declared_ty)
+                        .map_err(|msg| TypeError {
+                            span: stmt.span.clone(),
+                            message: msg,
+                        })?;
+                }
                 let init_ty = self.check_expr_expected(initializer, ty.as_ref())?;
                 let final_ty = if let Some(declared_ty) = ty {
                     self.assert_type_eq(declared_ty, &init_ty)
@@ -109,6 +116,13 @@ impl Typechecker {
                 ty,
                 initializer,
             } => {
+                if let Some(declared_ty) = ty {
+                    self.validate_type_alias_arity(declared_ty)
+                        .map_err(|msg| TypeError {
+                            span: stmt.span.clone(),
+                            message: msg,
+                        })?;
+                }
                 let init_ty = self.check_expr_expected(initializer, ty.as_ref())?;
                 let final_ty = if let Some(declared_ty) = ty {
                     self.assert_type_eq(declared_ty, &init_ty)
@@ -361,6 +375,19 @@ impl Typechecker {
                     all_tps.extend(tps.clone());
                 }
 
+                for (_, ty, _) in params {
+                    self.validate_type_alias_arity(ty).map_err(|msg| TypeError {
+                        span: stmt.span.clone(),
+                        message: msg,
+                    })?;
+                }
+                if let Some(ret) = return_ty {
+                    self.validate_type_alias_arity(ret).map_err(|msg| TypeError {
+                        span: stmt.span.clone(),
+                        message: msg,
+                    })?;
+                }
+
                 let param_types: Vec<(Type, bool)> = params
                     .iter()
                     .map(|(_, ty, is_v)| (self.genericize_type(ty, &all_tps), *is_v))
@@ -588,6 +615,12 @@ impl Typechecker {
                 }
 
                 let tps = type_params.clone().unwrap_or_default();
+                for (_, fty) in fields {
+                    self.validate_type_alias_arity(fty).map_err(|msg| TypeError {
+                        span: stmt.span.clone(),
+                        message: msg,
+                    })?;
+                }
                 let stored_fields: Vec<(String, Type)> = fields
                     .iter()
                     .map(|(fname, fty)| (fname.clone(), self.genericize_type(fty, &tps)))
@@ -605,6 +638,11 @@ impl Typechecker {
                 type_params,
                 aliased_type,
             } => {
+                self.validate_type_alias_arity(aliased_type)
+                    .map_err(|msg| TypeError {
+                        span: stmt.span.clone(),
+                        message: msg,
+                    })?;
                 self.type_aliases.insert(name.clone(), aliased_type.clone());
                 if let Some(params) = type_params {
                     self.type_alias_params.insert(name.clone(), params.clone());
@@ -626,6 +664,14 @@ impl Typechecker {
                 }
 
                 let tps = type_params.clone().unwrap_or_default();
+                for (_, vargs) in variants {
+                    for vt in vargs {
+                        self.validate_type_alias_arity(vt).map_err(|msg| TypeError {
+                            span: stmt.span.clone(),
+                            message: msg,
+                        })?;
+                    }
+                }
                 let stored_variants: Vec<(String, Vec<Type>)> = variants
                     .iter()
                     .map(|(vname, vargs)| {
@@ -655,6 +701,11 @@ impl Typechecker {
                 target_type,
                 methods,
             } => {
+                self.validate_type_alias_arity(target_type)
+                    .map_err(|msg| TypeError {
+                        span: stmt.span.clone(),
+                        message: msg,
+                    })?;
                 // Collect all type-param names so we can genericise the target
                 let mut base_tps: Vec<String> = Vec::new();
                 if let Some(tps) = type_params.as_ref() {
@@ -681,6 +732,22 @@ impl Typechecker {
                     let mut method_tps = base_tps.clone();
                     if let Some(mtps) = method.type_params.as_ref() {
                         method_tps.extend(mtps.clone());
+                    }
+
+                    for (_, ty_opt, _) in &method.params {
+                        if let Some(p_ty) = ty_opt {
+                            self.validate_type_alias_arity(p_ty).map_err(|msg| TypeError {
+                                span: method.span.clone(),
+                                message: msg,
+                            })?;
+                        }
+                    }
+                    if let Some(ret) = &method.return_ty {
+                        self.validate_type_alias_arity(ret)
+                            .map_err(|msg| TypeError {
+                                span: method.span.clone(),
+                                message: msg,
+                            })?;
                     }
 
                     let full_params: Vec<(String, Type, bool)> = method
@@ -767,6 +834,22 @@ impl Typechecker {
                 let mut method_infos: Vec<(&auwla_ast::Method, Vec<(String, Type, bool)>, Option<Type>)> =
                     Vec::new();
                 for method in methods {
+                    for (_, ty_opt, _) in &method.params {
+                        if let Some(p_ty) = ty_opt {
+                            self.validate_type_alias_arity(p_ty).map_err(|msg| TypeError {
+                                span: method.span.clone(),
+                                message: msg,
+                            })?;
+                        }
+                    }
+                    if let Some(ret) = &method.return_ty {
+                        self.validate_type_alias_arity(ret)
+                            .map_err(|msg| TypeError {
+                                span: method.span.clone(),
+                                message: msg,
+                            })?;
+                    }
+
                     let custom_type = Type::Custom(name.clone());
                     let full_params: Vec<(String, Type, bool)> = method
                         .params

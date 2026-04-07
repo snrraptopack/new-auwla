@@ -2,6 +2,7 @@ use crate::TypeError;
 use crate::checker::Typechecker;
 use crate::scope::Mutability;
 use auwla_ast::{Expr, Type};
+use std::collections::HashSet;
 
 impl Typechecker {
     pub fn check_expr(&mut self, expr: &Expr) -> Result<Type, TypeError> {
@@ -300,6 +301,15 @@ impl Typechecker {
                 };
 
                 let mut unifier = crate::inference::unify::Unifier::new();
+
+                if let Some(t_args) = type_args {
+                    for ta in t_args {
+                        self.validate_type_alias_arity(ta).map_err(|msg| TypeError {
+                            span: expr.span.clone(),
+                            message: msg,
+                        })?;
+                    }
+                }
 
                 // 1. If the function is generic, create InferenceVars for its type parameters
                 let mut type_env = std::collections::HashMap::new();
@@ -1164,6 +1174,14 @@ impl Typechecker {
                 type_args,
                 fields,
             } => {
+                if let Some(args) = type_args {
+                    for ta in args {
+                        self.validate_type_alias_arity(ta).map_err(|msg| TypeError {
+                            span: expr.span.clone(),
+                            message: msg,
+                        })?;
+                    }
+                }
                 let struct_def_raw = self.structs.get(name).cloned().ok_or_else(|| TypeError {
                     span: expr.span.clone(),
                     message: format!("Undefined struct '{}'", name),
@@ -1277,6 +1295,14 @@ impl Typechecker {
                 args,
                 ..
             } => {
+                if let Some(args_t) = type_args {
+                    for ta in args_t {
+                        self.validate_type_alias_arity(ta).map_err(|msg| TypeError {
+                            span: expr.span.clone(),
+                            message: msg,
+                        })?;
+                    }
+                }
                 let enum_def_raw = self.enums.get(enum_name).cloned().ok_or_else(|| TypeError {
                     span: expr.span.clone(),
                     message: format!("Undefined enum '{}'", enum_name),
@@ -1445,240 +1471,88 @@ impl Typechecker {
                 type_args,
             } => {
                 let expr_ty = self.check_expr(expr)?;
-                // Resolve the type name for lookup in the extension registry
                 let base_key = expr_ty.base_key();
+                let candidates: Vec<auwla_ast::ExtensionMethod> = self
+                    .extensions
+                    .get(&base_key)
+                    .map(|sigs| {
+                        sigs.iter()
+                            .filter(|m| m.name == method.as_str())
+                            .cloned()
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                        let candidates = Self::dedupe_method_candidates(candidates);
 
-                let mut found_method = None;
-                if let Some(sigs) = self.extensions.get(&base_key) {
-                    if let Some(method_sig) =
-                        sigs.iter().find(|m| m.name == method.as_str()).cloned()
-                    {
-                        found_method = Some(method_sig);
+                if candidates.is_empty() {
+                    return Err(TypeError {
+                        span: expr.span.clone(),
+                        message: format!(
+                            "Type error: method '{}' not found on type '{}' (if this is an extension, make sure it is defined and imported)",
+                            method, expr_ty
+                        ),
+                    });
+                }
+
+                let mut successes: Vec<(Type, (usize, usize, usize), String)> = Vec::new();
+                let mut last_error: Option<TypeError> = None;
+
+                for candidate in &candidates {
+                    match self.try_instance_method_candidate(
+                        candidate,
+                        &expr_ty,
+                        method,
+                        args,
+                        type_args,
+                        expr.span.clone(),
+                    ) {
+                        Ok((ret, score)) => {
+                            successes.push((ret, score, self.instance_signature_for_error(candidate)));
+                        }
+                        Err(err) => {
+                            last_error = Some(err);
+                        }
                     }
                 }
-                
-                if let Some(method_sig) = found_method {
-                    if method_sig.is_static {
-                        return Err(TypeError {
-                            span: expr.span.clone(),
-                            message: format!(
-                                "Type error: '{}::{}' is a static extension — not callable on a value",
-                                self.type_to_key(&expr_ty),
-                                method
-                            ),
-                        });
-                    }
-                    // method_sig.params[0] is self — skip when validating explicit args
-                    let explicit_params: Vec<&(String, Type, bool)> = if method_sig
-                        .params
-                        .first()
-                        .map(|(n, _, _)| n == "self")
-                        .unwrap_or(false)
-                    {
-                        method_sig.params[1..].iter().collect()
-                    } else {
-                        method_sig.params.iter().collect()
-                    };
 
-                    let mut unifier = crate::inference::unify::Unifier::new();
+                if successes.is_empty() {
+                    return Err(last_error.unwrap_or(TypeError {
+                        span: expr.span.clone(),
+                        message: format!(
+                            "Type error: no overload of '{}' matched provided arguments",
+                            method
+                        ),
+                    }));
+                }
 
-                    let mut type_env = std::collections::HashMap::new();
-                    if let Some(t_params) = &method_sig.type_params {
-                        if let Some(t_args) = type_args {
-                            if t_args.len() != t_params.len() {
-                                return Err(TypeError {
-                                    span: expr.span.clone(),
-                                    message: format!(
-                                        "Method '{}' expects {} type arguments, but {} were provided",
-                                        method,
-                                        t_params.len(),
-                                        t_args.len()
-                                    ),
-                                });
-                            }
-                            for (tp, ta) in t_params.iter().zip(t_args) {
-                                let id = unifier.new_type_var();
-                                unifier.bind(id, ta).map_err(|msg| TypeError {
-                                    span: expr.span.clone(),
-                                    message: msg,
-                                })?;
-                                type_env.insert(tp.clone(), id);
-                            }
-                        } else {
-                            for tp in t_params {
-                                let id = unifier.new_type_var();
-                                type_env.insert(tp.clone(), id);
-                            }
-                        }
-                    } else if type_args.is_some() {
-                        return Err(TypeError {
-                            span: expr.span.clone(),
-                            message: format!(
-                                "Method '{}' is not generic but type arguments were provided",
-                                method
-                            ),
-                        });
-                    }
+                successes.sort_by(|a, b| a.1.cmp(&b.1));
+                let best_score = successes[0].1;
+                let best: Vec<_> = successes
+                    .iter()
+                    .filter(|(_, score, _)| *score == best_score)
+                    .collect();
 
-                    fn instantiate(
-                        ty: &Type,
-                        env: &std::collections::HashMap<String, usize>,
-                    ) -> Type {
-                        match ty {
-                            Type::TypeVar(name) | Type::Custom(name) => {
-                                if let Some(&id) = env.get(name) {
-                                    Type::InferenceVar(id)
-                                } else {
-                                    ty.clone()
-                                }
-                            }
-                            Type::Array(inner) => Type::Array(Box::new(instantiate(inner, env))),
-                            Type::Dict(k, v) => {
-                                Type::Dict(Box::new(instantiate(k, env)), Box::new(instantiate(v, env)))
-                            }
-                            Type::Optional(inner) => {
-                                Type::Optional(Box::new(instantiate(inner, env)))
-                            }
-                            Type::Result { ok_type, err_type } => Type::Result {
-                                ok_type: Box::new(instantiate(ok_type, env)),
-                                err_type: Box::new(instantiate(err_type, env)),
-                            },
-                            Type::Function(p, r) => {
-                                let inst_p = p
-                                    .iter()
-                                    .map(|(p_ty, p_vararg)| (instantiate(p_ty, env), *p_vararg))
-                                    .collect();
-                                let inst_r = Box::new(instantiate(r, env));
-                                Type::Function(inst_p, inst_r)
-                            }
-                            Type::Generic(n, args) => {
-                                let inst_args = args.iter().map(|a| instantiate(a, env)).collect();
-                                Type::Generic(n.clone(), inst_args)
-                            }
-                            _ => ty.clone(),
-                        }
-                    }
-
-                    let inst_params: Vec<(Type, bool)> = explicit_params
+                if best.len() > 1 {
+                    let options: Vec<String> = best
                         .iter()
-                        .map(|(_, p, v)| (instantiate(p, &type_env), *v))
+                        .map(|(_, _, sig)| sig.clone())
                         .collect();
-                    let inst_return_ty = method_sig
-                        .return_ty
-                        .as_ref()
-                        .map(|r| instantiate(r, &type_env));
-
-                    let is_vararg = inst_params.last().map(|(_, v)| *v).unwrap_or(false);
-                    if is_vararg {
-                        if args.len() < inst_params.len() - 1 {
-                            let expected_sig: Vec<String> = explicit_params
-                                .iter()
-                                .map(|(name, ty, _)| format!("{}: {}", name, self.type_to_key(ty)))
-                                .collect();
-                            let ret_str = method_sig
-                                .return_ty
-                                .as_ref()
-                                .map(|r| format!(" -> {}", self.type_to_key(r)))
-                                .unwrap_or_default();
-                            return Err(TypeError {
-                                span: expr.span.clone(),
-                                message: format!(
-                                    "Method '{}' expects at least {} argument(s) (varargs), but got {}.\nExpected signature: fn {}({}){}",
-                                    method,
-                                    inst_params.len() - 1,
-                                    args.len(),
-                                    method,
-                                    expected_sig.join(", "),
-                                    ret_str
-                                ),
-                            });
-                        }
-                    } else if inst_params.len() != args.len() {
-                        let expected_sig: Vec<String> = explicit_params
-                            .iter()
-                            .map(|(name, ty, _)| format!("{}: {}", name, self.type_to_key(ty)))
-                            .collect();
-                        let ret_str = method_sig
-                            .return_ty
-                            .as_ref()
-                            .map(|r| format!(" -> {}", self.type_to_key(r)))
-                            .unwrap_or_default();
-                        return Err(TypeError {
-                            span: expr.span.clone(),
-                            message: format!(
-                                "Method '{}' expects {} argument(s), but got {}.\nExpected signature: fn {}({}){}",
-                                method,
-                                inst_params.len(),
-                                args.len(),
-                                method,
-                                expected_sig.join(", "),
-                                ret_str
-                            ),
-                        });
+                    let unique_options: HashSet<String> = options.iter().cloned().collect();
+                    if unique_options.len() == 1 {
+                        return Ok(best[0].0.clone());
                     }
-
-                    if let Some(first_param) = method_sig.params.first() {
-                        if first_param.0 == "self" {
-                            let inst_self = instantiate(&first_param.1, &type_env);
-                            unifier
-                                .unify(&inst_self, &expr_ty)
-                                .map_err(|msg| TypeError {
-                                    span: expr.span.clone(),
-                                    message: msg,
-                                })?;
-                        }
-                    }
-
-                    let num_normal = if is_vararg {
-                        inst_params.len() - 1
-                    } else {
-                        inst_params.len()
-                    };
-
-                    for (i, arg_expr) in args.iter().enumerate() {
-                        let (param_ty, _) = if is_vararg && i >= num_normal {
-                            let (v_ty, _) = inst_params.last().ok_or_else(|| TypeError {
-                                span: expr.span.clone(),
-                                message: format!(
-                                    "Type error: method '{}' has invalid vararg signature",
-                                    method
-                                ),
-                            })?;
-                            match v_ty {
-                                Type::Array(inner) => (inner.as_ref(), true),
-                                _ => (v_ty, true),
-                            }
-                        } else {
-                            (&inst_params[i].0, inst_params[i].1)
-                        };
-
-                        let resolved_param_ty = unifier.resolve(param_ty);
-
-                        let arg_ty = self.check_expr_expected(arg_expr, Some(&resolved_param_ty))?;
-                        unifier.unify(&resolved_param_ty, &arg_ty).map_err(|_| TypeError {
-                            span: arg_expr.span.clone(),
-                            message: format!(
-                                "Type Mismatch: expected {}, found {}",
-                                unifier.resolve(&resolved_param_ty),
-                                unifier.resolve(&arg_ty)
-                            ),
-                        })?;
-                    }
-
-                    let resolved_return = inst_return_ty
-                        .map(|r| unifier.resolve(&r))
-                        .unwrap_or(Type::Basic("void".to_string()));
-
-                    return Ok(resolved_return);
+                    return Err(TypeError {
+                        span: expr.span.clone(),
+                        message: format!(
+                            "Type error: call to '{}' is ambiguous for receiver '{}'. Candidates: {}",
+                            method,
+                            self.type_to_key(&expr_ty),
+                            options.join(" | ")
+                        ),
+                    });
                 }
 
-                return Err(TypeError {
-                    span: expr.span.clone(),
-                    message: format!(
-                        "Type error: method '{}' not found on type '{}' (if this is an extension, make sure it is defined and imported)",
-                        method, expr_ty
-                    ),
-                });
+                Ok(best[0].0.clone())
             }
             auwla_ast::ExprKind::StaticMethodCall {
                 type_name,
@@ -1688,23 +1562,23 @@ impl Typechecker {
                 ..
             } => {
                 let mut keys = vec![self.extend_key(type_name, type_args)];
-                keys.push(type_name.clone());
-                let mut method_sig = None;
-                for key in keys {
-                    if let Some(methods) = self.extensions.get(&key) {
-                        if let Some(found) = methods
-                            .iter()
-                            .find(|m| m.name == method.as_str() && m.is_static)
-                            .cloned()
-                        {
-                            method_sig = Some(found);
-                            break;
-                        }
+                if keys.first().map(|k| k != type_name).unwrap_or(true) {
+                    keys.push(type_name.clone());
+                }
+                let mut candidates: Vec<auwla_ast::ExtensionMethod> = Vec::new();
+                for key in &keys {
+                    if let Some(methods) = self.extensions.get(key) {
+                        candidates.extend(
+                            methods
+                                .iter()
+                                .filter(|m| m.name == method.as_str() && m.is_static)
+                                .cloned(),
+                        );
                     }
                 }
-                let method_sig = if let Some(sig) = method_sig {
-                    sig
-                } else {
+                let candidates = Self::dedupe_method_candidates(candidates);
+
+                if candidates.is_empty() {
                     // Fallback to Enum Variant
                     let maybe_variant_args = self.enums.get(type_name).and_then(|enum_def| {
                         enum_def
@@ -1800,98 +1674,66 @@ impl Typechecker {
                             method, type_name
                         ),
                     });
-                };
+                }
 
-                let is_vararg = method_sig
-                    .params
-                    .last()
-                    .map(|(_, _, v)| *v)
-                    .unwrap_or(false);
-                if is_vararg {
-                    if args.len() < method_sig.params.len() - 1 {
-                        let expected_sig: Vec<String> = method_sig
-                            .params
-                            .iter()
-                            .map(|(name, ty, _)| format!("{}: {}", name, self.type_to_key(ty)))
-                            .collect();
-                        let ret_str = method_sig
-                            .return_ty
-                            .as_ref()
-                            .map(|r| format!(" -> {}", self.type_to_key(r)))
-                            .unwrap_or_default();
-                        return Err(TypeError {
-                            span: expr.span.clone(),
-                            message: format!(
-                                "Static method '{}' expects at least {} argument(s) (varargs), but got {}.\nExpected signature: fn {}({}){}",
-                                method,
-                                method_sig.params.len() - 1,
-                                args.len(),
-                                method,
-                                expected_sig.join(", "),
-                                ret_str
-                            ),
-                        });
+                let mut successes: Vec<(Type, (usize, usize, usize), String)> = Vec::new();
+                let mut last_error: Option<TypeError> = None;
+
+                for candidate in &candidates {
+                    match self.try_static_method_candidate(
+                        candidate,
+                        method,
+                        args,
+                        type_args,
+                        expr.span.clone(),
+                    ) {
+                        Ok((ret, score)) => {
+                            successes.push((ret, score, self.static_signature_for_error(candidate)));
+                        }
+                        Err(err) => {
+                            last_error = Some(err);
+                        }
                     }
-                } else if args.len() != method_sig.params.len() {
-                    let expected_sig: Vec<String> = method_sig
-                        .params
+                }
+
+                if successes.is_empty() {
+                    return Err(last_error.unwrap_or(TypeError {
+                        span: expr.span.clone(),
+                        message: format!(
+                            "Type error: no static overload of '{}' matched provided arguments",
+                            method
+                        ),
+                    }));
+                }
+
+                successes.sort_by(|a, b| a.1.cmp(&b.1));
+                let best_score = successes[0].1;
+                let best: Vec<_> = successes
+                    .iter()
+                    .filter(|(_, score, _)| *score == best_score)
+                    .collect();
+
+                if best.len() > 1 {
+                    let options: Vec<String> = best
                         .iter()
-                        .map(|(name, ty, _)| format!("{}: {}", name, self.type_to_key(ty)))
+                        .map(|(_, _, sig)| sig.clone())
                         .collect();
-                    let ret_str = method_sig
-                        .return_ty
-                        .as_ref()
-                        .map(|r| format!(" -> {}", self.type_to_key(r)))
-                        .unwrap_or_default();
+                    let unique_options: HashSet<String> = options.iter().cloned().collect();
+                    if unique_options.len() == 1 {
+                        return Ok(best[0].0.clone());
+                    }
                     return Err(TypeError {
                         span: expr.span.clone(),
                         message: format!(
-                            "Static method '{}' expects {} argument(s), but got {}.\nExpected signature: fn {}({}){}",
+                            "Type error: static call '{}::{}' is ambiguous. Candidates: {}",
+                            type_name,
                             method,
-                            method_sig.params.len(),
-                            args.len(),
-                            method,
-                            expected_sig.join(", "),
-                            ret_str
+                            options.join(" | ")
                         ),
                     });
                 }
 
-                let num_normal = if is_vararg {
-                    method_sig.params.len() - 1
-                } else {
-                    method_sig.params.len()
-                };
-
-                for (i, arg_expr) in args.iter().enumerate() {
-                    let expected_param_ty = if is_vararg && i >= num_normal {
-                        let (_, v_ty, _) = method_sig.params.last().ok_or_else(|| TypeError {
-                            span: expr.span.clone(),
-                            message: format!(
-                                "Type error: static method '{}' has invalid vararg signature",
-                                method
-                            ),
-                        })?;
-                        match v_ty {
-                            Type::Array(inner) => inner.as_ref(),
-                            _ => v_ty,
-                        }
-                    } else {
-                        &method_sig.params[i].1
-                    };
-
-                    let arg_ty = self.check_expr_expected(arg_expr, Some(expected_param_ty))?;
-                    self.assert_type_eq(expected_param_ty, &arg_ty)
-                        .map_err(|msg| TypeError {
-                            span: arg_expr.span.clone(),
-                            message: msg,
-                        })?;
-                }
-
-                Ok(method_sig
-                    .return_ty
-                    .clone()
-                    .unwrap_or(Type::Basic("void".to_string())))
+                Ok(best[0].0.clone())
             }
             auwla_ast::ExprKind::Block(stmts, result) => {
                 self.enter_scope();
@@ -1984,6 +1826,523 @@ impl Typechecker {
                 Ok(Type::Function(param_types, Box::new(final_return_ty)))
             }
         }
+    }
+
+    fn instantiate_with_env(
+        ty: &Type,
+        env: &std::collections::HashMap<String, usize>,
+    ) -> Type {
+        match ty {
+            Type::TypeVar(name) | Type::Custom(name) => {
+                if let Some(&id) = env.get(name) {
+                    Type::InferenceVar(id)
+                } else {
+                    ty.clone()
+                }
+            }
+            Type::Array(inner) => Type::Array(Box::new(Self::instantiate_with_env(inner, env))),
+            Type::Dict(k, v) => Type::Dict(
+                Box::new(Self::instantiate_with_env(k, env)),
+                Box::new(Self::instantiate_with_env(v, env)),
+            ),
+            Type::Optional(inner) => {
+                Type::Optional(Box::new(Self::instantiate_with_env(inner, env)))
+            }
+            Type::Result { ok_type, err_type } => Type::Result {
+                ok_type: Box::new(Self::instantiate_with_env(ok_type, env)),
+                err_type: Box::new(Self::instantiate_with_env(err_type, env)),
+            },
+            Type::Function(p, r) => {
+                let inst_p = p
+                    .iter()
+                    .map(|(p_ty, p_vararg)| (Self::instantiate_with_env(p_ty, env), *p_vararg))
+                    .collect();
+                let inst_r = Box::new(Self::instantiate_with_env(r, env));
+                Type::Function(inst_p, inst_r)
+            }
+            Type::Generic(n, args) => {
+                let inst_args = args
+                    .iter()
+                    .map(|a| Self::instantiate_with_env(a, env))
+                    .collect();
+                Type::Generic(n.clone(), inst_args)
+            }
+            _ => ty.clone(),
+        }
+    }
+
+    fn dedupe_method_candidates(
+        candidates: Vec<auwla_ast::ExtensionMethod>,
+    ) -> Vec<auwla_ast::ExtensionMethod> {
+        let mut seen = HashSet::new();
+        let mut unique = Vec::new();
+
+        for candidate in candidates {
+            // Import aggregation can register semantically identical methods more than once.
+            let key = Self::method_identity_key(&candidate);
+            if seen.insert(key) {
+                unique.push(candidate);
+            }
+        }
+
+        unique
+    }
+
+    fn method_identity_key(method: &auwla_ast::ExtensionMethod) -> String {
+        let tparams = method
+            .type_params
+            .as_ref()
+            .map(|tp| tp.join(","))
+            .unwrap_or_default();
+        let params = method
+            .params
+            .iter()
+            .map(|(n, t, is_v)| format!("{}:{:?}:{}", n, t, is_v))
+            .collect::<Vec<_>>()
+            .join("|");
+        let attrs = method
+            .attributes
+            .iter()
+            .map(|a| format!("{}({})", a.name, a.args.join(",")))
+            .collect::<Vec<_>>()
+            .join("|");
+        let ret = method
+            .return_ty
+            .as_ref()
+            .map(|r| format!("{:?}", r))
+            .unwrap_or_else(|| "void".to_string());
+
+        format!(
+            "{}#{}#{}#{}#{}#{}",
+            method.name, method.is_static, tparams, params, ret, attrs
+        )
+    }
+
+    fn type_var_count(ty: &Type) -> usize {
+        match ty {
+            Type::TypeVar(_) | Type::InferenceVar(_) => 1,
+            Type::Array(inner) | Type::Optional(inner) | Type::Wrapper(inner) => {
+                Self::type_var_count(inner)
+            }
+            Type::Dict(k, v) => Self::type_var_count(k) + Self::type_var_count(v),
+            Type::Result { ok_type, err_type } => {
+                Self::type_var_count(ok_type) + Self::type_var_count(err_type)
+            }
+            Type::Function(params, ret) => {
+                params
+                    .iter()
+                    .map(|(p, _)| Self::type_var_count(p))
+                    .sum::<usize>()
+                    + Self::type_var_count(ret)
+            }
+            Type::Generic(_, args) | Type::Tuple(args) => {
+                args.iter().map(Self::type_var_count).sum()
+            }
+            _ => 0,
+        }
+    }
+
+    fn instance_signature_for_error(&self, method_sig: &auwla_ast::ExtensionMethod) -> String {
+        let explicit_params: Vec<&(String, Type, bool)> = if method_sig
+            .params
+            .first()
+            .map(|(n, _, _)| n == "self")
+            .unwrap_or(false)
+        {
+            method_sig.params[1..].iter().collect()
+        } else {
+            method_sig.params.iter().collect()
+        };
+
+        let expected_sig: Vec<String> = explicit_params
+            .iter()
+            .map(|(name, ty, _)| format!("{}: {}", name, self.type_to_key(ty)))
+            .collect();
+        let ret_str = method_sig
+            .return_ty
+            .as_ref()
+            .map(|r| format!(" -> {}", self.type_to_key(r)))
+            .unwrap_or_default();
+        format!("fn {}({}){}", method_sig.name, expected_sig.join(", "), ret_str)
+    }
+
+    fn static_signature_for_error(&self, method_sig: &auwla_ast::ExtensionMethod) -> String {
+        let expected_sig: Vec<String> = method_sig
+            .params
+            .iter()
+            .map(|(name, ty, _)| format!("{}: {}", name, self.type_to_key(ty)))
+            .collect();
+        let ret_str = method_sig
+            .return_ty
+            .as_ref()
+            .map(|r| format!(" -> {}", self.type_to_key(r)))
+            .unwrap_or_default();
+        format!("fn {}({}){}", method_sig.name, expected_sig.join(", "), ret_str)
+    }
+
+    fn parse_constraint_type(raw: &str) -> Type {
+        match raw {
+            "number" | "string" | "bool" | "char" | "void" => Type::Basic(raw.to_string()),
+            "array" => Type::Array(Box::new(Type::Basic("unknown".to_string()))),
+            "dict" => Type::Dict(
+                Box::new(Type::Basic("unknown".to_string())),
+                Box::new(Type::Basic("unknown".to_string())),
+            ),
+            other => Type::Custom(other.to_string()),
+        }
+    }
+
+    fn enforce_method_constraints(
+        &self,
+        method_sig: &auwla_ast::ExtensionMethod,
+        type_env: &std::collections::HashMap<String, usize>,
+        unifier: &mut crate::inference::unify::Unifier,
+        span: std::ops::Range<usize>,
+    ) -> Result<(), TypeError> {
+        for attr in &method_sig.attributes {
+            if attr.name != "constraint" || attr.args.len() != 2 {
+                continue;
+            }
+            let type_param = &attr.args[0];
+            let required_ty = Self::parse_constraint_type(&attr.args[1]);
+
+            let Some(id) = type_env.get(type_param) else {
+                continue;
+            };
+            let actual_ty = unifier.resolve(&Type::InferenceVar(*id));
+
+            if self.assert_type_eq(&required_ty, &actual_ty).is_err() {
+                return Err(TypeError {
+                    span,
+                    message: format!(
+                        "Type error: generic constraint violated for '{}'. Expected '{}', found '{}'",
+                        type_param,
+                        required_ty,
+                        actual_ty
+                    ),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn try_instance_method_candidate(
+        &mut self,
+        method_sig: &auwla_ast::ExtensionMethod,
+        receiver_ty: &Type,
+        method_name: &str,
+        args: &[Expr],
+        type_args: &Option<Vec<Type>>,
+        span: std::ops::Range<usize>,
+    ) -> Result<(Type, (usize, usize, usize)), TypeError> {
+        if method_sig.is_static {
+            return Err(TypeError {
+                span,
+                message: format!(
+                    "Type error: '{}' is static and cannot be called on a value",
+                    method_name
+                ),
+            });
+        }
+
+        let explicit_params: Vec<&(String, Type, bool)> = if method_sig
+            .params
+            .first()
+            .map(|(n, _, _)| n == "self")
+            .unwrap_or(false)
+        {
+            method_sig.params[1..].iter().collect()
+        } else {
+            method_sig.params.iter().collect()
+        };
+
+        let mut unifier = crate::inference::unify::Unifier::new();
+        let mut type_env = std::collections::HashMap::new();
+
+        if let Some(t_params) = &method_sig.type_params {
+            if let Some(t_args) = type_args {
+                if t_args.len() != t_params.len() {
+                    return Err(TypeError {
+                        span,
+                        message: format!(
+                            "Method '{}' expects {} type arguments, but {} were provided",
+                            method_name,
+                            t_params.len(),
+                            t_args.len()
+                        ),
+                    });
+                }
+                for (tp, ta) in t_params.iter().zip(t_args) {
+                    self.validate_type_alias_arity(ta).map_err(|msg| TypeError {
+                        span: span.clone(),
+                        message: msg,
+                    })?;
+                    let id = unifier.new_type_var();
+                    unifier.bind(id, ta).map_err(|msg| TypeError {
+                        span: span.clone(),
+                        message: msg,
+                    })?;
+                    type_env.insert(tp.clone(), id);
+                }
+            } else {
+                for tp in t_params {
+                    let id = unifier.new_type_var();
+                    type_env.insert(tp.clone(), id);
+                }
+            }
+        } else if type_args.is_some() {
+            return Err(TypeError {
+                span,
+                message: format!(
+                    "Method '{}' is not generic but type arguments were provided",
+                    method_name
+                ),
+            });
+        }
+
+        let inst_params: Vec<(Type, bool)> = explicit_params
+            .iter()
+            .map(|(_, p, v)| (Self::instantiate_with_env(p, &type_env), *v))
+            .collect();
+        let inst_return_ty = method_sig
+            .return_ty
+            .as_ref()
+            .map(|r| Self::instantiate_with_env(r, &type_env));
+
+        let is_vararg = inst_params.last().map(|(_, v)| *v).unwrap_or(false);
+        if is_vararg {
+            if args.len() < inst_params.len().saturating_sub(1) {
+                return Err(TypeError {
+                    span,
+                    message: format!(
+                        "Method '{}' expects at least {} argument(s), but got {}. Expected signature: {}",
+                        method_name,
+                        inst_params.len().saturating_sub(1),
+                        args.len(),
+                        self.instance_signature_for_error(method_sig)
+                    ),
+                });
+            }
+        } else if inst_params.len() != args.len() {
+            return Err(TypeError {
+                span,
+                message: format!(
+                    "Method '{}' expects {} argument(s), but got {}. Expected signature: {}",
+                    method_name,
+                    inst_params.len(),
+                    args.len(),
+                    self.instance_signature_for_error(method_sig)
+                ),
+            });
+        }
+
+        if let Some(first_param) = method_sig.params.first() {
+            if first_param.0 == "self" {
+                let inst_self = Self::instantiate_with_env(&first_param.1, &type_env);
+                unifier.unify(&inst_self, receiver_ty).map_err(|msg| TypeError {
+                    span: span.clone(),
+                    message: msg,
+                })?;
+            }
+        }
+
+        let num_normal = if is_vararg {
+            inst_params.len().saturating_sub(1)
+        } else {
+            inst_params.len()
+        };
+
+        for (i, arg_expr) in args.iter().enumerate() {
+            let param_ty = if is_vararg && i >= num_normal {
+                let (v_ty, _) = inst_params.last().ok_or_else(|| TypeError {
+                    span: span.clone(),
+                    message: format!(
+                        "Type error: method '{}' has invalid vararg signature",
+                        method_name
+                    ),
+                })?;
+                match v_ty {
+                    Type::Array(inner) => inner.as_ref(),
+                    _ => v_ty,
+                }
+            } else {
+                &inst_params[i].0
+            };
+
+            let resolved_param_ty = unifier.resolve(param_ty);
+            let arg_ty = self.check_expr_expected(arg_expr, Some(&resolved_param_ty))?;
+            unifier
+                .unify(&resolved_param_ty, &arg_ty)
+                .map_err(|_| TypeError {
+                    span: arg_expr.span.clone(),
+                    message: format!(
+                        "Type Mismatch: expected {}, found {}",
+                        unifier.resolve(&resolved_param_ty),
+                        unifier.resolve(&arg_ty)
+                    ),
+                })?;
+        }
+
+        let resolved_return = inst_return_ty
+            .map(|r| unifier.resolve(&r))
+            .unwrap_or(Type::Basic("void".to_string()));
+
+        self.enforce_method_constraints(method_sig, &type_env, &mut unifier, span.clone())?;
+
+        let score = (
+            method_sig.type_params.as_ref().map(|t| t.len()).unwrap_or(0),
+            usize::from(is_vararg),
+            Self::type_var_count(&resolved_return),
+        );
+
+        Ok((resolved_return, score))
+    }
+
+    fn try_static_method_candidate(
+        &mut self,
+        method_sig: &auwla_ast::ExtensionMethod,
+        method_name: &str,
+        args: &[Expr],
+        call_type_args: &Option<Vec<Type>>,
+        span: std::ops::Range<usize>,
+    ) -> Result<(Type, (usize, usize, usize)), TypeError> {
+        if !method_sig.is_static {
+            return Err(TypeError {
+                span,
+                message: format!("Type error: '{}' is an instance method", method_name),
+            });
+        }
+
+        let mut unifier = crate::inference::unify::Unifier::new();
+        let mut type_env = std::collections::HashMap::new();
+
+        if let Some(t_params) = &method_sig.type_params {
+            if let Some(t_args) = call_type_args {
+                if t_args.len() != t_params.len() {
+                    return Err(TypeError {
+                        span,
+                        message: format!(
+                            "Static method '{}' expects {} type arguments, but {} were provided",
+                            method_name,
+                            t_params.len(),
+                            t_args.len()
+                        ),
+                    });
+                }
+                for (tp, ta) in t_params.iter().zip(t_args) {
+                    self.validate_type_alias_arity(ta).map_err(|msg| TypeError {
+                        span: span.clone(),
+                        message: msg,
+                    })?;
+                    let id = unifier.new_type_var();
+                    unifier.bind(id, ta).map_err(|msg| TypeError {
+                        span: span.clone(),
+                        message: msg,
+                    })?;
+                    type_env.insert(tp.clone(), id);
+                }
+            } else {
+                for tp in t_params {
+                    let id = unifier.new_type_var();
+                    type_env.insert(tp.clone(), id);
+                }
+            }
+        } else if call_type_args.is_some() {
+            return Err(TypeError {
+                span,
+                message: format!(
+                    "Static method '{}' is not generic but type arguments were provided",
+                    method_name
+                ),
+            });
+        }
+
+        let inst_params: Vec<(Type, bool)> = method_sig
+            .params
+            .iter()
+            .map(|(_, p, v)| (Self::instantiate_with_env(p, &type_env), *v))
+            .collect();
+        let inst_return_ty = method_sig
+            .return_ty
+            .as_ref()
+            .map(|r| Self::instantiate_with_env(r, &type_env));
+
+        let is_vararg = inst_params.last().map(|(_, v)| *v).unwrap_or(false);
+        if is_vararg {
+            if args.len() < inst_params.len().saturating_sub(1) {
+                return Err(TypeError {
+                    span,
+                    message: format!(
+                        "Static method '{}' expects at least {} argument(s), but got {}. Expected signature: {}",
+                        method_name,
+                        inst_params.len().saturating_sub(1),
+                        args.len(),
+                        self.static_signature_for_error(method_sig)
+                    ),
+                });
+            }
+        } else if args.len() != inst_params.len() {
+            return Err(TypeError {
+                span,
+                message: format!(
+                    "Static method '{}' expects {} argument(s), but got {}. Expected signature: {}",
+                    method_name,
+                    inst_params.len(),
+                    args.len(),
+                    self.static_signature_for_error(method_sig)
+                ),
+            });
+        }
+
+        let num_normal = if is_vararg {
+            inst_params.len().saturating_sub(1)
+        } else {
+            inst_params.len()
+        };
+
+        for (i, arg_expr) in args.iter().enumerate() {
+            let expected_param_ty = if is_vararg && i >= num_normal {
+                let (v_ty, _) = inst_params.last().ok_or_else(|| TypeError {
+                    span: span.clone(),
+                    message: format!(
+                        "Type error: static method '{}' has invalid vararg signature",
+                        method_name
+                    ),
+                })?;
+                match v_ty {
+                    Type::Array(inner) => inner.as_ref(),
+                    _ => v_ty,
+                }
+            } else {
+                &inst_params[i].0
+            };
+
+            let resolved_param_ty = unifier.resolve(expected_param_ty);
+            let arg_ty = self.check_expr_expected(arg_expr, Some(&resolved_param_ty))?;
+            unifier
+                .unify(&resolved_param_ty, &arg_ty)
+                .map_err(|_| TypeError {
+                    span: arg_expr.span.clone(),
+                    message: format!(
+                        "Type Mismatch: expected {}, found {}",
+                        unifier.resolve(&resolved_param_ty),
+                        unifier.resolve(&arg_ty)
+                    ),
+                })?;
+        }
+
+        let resolved_return = inst_return_ty
+            .map(|r| unifier.resolve(&r))
+            .unwrap_or(Type::Basic("void".to_string()));
+
+        self.enforce_method_constraints(method_sig, &type_env, &mut unifier, span.clone())?;
+
+        let score = (
+            method_sig.type_params.as_ref().map(|t| t.len()).unwrap_or(0),
+            usize::from(is_vararg),
+            Self::type_var_count(&resolved_return),
+        );
+        Ok((resolved_return, score))
     }
 
     /// Recursively typecheck nested patterns and declare variables

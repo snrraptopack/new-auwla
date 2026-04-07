@@ -323,6 +323,10 @@ impl Typechecker {
             Type::Generic(name, args) => {
                 if let Some(aliased) = self.type_aliases.get(name) {
                     if let Some(params) = self.type_alias_params.get(name) {
+                        if args.len() != params.len() {
+                            // Keep unresolved so callers can surface a proper arity error.
+                            return ty.clone();
+                        }
                         // Perform substitution: map params[i] -> args[i]
                         let mut substituted = aliased.clone();
                         for (i, param_name) in params.iter().enumerate() {
@@ -339,6 +343,69 @@ impl Typechecker {
                 }
             }
             _ => ty.clone(),
+        }
+    }
+
+    pub(crate) fn validate_type_alias_arity(&self, ty: &Type) -> Result<(), String> {
+        match ty {
+            Type::Custom(name) => {
+                if let Some(params) = self.type_alias_params.get(name) {
+                    if !params.is_empty() {
+                        return Err(format!(
+                            "Type alias '{}' expects {} type argument(s), but none were provided",
+                            name,
+                            params.len()
+                        ));
+                    }
+                }
+                Ok(())
+            }
+            Type::Generic(name, args) => {
+                if let Some(params) = self.type_alias_params.get(name) {
+                    if args.len() != params.len() {
+                        return Err(format!(
+                            "Type alias '{}' expects {} type argument(s), but {} were provided",
+                            name,
+                            params.len(),
+                            args.len()
+                        ));
+                    }
+                } else if self.type_aliases.contains_key(name) && !args.is_empty() {
+                    return Err(format!(
+                        "Type alias '{}' is not generic but {} type argument(s) were provided",
+                        name,
+                        args.len()
+                    ));
+                }
+                for arg in args {
+                    self.validate_type_alias_arity(arg)?;
+                }
+                Ok(())
+            }
+            Type::Array(inner) => self.validate_type_alias_arity(inner),
+            Type::Optional(inner) => self.validate_type_alias_arity(inner),
+            Type::Wrapper(inner) => self.validate_type_alias_arity(inner),
+            Type::Dict(k, v) => {
+                self.validate_type_alias_arity(k)?;
+                self.validate_type_alias_arity(v)
+            }
+            Type::Result { ok_type, err_type } => {
+                self.validate_type_alias_arity(ok_type)?;
+                self.validate_type_alias_arity(err_type)
+            }
+            Type::Function(params, ret) => {
+                for (p, _) in params {
+                    self.validate_type_alias_arity(p)?;
+                }
+                self.validate_type_alias_arity(ret)
+            }
+            Type::Tuple(types) => {
+                for t in types {
+                    self.validate_type_alias_arity(t)?;
+                }
+                Ok(())
+            }
+            _ => Ok(()),
         }
     }
 

@@ -165,4 +165,129 @@ mod tests {
             result.err()
         );
     }
+
+    #[test]
+    fn test_instance_overload_prefers_more_specific_candidate() {
+        let source = r#"
+            extend number {
+                fn pick(self, v: number): number => v;
+                fn pick<T>(self, v: T): number => 0;
+            }
+
+            fn main() {
+                let x = 1.pick(2);
+            }
+        "#;
+
+        let tokens: Vec<_> = lex(source).into_iter().map(|(t, _)| t).collect();
+        let ast = parse(tokens).expect("Failed to parse overload source");
+        let mut checker = Typechecker::new();
+        assert!(checker.check_program(&ast).is_ok());
+    }
+
+    #[test]
+    fn test_instance_overload_reports_ambiguity() {
+        let source = r#"
+            extend number {
+                fn pick<T>(self, v: T): number => 1;
+                fn pick<U>(self, v: U): number => 2;
+            }
+
+            fn main() {
+                let x = 1.pick(2);
+            }
+        "#;
+
+        let tokens: Vec<_> = lex(source).into_iter().map(|(t, _)| t).collect();
+        let ast = parse(tokens).expect("Failed to parse ambiguous overload source");
+        let mut checker = Typechecker::new();
+        let result = checker.check_program(&ast);
+        assert!(result.is_err());
+        let msg = result.err().unwrap().message;
+        assert!(msg.contains("ambiguous"), "unexpected error: {}", msg);
+    }
+
+    #[test]
+    fn test_static_overload_prefers_more_specific_candidate() {
+        let source = r#"
+            extend number {
+                static fn parse(v: number): number => v;
+                static fn parse<T>(v: T): number => 0;
+            }
+
+            fn main() {
+                let x = number::parse(2);
+            }
+        "#;
+
+        let tokens: Vec<_> = lex(source).into_iter().map(|(t, _)| t).collect();
+        let ast = parse(tokens).expect("Failed to parse static overload source");
+        let mut checker = Typechecker::new();
+        let result = checker.check_program(&ast);
+        assert!(result.is_ok(), "static overload should typecheck: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_type_alias_requires_type_arguments() {
+        let source = r#"
+            type Boxed<T> = array<T>;
+
+            fn main() {
+                let xs: Boxed = [1, 2, 3];
+            }
+        "#;
+
+        let tokens: Vec<_> = lex(source).into_iter().map(|(t, _)| t).collect();
+        let ast = parse(tokens).expect("Failed to parse alias arity source");
+        let mut checker = Typechecker::new();
+        let result = checker.check_program(&ast);
+        assert!(result.is_err());
+        let msg = result.err().unwrap().message;
+        assert!(
+            msg.contains("expects 1 type argument"),
+            "unexpected alias arity error: {}",
+            msg
+        );
+    }
+
+    #[test]
+    fn test_generic_constraint_allows_matching_type() {
+        let source = r#"
+            extend number {
+                @constraint("T", "number")
+                fn only_num<T>(self, v: T): number => 1;
+            }
+
+            fn main() {
+                let x = 1.only_num(2);
+            }
+        "#;
+
+        let tokens: Vec<_> = lex(source).into_iter().map(|(t, _)| t).collect();
+        let ast = parse(tokens).expect("Failed to parse constraint source");
+        let mut checker = Typechecker::new();
+        assert!(checker.check_program(&ast).is_ok());
+    }
+
+    #[test]
+    fn test_generic_constraint_rejects_mismatched_type() {
+        let source = r#"
+            extend number {
+                @constraint("T", "number")
+                fn only_num<T>(self, v: T): number => 1;
+            }
+
+            fn main() {
+                let x = 1.only_num("nope");
+            }
+        "#;
+
+        let tokens: Vec<_> = lex(source).into_iter().map(|(t, _)| t).collect();
+        let ast = parse(tokens).expect("Failed to parse mismatch constraint source");
+        let mut checker = Typechecker::new();
+        let result = checker.check_program(&ast);
+        assert!(result.is_err());
+        let msg = result.err().unwrap().message;
+        assert!(msg.contains("constraint violated"), "unexpected error: {}", msg);
+    }
 }
